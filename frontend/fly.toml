@@ -1,0 +1,40 @@
+# Fly.io config for StatEdge Frontend (React + Nginx)
+# Deploy: cd frontend && fly deploy
+
+app = "statedge-frontend"
+primary_region = "dfw"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[build.args]
+  VITE_API_BASE = "https://statedge-api.fly.dev"
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 80
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+    force_https = true
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [[services.http_checks]]
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "5s"
+    method = "GET"
+    path = "/"
+    protocol = "http"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256

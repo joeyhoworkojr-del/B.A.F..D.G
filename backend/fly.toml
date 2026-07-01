@@ -1,0 +1,56 @@
+# Fly.io config for StatEdge API (FastAPI + Celery)
+# Deploy: cd backend && fly deploy
+
+app = "statedge-api"
+primary_region = "dfw"   # Dallas — closest to the World Cup action
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  ENV = "production"
+  LOG_LEVEL = "INFO"
+  API_HOST = "0.0.0.0"
+  API_PORT = "8000"
+  MONTE_CARLO_SIMS = "50000"
+  ELO_MU = "1.06"
+  ELO_Q = "1540"
+  ELO_HOST_EDGE = "150"
+  SR_BLEND_WEIGHT = "0.60"
+
+# Secrets (set via: fly secrets set KEY=value --app statedge-api)
+# DATABASE_URL, REDIS_URL, FOOTBALL_DATA_API_KEY, SPORTRADAR_API_KEY
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 8000
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+    force_https = true
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 100
+    soft_limit = 80
+
+  [[services.http_checks]]
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/health"
+    protocol = "http"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512
