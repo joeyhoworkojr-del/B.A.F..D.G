@@ -9,7 +9,9 @@ import type {
   BestBetsResponse,
 } from '../types'
 
-const BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
+// Strip trailing slashes so VITE_API_BASE="/" (same-origin via nginx proxy)
+// yields "/api/v1/..." and not a protocol-relative "//api/v1/..." URL.
+const BASE = (import.meta.env.VITE_API_BASE ?? 'http://localhost:8000').replace(/\/+$/, '')
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, init)
