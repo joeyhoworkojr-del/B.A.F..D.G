@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass
 from typing import Optional
 
@@ -18,6 +19,10 @@ import httpx
 log = logging.getLogger(__name__)
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+
+# Fetch cache: (lat, lon) → (monotonic timestamp, report)
+CACHE_TTL_SECONDS = 900.0
+_weather_cache: dict[tuple[float, float], tuple[float, "WeatherReport"]] = {}
 
 # WMO weather code → human label (subset)
 WMO_CODES: dict[int, str] = {
@@ -28,6 +33,31 @@ WMO_CODES: dict[int, str] = {
     71: "Light snow", 73: "Snow", 75: "Heavy snow",
     80: "Light showers", 81: "Showers", 82: "Heavy showers",
     95: "Thunderstorm", 96: "Thunderstorm + hail",
+}
+
+# NFL stadium coordinates by home-team code (indoor/fixed-roof teams flagged below)
+NFL_STADIUM_COORDS: dict[str, tuple[float, float]] = {
+    "BAL": (39.2780, -76.6227), "CIN": (39.0955, -84.5161),
+    "CLE": (41.5061, -81.6995), "PIT": (40.4468, -80.0158),
+    "HOU": (29.6847, -95.4107), "IND": (39.7601, -86.1639),
+    "JAX": (30.3239, -81.6373), "TEN": (36.1665, -86.7713),
+    "BUF": (42.7738, -78.7870), "MIA": (25.9580, -80.2389),
+    "NE":  (42.0909, -71.2643), "NYJ": (40.8136, -74.0744),
+    "KC":  (39.0489, -94.4839), "LAC": (33.9534, -118.3387),
+    "LV":  (36.0909, -115.1833), "DEN": (39.7439, -105.0201),
+    "CHI": (41.8623, -87.6167), "DET": (42.3400, -83.0456),
+    "GB":  (44.5013, -88.0622), "MIN": (44.9738, -93.2575),
+    "ATL": (33.7554, -84.4007), "CAR": (35.2258, -80.8528),
+    "NO":  (29.9511, -90.0812), "TB":  (27.9759, -82.5033),
+    "DAL": (32.7480, -97.0931), "NYG": (40.8136, -74.0744),
+    "PHI": (39.9008, -75.1675), "WSH": (38.9077, -76.8645),
+    "ARI": (33.5276, -112.2626), "LA": (33.9534, -118.3387),
+    "SF":  (37.4032, -121.9698), "SEA": (47.5952, -122.3316),
+}
+
+# Teams that play in domes / fixed-roof stadiums — weather never applies
+NFL_INDOOR_TEAMS: set[str] = {
+    "ATL", "NO", "DET", "MIN", "LV", "LAC", "LA", "ARI", "HOU", "IND", "DAL",
 }
 
 # All 2026 World Cup venue coordinates
@@ -62,22 +92,18 @@ class WeatherReport:
     source: str = "Open-Meteo"
 
 
-async def fetch_weather(venue: str) -> Optional[WeatherReport]:
-    """
-    Fetch current weather for a venue.
-    Returns None if venue is unknown or request fails.
-    """
-    coords = VENUE_COORDS.get(venue)
-    if coords is None:
-        log.warning("No coordinates for venue: %r", venue)
-        return None
-
-    lat, lon = coords
-
-    # Retractable roof / indoor venues don't need weather
-    indoor_venues = {"BC Place, Vancouver", "NRG Stadium, Houston",
-                     "State Farm Stadium, Glendale", "Mercedes-Benz Stadium, Atlanta"}
-    is_indoor = venue in indoor_venues
+async def fetch_weather_at(
+    lat: float,
+    lon: float,
+    *,
+    venue: str = "",
+    is_indoor: bool = False,
+) -> Optional[WeatherReport]:
+    """Fetch current weather for arbitrary coordinates (15-min cache)."""
+    now = time.monotonic()
+    cached = _weather_cache.get((lat, lon))
+    if cached and now - cached[0] < CACHE_TTL_SECONDS:
+        return cached[1]
 
     params = {
         "latitude": lat,
@@ -99,7 +125,7 @@ async def fetch_weather(venue: str) -> Optional[WeatherReport]:
         wind = float(current.get("wind_speed_10m", 0))
         wmo = int(current.get("weather_code", 0))
 
-        return WeatherReport(
+        report = WeatherReport(
             venue=venue,
             temperature_c=temp_c,
             temperature_f=temp_c * 9 / 5 + 32,
@@ -109,9 +135,43 @@ async def fetch_weather(venue: str) -> Optional[WeatherReport]:
             wmo_code=wmo,
             is_indoor=is_indoor,
         )
-    except httpx.HTTPError as exc:
+        _weather_cache[(lat, lon)] = (now, report)
+        return report
+    except Exception as exc:  # weather is an enhancement — never break predictions
         log.error("Weather fetch failed for %r: %s", venue, exc)
         return None
+
+
+async def fetch_weather(venue: str) -> Optional[WeatherReport]:
+    """
+    Fetch current weather for a named World Cup venue.
+    Returns None if venue is unknown or request fails.
+    """
+    coords = VENUE_COORDS.get(venue)
+    if coords is None:
+        log.warning("No coordinates for venue: %r", venue)
+        return None
+
+    # Retractable roof / indoor venues don't need weather
+    indoor_venues = {"BC Place, Vancouver", "NRG Stadium, Houston",
+                     "State Farm Stadium, Glendale", "Mercedes-Benz Stadium, Atlanta"}
+    lat, lon = coords
+    return await fetch_weather_at(lat, lon, venue=venue, is_indoor=venue in indoor_venues)
+
+
+async def fetch_nfl_weather(team_code: str) -> Optional[WeatherReport]:
+    """Fetch current weather at an NFL team's home stadium."""
+    code = team_code.upper()
+    coords = NFL_STADIUM_COORDS.get(code)
+    if coords is None:
+        log.warning("No stadium coordinates for NFL team: %r", code)
+        return None
+    lat, lon = coords
+    return await fetch_weather_at(
+        lat, lon,
+        venue=f"{code} home stadium",
+        is_indoor=code in NFL_INDOOR_TEAMS,
+    )
 
 
 async def fetch_all_venue_weather() -> dict[str, Optional[WeatherReport]]:
