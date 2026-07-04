@@ -172,11 +172,20 @@ export interface TodayModelOut {
   conditions: AdjustmentOut[]
 }
 
+export interface PolymarketOut {
+  home_prob: number
+  away_prob: number
+  volume_usd: number
+  url: string
+  title: string
+}
+
 export interface TodayGameOut {
   game: LiveGameOut
   mapped: boolean
   model?: TodayModelOut | null
   edges: EdgeOut[]
+  polymarket?: PolymarketOut | null
 }
 
 export interface TodayResponse {
