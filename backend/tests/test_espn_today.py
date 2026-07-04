@@ -64,8 +64,13 @@ def test_today_unknown_league_404(bad: str) -> None:
     assert client.get(f"/api/v1/today/{bad}").status_code == 404
 
 
+def _patch_poly(markets=None):
+    return patch("src.api.routes.predictions.fetch_league_markets",
+                 return_value=markets or [])
+
+
 def test_today_predicts_slate_and_compares_market() -> None:
-    with patch("src.api.routes.predictions.fetch_scoreboard", return_value=_mock_board()):
+    with patch("src.api.routes.predictions.fetch_scoreboard", return_value=_mock_board()), _patch_poly():
         resp = client.get("/api/v1/today/nfl")
     assert resp.status_code == 200
     data = resp.json()
@@ -99,10 +104,33 @@ def test_today_unmapped_team_included_without_model() -> None:
         ],
     }]
     board = Scoreboard(league="nfl", games=[_parse_event("nfl", ev)], fetched_at="x")
-    with patch("src.api.routes.predictions.fetch_scoreboard", return_value=board):
+    with patch("src.api.routes.predictions.fetch_scoreboard", return_value=board), _patch_poly():
         data = client.get("/api/v1/today/nfl").json()
     assert data["games"][0]["mapped"] is False
     assert data["games"][0]["model"] is None
+
+
+def test_today_includes_polymarket_crowd() -> None:
+    from src.ingest.polymarket import PolyMarket
+
+    crowd = PolyMarket(
+        slug="nfl-kc-buf",
+        title="Chiefs vs. Bills",
+        outcomes=["Chiefs", "Bills"],
+        prices=[0.62, 0.38],
+        volume_usd=1_250_000.0,
+        url="https://polymarket.com/event/nfl-kc-buf",
+    )
+    with patch("src.api.routes.predictions.fetch_scoreboard", return_value=_mock_board()), \
+         _patch_poly([crowd]):
+        data = client.get("/api/v1/today/nfl").json()
+    g = data["games"][0]
+    pm = g["polymarket"]
+    assert pm is not None
+    assert abs(pm["home_prob"] - 0.62) < 1e-9      # Chiefs are home in the sample
+    assert pm["volume_usd"] == 1_250_000.0
+    assert "polymarket.com" in pm["url"]
+    assert any("crowd" in e["market"].lower() for e in g["edges"])
 
 
 def test_live_scores_endpoint_shape() -> None:

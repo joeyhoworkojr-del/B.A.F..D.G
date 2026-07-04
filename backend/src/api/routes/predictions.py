@@ -35,6 +35,7 @@ from src.data.world_cup import (
     get_team,
 )
 from src.ingest.espn import fetch_scoreboard
+from src.ingest.polymarket import fetch_league_markets, match_game
 from src.ingest.weather import WeatherReport, fetch_gridiron_weather, fetch_weather
 from src.predict.adjustments import (
     mlb_lineup_adjustments,
@@ -484,7 +485,10 @@ async def today(league: str) -> dict:
     if league not in _TEAM_GETTERS:
         raise HTTPException(status_code=404, detail="league must be one of: nfl, cfl, mlb")
 
-    board = await fetch_scoreboard(league)
+    board, poly_markets = await asyncio.gather(
+        fetch_scoreboard(league),
+        fetch_league_markets(league),
+    )
     out_games: list[dict] = []
 
     for g in board.games:
@@ -493,6 +497,7 @@ async def today(league: str) -> dict:
             "mapped": False,
             "model": None,
             "edges": [],
+            "polymarket": match_game(poly_markets, g.home, g.away),
         }
         home = _map_code(league, g.home_abbr)
         away = _map_code(league, g.away_abbr)
@@ -547,6 +552,19 @@ async def today(league: str) -> dict:
                             (f"{away} {-g.market_spread:+.1f}", pred.away_cover_prob, -110),
                         ],
                         odds_format="american",
+                    )
+                pm = entry["polymarket"]
+                if pm:
+                    # Crowd prices are probabilities; 1/p = crowd decimal odds
+                    edges += evaluate_market(
+                        "Polymarket crowd",
+                        [
+                            (f"{home} vs crowd", pred.home_win_prob,
+                             max(1.01, 1.0 / max(pm["home_prob"], 1e-6))),
+                            (f"{away} vs crowd", pred.away_win_prob,
+                             max(1.01, 1.0 / max(pm["away_prob"], 1e-6))),
+                        ],
+                        odds_format="decimal",
                     )
                 edges.sort(key=lambda e: -e.edge_pp)
                 entry["edges"] = [_edges_out([e])[0].model_dump() for e in edges]
