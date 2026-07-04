@@ -1,5 +1,6 @@
-# Fly.io config for StatEdge API (FastAPI + Celery)
-# Deploy: cd backend && fly deploy
+# Fly.io config for StatEdge — single app: API + frontend in one image.
+# Deploy: fly deploy  (from the repo root)
+# If the app name is taken, `fly apps create <name>` and update `app` below.
 
 app = "statedge-api"
 primary_region = "dfw"   # Dallas — closest to the World Cup action
@@ -17,11 +18,9 @@ primary_region = "dfw"   # Dallas — closest to the World Cup action
   ELO_Q = "1540"
   ELO_HOST_EDGE = "150"
   SR_BLEND_WEIGHT = "0.60"
-  # JSON list (pydantic-settings) — the deployed frontend origin must be here
-  CORS_ORIGINS = '["https://statedge-frontend.fly.dev","http://localhost:5173","http://localhost:4173"]'
 
 # Secrets (set via: fly secrets set KEY=value --app statedge-api)
-# DATABASE_URL, REDIS_URL, FOOTBALL_DATA_API_KEY, SPORTRADAR_API_KEY
+# Optional: DATABASE_URL, REDIS_URL, FOOTBALL_DATA_API_KEY, SPORTRADAR_API_KEY
 
 [[services]]
   protocol = "tcp"
