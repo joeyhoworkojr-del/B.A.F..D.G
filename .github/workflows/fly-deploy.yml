@@ -36,20 +36,20 @@ jobs:
   deploy:
     needs: test
     runs-on: ubuntu-latest
-    environment: production
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
       - name: Fail fast if FLY_API_TOKEN secret is missing
         run: |
           if [ -z "${FLY_API_TOKEN}" ]; then
-            echo "::error::FLY_API_TOKEN secret is not set. Add it at Settings → Secrets and variables → Actions."
+            echo "::error::FLY_API_TOKEN secret is not set. Go to fly.io/user/personal_access_tokens, create a token, then add it at Settings → Secrets and variables → Actions."
             exit 1
           fi
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-      - name: Ensure app exists (no-op if it already does or token can't create)
-        run: flyctl apps create statedge-api || true
+      - name: Ensure app exists
+        run: |
+          flyctl apps list | grep -q statedge-api && echo "App already exists" || flyctl apps create statedge-api
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       - name: Deploy combined app
