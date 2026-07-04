@@ -38,6 +38,90 @@ export interface TotalsOut {
   away_over_2_5: number
   most_likely_total: number
   expected_scoreline: [number, number]
+  over_by_line: Record<string, number>
+}
+
+export interface AdjustmentOut {
+  label: string
+  detail: string
+  source: 'weather' | 'lineup'
+  home_xg_mult: number
+  away_xg_mult: number
+  home_pts_delta: number
+  away_pts_delta: number
+}
+
+export interface WeatherInfoOut {
+  venue: string
+  temperature_c: number
+  wind_speed_kmh: number
+  precipitation_prob: number
+  condition: string
+  is_indoor: boolean
+}
+
+export interface EdgeOut {
+  market: string
+  selection: string
+  model_prob: number
+  implied_prob: number
+  market_prob: number
+  decimal_odds: number
+  fair_odds: number
+  edge_pp: number
+  ev_per_unit: number
+  kelly_stake: number
+  rating: 'A' | 'B' | 'C' | '-'
+}
+
+export interface KeyPlayerOut {
+  name: string
+  team: string
+  sport: string
+  position: string
+  importance: number
+  status: 'fit' | 'doubtful' | 'out'
+}
+
+export interface SoccerMarketOdds {
+  format?: 'decimal' | 'american'
+  home?: number | null
+  draw?: number | null
+  away?: number | null
+  over_2_5?: number | null
+  under_2_5?: number | null
+}
+
+export interface NFLMarketOdds {
+  format?: 'decimal' | 'american'
+  moneyline_home?: number | null
+  moneyline_away?: number | null
+  spread_home_price?: number | null
+  spread_away_price?: number | null
+  over_price?: number | null
+  under_price?: number | null
+}
+
+export interface BestBetOut {
+  fixture_id: string
+  kickoff: string
+  venue: string
+  home: string
+  away: string
+  home_flag: string
+  away_flag: string
+  market: string
+  selection: string
+  model_prob: number
+  market_prob?: number | null
+  edge_pp?: number | null
+  rating: string
+  note: string
+}
+
+export interface BestBetsResponse {
+  generated_with: string
+  bets: BestBetOut[]
 }
 
 export interface PlayerPropOut {
@@ -78,6 +162,11 @@ export interface SoccerPredictResponse {
   sim_error_bound: number
   has_sr_data: boolean
   data_warning: string
+  base_probs?: WDLProbs | null
+  conditions: AdjustmentOut[]
+  weather?: WeatherInfoOut | null
+  fair_odds: Record<string, number>
+  edges: EdgeOut[]
 }
 
 export interface NFLPredictResponse {
@@ -91,6 +180,20 @@ export interface NFLPredictResponse {
   total_points_estimate: number
   why_factors: WhyFactorOut[]
   data_warning: string
+  home_expected_pts: number
+  away_expected_pts: number
+  total_line?: number | null
+  over_prob: number
+  under_prob: number
+  over_by_line: Record<string, number>
+  home_team_total_over: Record<string, number>
+  away_team_total_over: Record<string, number>
+  base_home_win_prob: number
+  base_total_estimate: number
+  conditions: AdjustmentOut[]
+  weather?: WeatherInfoOut | null
+  fair_odds: Record<string, number>
+  edges: EdgeOut[]
 }
 
 export interface RankedTeam {

@@ -63,6 +63,48 @@ NFL_TEAMS: dict[str, NFLTeam] = {t.code: t for t in [
 # Home-field advantage in Elo points
 NFL_HOME_EDGE = 48.0
 
+# League scoring environment (points per team per game)
+LEAGUE_AVG_PPG = 22.3
+
+# ─── Offense / defense point ratings ─────────────────────────────────────────
+# off = expected points scored per game vs an average defense.
+# def = expected points allowed per game vs an average offense (lower = better).
+# Defaults derive from Elo; overrides capture style (e.g. a team can be good
+# via defense with a mediocre offense). These drive matchup-specific totals.
+
+_OFF_COEF = 0.045   # points of offense per Elo point above 1500
+_DEF_COEF = 0.035   # points of defense per Elo point above 1500
+# (off+def)/2 per Elo point = 0.04 → margin ≈ elo_diff / 25, the standard scale
+
+_STYLE_OVERRIDES: dict[str, tuple[float, float]] = {
+    # code: (off_delta, def_delta) applied on top of the Elo-derived baseline
+    "BAL": (+0.5, -1.5),   # elite defense
+    "DET": (+2.5, +1.5),   # high-powered offense, leaky defense
+    "KC":  (+1.0, -0.5),
+    "SF":  (+0.5, -1.0),
+    "BUF": (+1.5, +0.5),
+    "PIT": (-1.5, -1.5),   # defense-first, low-scoring
+    "CLE": (-2.0, -1.0),
+    "NYJ": (-1.5, -1.0),
+    "MIA": (+1.5, +1.0),   # fast offense, soft defense
+    "CIN": (+1.5, +1.0),
+    "PHI": (+0.5, -0.5),
+    "GB":  (+1.0, +0.5),
+    "DAL": (+1.0, +0.5),
+    "NE":  (-1.5, -0.5),
+    "DEN": (-0.5, -1.0),
+    "CAR": (-1.0, +1.0),
+}
+
+
+def get_nfl_ratings(code: str) -> tuple[float, float]:
+    """Return (offense_ppg, defense_ppg_allowed) for a team."""
+    t = get_nfl_team(code)
+    off = LEAGUE_AVG_PPG + (t.elo - 1500) * _OFF_COEF
+    dfn = LEAGUE_AVG_PPG - (t.elo - 1500) * _DEF_COEF
+    d_off, d_def = _STYLE_OVERRIDES.get(t.code, (0.0, 0.0))
+    return off + d_off, dfn + d_def
+
 
 def get_nfl_team(code: str) -> NFLTeam:
     t = NFL_TEAMS.get(code.upper())

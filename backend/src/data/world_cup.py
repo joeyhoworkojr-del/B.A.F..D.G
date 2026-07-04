@@ -8,7 +8,7 @@ Sources:
   • SportRadar published win probabilities for calibration reference
 """
 from __future__ import annotations
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 
@@ -240,6 +240,41 @@ for s in TOP_SCORERS:
         _seen.add(key)
         _unique.append(s)
 TOP_SCORERS = _unique
+
+
+# ─── Team playing styles ──────────────────────────────────────────────────────
+# (attack, defense) multipliers on expected goals. attack > 1 = creates more
+# than Elo alone implies; defense > 1 = concedes more (leaky). Teams not
+# listed default to (1.0, 1.0). These make totals genuinely matchup-specific:
+# two defensive sides now project a much lower total than two open ones.
+
+TEAM_STYLES: dict[str, tuple[float, float]] = {
+    # Elite attacking sides
+    "ARG": (1.10, 0.90), "FRA": (1.12, 0.94), "ESP": (1.10, 0.90),
+    "BRA": (1.12, 0.98), "ENG": (1.04, 0.88), "GER": (1.08, 1.02),
+    "NED": (1.05, 0.95), "POR": (1.08, 0.98),
+    # Defense-first sides
+    "MAR": (0.90, 0.84), "URU": (0.94, 0.88), "SUI": (0.95, 0.92),
+    "IRN": (0.85, 0.94), "SEN": (0.94, 0.92), "COL": (0.98, 0.90),
+    "ECU": (0.90, 0.88),
+    # Open / chaotic sides
+    "BEL": (1.06, 1.08), "AUT": (1.06, 1.04), "JPN": (1.03, 1.04),
+    "KOR": (1.02, 1.06), "AUS": (0.98, 1.04), "TUR": (1.05, 1.06),
+    # Hosts
+    "USA": (1.00, 0.96), "MEX": (0.96, 0.94), "CAN": (1.02, 1.00),
+    # Underdogs that sit deep
+    "PAN": (0.88, 1.08), "BOL": (0.84, 1.12), "JAM": (0.85, 1.08),
+    "HON": (0.86, 1.10), "MDG": (0.82, 1.14), "ANG": (0.85, 1.10),
+    "CPV": (0.90, 1.06), "TUN": (0.90, 0.96), "DZA": (0.96, 1.00),
+    "CRO": (1.00, 0.96), "DEN": (1.02, 0.96), "UKR": (1.00, 1.00),
+    "SRB": (1.02, 1.06), "POL": (0.96, 1.00), "NGA": (1.00, 1.02),
+    "EGY": (0.92, 0.96), "CIV": (1.00, 1.00), "CMR": (0.96, 1.04),
+}
+
+
+def get_style(code: str) -> tuple[float, float]:
+    """Return (attack, defense) multipliers; (1.0, 1.0) if unlisted."""
+    return TEAM_STYLES.get(code.upper(), (1.0, 1.0))
 
 
 def get_team(code: str) -> Team:

@@ -8,8 +8,6 @@ Validates against numbers already verified in the browser prototype:
 """
 from __future__ import annotations
 
-import math
-import pytest
 
 from src.predict.soccer import (
     expected_goals,
@@ -19,7 +17,6 @@ from src.predict.soccer import (
     player_props_from_scorers,
     blend_with_sr,
 )
-from src.data.world_cup import get_team, get_scorers_for_team, TOP_SCORERS
 
 
 # ─── Unit: expected goals ─────────────────────────────────────────────────────
