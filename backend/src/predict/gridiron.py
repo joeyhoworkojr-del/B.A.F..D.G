@@ -20,12 +20,32 @@ import math
 from dataclasses import dataclass, field
 from typing import Optional
 
+from src.data.cfl import get_cfl_ratings
 from src.data.nfl import get_nfl_ratings
 
 MARGIN_SIGMA = 13.45   # std-dev of final margin vs expectation
 TOTAL_SIGMA = 13.70    # std-dev of final total vs expectation
 TEAM_SIGMA = 10.0      # std-dev of a single team's points
 HFA_POINTS = 2.1       # home-field advantage, points
+
+# Per-league parameters. CFL: 3-down football — more possessions, more
+# scoring, slightly wider distributions, a touch more home edge (travel).
+LEAGUE_PARAMS: dict[str, dict] = {
+    "nfl": {
+        "ratings": get_nfl_ratings,
+        "margin_sigma": MARGIN_SIGMA,
+        "total_sigma": TOTAL_SIGMA,
+        "team_sigma": TEAM_SIGMA,
+        "hfa": HFA_POINTS,
+    },
+    "cfl": {
+        "ratings": get_cfl_ratings,
+        "margin_sigma": 13.9,
+        "total_sigma": 14.5,
+        "team_sigma": 10.5,
+        "hfa": 2.5,
+    },
+}
 
 
 def _norm_cdf(x: float) -> float:
@@ -67,19 +87,21 @@ def expected_points(
     away_code: str,
     *,
     neutral_site: bool = False,
+    league: str = "nfl",
 ) -> tuple[float, float]:
     """
     Expected points for each side: the average of what the offense usually
     scores and what the opposing defense usually allows, centered on the
     league scoring environment, plus home field.
     """
-    home_off, home_def = get_nfl_ratings(home_code)
-    away_off, away_def = get_nfl_ratings(away_code)
+    params = LEAGUE_PARAMS[league]
+    home_off, home_def = params["ratings"](home_code)
+    away_off, away_def = params["ratings"](away_code)
     home_pts = (home_off + away_def) / 2.0
     away_pts = (away_off + home_def) / 2.0
     if not neutral_site:
-        home_pts += HFA_POINTS / 2.0
-        away_pts -= HFA_POINTS / 2.0
+        home_pts += params["hfa"] / 2.0
+        away_pts -= params["hfa"] / 2.0
     return home_pts, away_pts
 
 
@@ -127,9 +149,16 @@ def predict_nfl_game(
     spread_line: Optional[float] = None,   # betting convention: home -3.5 → -3.5
     total_line: Optional[float] = None,    # e.g. 44.5
     adjustments: Optional[list] = None,    # list[Adjustment] from live conditions
+    league: str = "nfl",                   # "nfl" | "cfl"
 ) -> NFLPrediction:
+    params = LEAGUE_PARAMS[league]
+    m_sigma = params["margin_sigma"]
+    t_sigma = params["total_sigma"]
+    team_sigma = params["team_sigma"]
+    hfa = params["hfa"]
+
     base_home_pts, base_away_pts = expected_points(
-        home_code, away_code, neutral_site=neutral_site,
+        home_code, away_code, neutral_site=neutral_site, league=league,
     )
 
     # Live conditions: weather and inactives shift expected points
@@ -142,35 +171,35 @@ def predict_nfl_game(
     margin_mu = home_pts - away_pts
     total_mu = home_pts + away_pts
 
-    hw = win_probability(margin_mu)
-    base_hw = win_probability(base_home_pts - base_away_pts)
+    hw = win_probability(margin_mu, m_sigma)
+    base_hw = win_probability(base_home_pts - base_away_pts, m_sigma)
     base_total = base_home_pts + base_away_pts
 
     # Spread: use the quoted line if provided, else the model's own number
     line = spread_line if spread_line is not None else -margin_mu
-    hcover = cover_probability(margin_mu, line)
+    hcover = cover_probability(margin_mu, line, m_sigma)
 
     # Totals: quoted line or the model's expectation rounded to the half point
     t_line = total_line if total_line is not None else round(total_mu * 2) / 2
-    over_p = total_over_probability(total_mu, t_line)
+    over_p = total_over_probability(total_mu, t_line, t_sigma)
 
     # Probability curve across nearby alternate lines (for the line explorer)
     center = round(total_mu)
     over_by_line = {
-        f"{center + off + 0.5}": total_over_probability(total_mu, center + off + 0.5)
+        f"{center + off + 0.5}": total_over_probability(total_mu, center + off + 0.5, t_sigma)
         for off in range(-8, 9)
     }
 
     def _team_over(mu: float) -> dict[str, float]:
         c = round(mu)
         return {
-            f"{c + off + 0.5}": 1.0 - _norm_cdf((c + off + 0.5 - mu) / TEAM_SIGMA)
+            f"{c + off + 0.5}": 1.0 - _norm_cdf((c + off + 0.5 - mu) / team_sigma)
             for off in range(-4, 5)
         }
 
     # Why factors: signed contributions to home win probability
-    even_hw = win_probability(0.0 if neutral_site else HFA_POINTS)
-    rating_margin = (base_home_pts - base_away_pts) - (0.0 if neutral_site else HFA_POINTS)
+    even_hw = win_probability(0.0 if neutral_site else hfa, m_sigma)
+    rating_margin = (base_home_pts - base_away_pts) - (0.0 if neutral_site else hfa)
     why = [
         {
             "label": f"Team strength ({rating_margin:+.1f} pts)",
@@ -179,7 +208,7 @@ def predict_nfl_game(
     ]
     if not neutral_site:
         why.append({
-            "label": f"Home field (+{HFA_POINTS:.1f} pts)",
+            "label": f"Home field (+{hfa:.1f} pts)",
             "value": even_hw - 0.5,
         })
     if conditions:

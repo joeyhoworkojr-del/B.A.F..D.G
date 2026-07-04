@@ -149,7 +149,10 @@ class SoccerPredictResponse(BaseModel):
     simulation: SimOut
     sim_error_bound: float
     has_sr_data: bool
-    data_warning: str = "Live data — model updated daily."
+    data_warning: str = (
+        "Weather and team news are applied live; Elo ratings and fixture "
+        "reference prices are a tournament snapshot."
+    )
     # Live conditions + value
     base_probs: Optional[WDLProbs] = None      # before live conditions
     conditions: list[AdjustmentOut] = Field(default_factory=list)
@@ -197,7 +200,10 @@ class NFLPredictResponse(BaseModel):
     away_cover_prob: float
     total_points_estimate: float
     why_factors: list[WhyFactorOut]
-    data_warning: str = "Expected-points model — check inactives before kickoff."
+    data_warning: str = (
+        "Stadium weather and inactives are applied live; team ratings are a "
+        "season snapshot."
+    )
     # Expected points + totals market
     home_expected_pts: float = 0.0
     away_expected_pts: float = 0.0
@@ -214,6 +220,35 @@ class NFLPredictResponse(BaseModel):
     weather: Optional[WeatherInfoOut] = None
     fair_odds: dict[str, float] = Field(default_factory=dict)
     edges: list[EdgeOut] = Field(default_factory=list)
+
+
+# ─── Live scoreboards ─────────────────────────────────────────────────────────
+
+class LiveGameOut(BaseModel):
+    league: str
+    event_id: str
+    home: str
+    away: str
+    home_abbr: str = ""
+    away_abbr: str = ""
+    home_score: Optional[int] = None
+    away_score: Optional[int] = None
+    state: str          # "pre" | "in" | "post"
+    detail: str = ""    # "45' +2", "Q3 5:21", "Final", kickoff time…
+    kickoff: str = ""
+
+
+class ScoreboardOut(BaseModel):
+    league: str
+    games: list[LiveGameOut] = Field(default_factory=list)
+    fetched_at: str = ""    # ISO timestamp — freshness stamp
+    source: str = "ESPN"
+    ok: bool = True
+
+
+class AllScoreboardsOut(BaseModel):
+    boards: dict[str, ScoreboardOut]
+    fetched_at: str = ""
 
 
 # ─── Lineups ──────────────────────────────────────────────────────────────────

@@ -2,11 +2,13 @@ import { NavLink } from 'react-router-dom'
 
 const links = [
   { to: '/', label: 'Predict' },
+  { to: '/today', label: 'Today' },
   { to: '/nfl', label: 'NFL' },
+  { to: '/cfl', label: 'CFL' },
+  { to: '/mlb', label: 'MLB' },
   { to: '/best-bets', label: 'Best Bets' },
   { to: '/rankings', label: 'Rankings' },
   { to: '/history', label: 'History' },
-  { to: '/about', label: 'About' },
 ]
 
 export function NavBar() {

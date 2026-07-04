@@ -124,6 +124,71 @@ export interface BestBetsResponse {
   bets: BestBetOut[]
 }
 
+// ─── Live scoreboards + Today ─────────────────────────────────────────────────
+
+export interface LiveGameOut {
+  league: string
+  event_id: string
+  home: string
+  away: string
+  home_abbr: string
+  away_abbr: string
+  home_score?: number | null
+  away_score?: number | null
+  state: 'pre' | 'in' | 'post'
+  detail: string
+  kickoff: string
+  market_spread?: number | null
+  market_over_under?: number | null
+  market_home_ml?: number | null
+  market_away_ml?: number | null
+  market_details: string
+  market_provider: string
+}
+
+export interface ScoreboardOut {
+  league: string
+  games: LiveGameOut[]
+  fetched_at: string
+  source: string
+  ok: boolean
+}
+
+export interface AllScoreboardsOut {
+  boards: Record<string, ScoreboardOut>
+  fetched_at: string
+}
+
+export interface TodayModelOut {
+  home_win_prob: number
+  away_win_prob: number
+  home_expected: number
+  away_expected: number
+  total_estimate: number
+  over_prob: number
+  under_prob: number
+  home_cover_prob: number
+  total_line?: number | null
+  conditions: AdjustmentOut[]
+}
+
+export interface TodayGameOut {
+  game: LiveGameOut
+  mapped: boolean
+  model?: TodayModelOut | null
+  edges: EdgeOut[]
+}
+
+export interface TodayResponse {
+  league: string
+  fetched_at: string
+  source_ok: boolean
+  market_source: string
+  games: TodayGameOut[]
+}
+
+export type GridironLeague = 'nfl' | 'cfl' | 'mlb'
+
 export interface PlayerPropOut {
   name: string
   team: string

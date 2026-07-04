@@ -7,6 +7,10 @@ import type {
   SoccerMarketOdds,
   NFLMarketOdds,
   BestBetsResponse,
+  AllScoreboardsOut,
+  ScoreboardOut,
+  TodayResponse,
+  GridironLeague,
 } from '../types'
 
 // Strip trailing slashes so VITE_API_BASE="/" (same-origin via nginx proxy)
@@ -70,8 +74,8 @@ export const api = {
       odds: opts.odds ?? null,
     }),
 
-  predictNFL: (home: string, away: string, opts: NFLPredictOpts = {}) =>
-    post<NFLPredictResponse>('/api/v1/predict/nfl', {
+  predictGridiron: (league: GridironLeague, home: string, away: string, opts: NFLPredictOpts = {}) =>
+    post<NFLPredictResponse>(`/api/v1/predict/${league}`, {
       home,
       away,
       neutral_site: opts.neutralSite ?? false,
@@ -85,17 +89,22 @@ export const api = {
     }),
 
   soccerTeams: () => get<TeamInfo[]>('/api/v1/teams/soccer'),
-  nflTeams: () => get<TeamInfo[]>('/api/v1/teams/nfl'),
+  leagueTeams: (league: GridironLeague) => get<TeamInfo[]>(`/api/v1/teams/${league}`),
   soccerRankings: () => get<RankingsResponse>('/api/v1/rankings/soccer'),
-  nflRankings: () => get<RankingsResponse>('/api/v1/rankings/nfl'),
+  leagueRankings: (league: GridironLeague) => get<RankingsResponse>(`/api/v1/rankings/${league}`),
   r16Fixtures: () => get<unknown[]>('/api/v1/fixtures/r16'),
 
+  // Live data
+  liveScores: () => get<AllScoreboardsOut>('/api/v1/live/scores'),
+  leagueScores: (league: string) => get<ScoreboardOut>(`/api/v1/live/scores/${league}`),
+  today: (league: GridironLeague) => get<TodayResponse>(`/api/v1/today/${league}`),
+
   // Live lineups
-  lineup: (sport: 'soccer' | 'nfl', team: string) =>
+  lineup: (sport: 'soccer' | 'nfl' | 'cfl' | 'mlb', team: string) =>
     get<KeyPlayerOut[]>(`/api/v1/lineups/${sport}/${encodeURIComponent(team)}`),
-  setPlayerStatus: (sport: 'soccer' | 'nfl', team: string, player: string, status: string) =>
+  setPlayerStatus: (sport: 'soccer' | 'nfl' | 'cfl' | 'mlb', team: string, player: string, status: string) =>
     post<KeyPlayerOut>(`/api/v1/lineups/${sport}/${encodeURIComponent(team)}`, { player, status }),
-  resetLineup: (sport: 'soccer' | 'nfl', team: string) =>
+  resetLineup: (sport: 'soccer' | 'nfl' | 'cfl' | 'mlb', team: string) =>
     request(`/api/v1/lineups/${sport}/${encodeURIComponent(team)}`, { method: 'DELETE' }),
 
   // Value

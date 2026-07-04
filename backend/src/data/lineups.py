@@ -20,7 +20,7 @@ from typing import Literal
 from src.data.world_cup import TOP_SCORERS
 
 Status = Literal["fit", "doubtful", "out"]
-Sport = Literal["soccer", "nfl"]
+Sport = Literal["soccer", "nfl", "cfl", "mlb"]
 
 VALID_STATUSES: set[str] = {"fit", "doubtful", "out"}
 
@@ -112,11 +112,56 @@ _NFL_STARS: list[KeyPlayer] = [
     KeyPlayer("S. Barkley",   "PHI", "nfl", "RB",  0.50),
 ]
 
+# ─── CFL key players ──────────────────────────────────────────────────────────
+# Starting QBs (importance ≈ drop-off to the backup). In the CFL the QB is an
+# even larger share of team quality than in the NFL.
+
+_CFL_QBS: list[tuple[str, str, float]] = [
+    ("T. Harris",    "SSK", 0.90), ("Z. Collaros",  "WPG", 0.90),
+    ("D. Alexander", "MTL", 0.85), ("B.L. Mitchell","HAM", 0.85),
+    ("N. Rourke",    "BC",  0.90), ("V. Adams Jr.", "CGY", 0.80),
+    ("C. Kelly",     "TOR", 0.80), ("T. Ford",      "EDM", 0.75),
+    ("D. Brown",     "OTT", 0.70),
+]
+
+# ─── MLB key players ──────────────────────────────────────────────────────────
+# Staff aces (importance ≈ gap to a spot starter on that day's runs allowed)
+# plus a few lineup-tilting bats.
+
+_MLB_ACES: list[tuple[str, str, float]] = [
+    ("G. Cole",      "NYY", 0.75), ("G. Crochet",   "BOS", 0.75),
+    ("K. Gausman",   "TOR", 0.60), ("S. McClanahan","TB",  0.65),
+    ("Z. Eflin",     "BAL", 0.50), ("T. Skubal",    "DET", 0.90),
+    ("T. Bibee",     "CLE", 0.60), ("C. Ragans",    "KC",  0.70),
+    ("P. López",     "MIN", 0.60), ("S. Cannon",    "CHW", 0.40),
+    ("H. Brown",     "HOU", 0.70), ("L. Gilbert",   "SEA", 0.70),
+    ("N. Eovaldi",   "TEX", 0.60), ("Y. Kikuchi",   "LAA", 0.55),
+    ("JP Sears",     "ATH", 0.45), ("Z. Wheeler",   "PHI", 0.80),
+    ("K. Senga",     "NYM", 0.65), ("C. Sale",      "ATL", 0.75),
+    ("M. Gore",      "WSH", 0.60), ("S. Alcántara", "MIA", 0.65),
+    ("F. Peralta",   "MIL", 0.65), ("S. Imanaga",   "CHC", 0.70),
+    ("S. Gray",      "STL", 0.60), ("H. Greene",    "CIN", 0.70),
+    ("P. Skenes",    "PIT", 0.90), ("Y. Yamamoto",  "LAD", 0.75),
+    ("D. Cease",     "SD",  0.70), ("L. Webb",      "SF",  0.70),
+    ("C. Burnes",    "ARI", 0.75), ("K. Freeland",  "COL", 0.40),
+]
+
+_MLB_BATS: list[KeyPlayer] = [
+    KeyPlayer("S. Ohtani",  "LAD", "mlb", "DH", 0.60),
+    KeyPlayer("A. Judge",   "NYY", "mlb", "OF", 0.65),
+    KeyPlayer("B. Harper",  "PHI", "mlb", "IF", 0.50),
+    KeyPlayer("J. Soto",    "NYM", "mlb", "OF", 0.55),
+    KeyPlayer("B. Witt Jr.","KC",  "mlb", "IF", 0.60),
+]
+
 KEY_PLAYERS: list[KeyPlayer] = (
     _SCORER_PLAYERS
     + _CURATED_SOCCER
     + [KeyPlayer(n, t, "nfl", "QB", imp) for n, t, imp in _NFL_QBS]
     + _NFL_STARS
+    + [KeyPlayer(n, t, "cfl", "QB", imp) for n, t, imp in _CFL_QBS]
+    + [KeyPlayer(n, t, "mlb", "P", imp) for n, t, imp in _MLB_ACES]
+    + _MLB_BATS
 )
 
 # Deduplicate by (sport, team, name) — curated wins over auto-seeded

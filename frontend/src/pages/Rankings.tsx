@@ -2,7 +2,14 @@ import { useState, useEffect } from 'react'
 import { api } from '../api/client'
 import type { RankingsResponse, RankedTeam } from '../types'
 
-type Sport = 'soccer' | 'nfl'
+type Sport = 'soccer' | 'nfl' | 'cfl' | 'mlb'
+
+const SPORT_LABELS: Record<Sport, string> = {
+  soccer: '⚽ World Cup',
+  nfl: '🏈 NFL',
+  cfl: '🍁 CFL',
+  mlb: '⚾ MLB',
+}
 
 function TeamRow({ team, sport }: { team: RankedTeam; sport: Sport }) {
   const confBadge = sport === 'nfl' && team.conference
@@ -38,7 +45,7 @@ export function Rankings() {
 
   useEffect(() => {
     setLoading(true)
-    const fetch = sport === 'soccer' ? api.soccerRankings() : api.nflRankings()
+    const fetch = sport === 'soccer' ? api.soccerRankings() : api.leagueRankings(sport)
     fetch
       .then(setData)
       .catch(() => {})
@@ -60,7 +67,7 @@ export function Rankings() {
       </div>
 
       <div className="flex items-center gap-3">
-        {(['soccer', 'nfl'] as Sport[]).map(s => (
+        {(['soccer', 'nfl', 'cfl', 'mlb'] as Sport[]).map(s => (
           <button
             key={s}
             onClick={() => setSport(s)}
@@ -70,7 +77,7 @@ export function Rankings() {
                 : 'bg-terminal-surface border border-terminal-border text-zinc-400 hover:text-zinc-100'
             }`}
           >
-            {s === 'soccer' ? '⚽ World Cup' : '🏈 NFL'}
+            {SPORT_LABELS[s]}
           </button>
         ))}
 
