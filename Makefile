@@ -32,16 +32,10 @@ lint-fix:
 build:
 	docker compose build
 
-# ── Fly.io deployment ─────────────────────────────────────────────────────────
-deploy-api:
-	@echo "Deploying API to Fly.io..."
-	cd backend && fly deploy
-
-deploy-frontend:
-	@echo "Deploying frontend to Fly.io..."
-	cd frontend && fly deploy
-
-deploy: deploy-api deploy-frontend
+# ── Fly.io deployment (single app: API + frontend in one image) ──────────────
+deploy:
+	@echo "Deploying StatEdge (combined app) to Fly.io..."
+	fly deploy
 	@echo "✓ StatEdge deployed"
 
 # ── Fly.io secrets ────────────────────────────────────────────────────────────
