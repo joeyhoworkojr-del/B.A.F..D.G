@@ -60,6 +60,43 @@ NFL_INDOOR_TEAMS: set[str] = {
     "ATL", "NO", "DET", "MIN", "LV", "LAC", "LA", "ARI", "HOU", "IND", "DAL",
 }
 
+# CFL stadium coordinates by home-team code
+CFL_STADIUM_COORDS: dict[str, tuple[float, float]] = {
+    "SSK": (50.4488, -104.6197),   # Mosaic Stadium, Regina
+    "WPG": (49.8077, -97.1433),    # Princess Auto Stadium, Winnipeg
+    "BC":  (49.2768, -123.1116),   # BC Place, Vancouver (dome)
+    "CGY": (51.0703, -114.1216),   # McMahon Stadium, Calgary
+    "EDM": (53.5599, -113.4763),   # Commonwealth Stadium, Edmonton
+    "MTL": (45.5100, -73.5800),    # Percival Molson Stadium, Montreal
+    "HAM": (43.2521, -79.8300),    # Tim Hortons Field, Hamilton
+    "TOR": (43.6332, -79.4179),    # BMO Field, Toronto
+    "OTT": (45.3983, -75.6832),    # TD Place, Ottawa
+}
+
+CFL_INDOOR_TEAMS: set[str] = {"BC"}   # BC Place has a fixed roof
+
+# MLB ballpark coordinates by team code
+MLB_STADIUM_COORDS: dict[str, tuple[float, float]] = {
+    "NYY": (40.8296, -73.9262), "BOS": (42.3467, -71.0972),
+    "TOR": (43.6414, -79.3894), "TB":  (27.7683, -82.6534),
+    "BAL": (39.2839, -76.6217), "DET": (42.3390, -83.0485),
+    "CLE": (41.4962, -81.6852), "KC":  (39.0517, -94.4803),
+    "MIN": (44.9817, -93.2776), "CHW": (41.8299, -87.6338),
+    "HOU": (29.7573, -95.3555), "SEA": (47.5914, -122.3325),
+    "TEX": (32.7473, -97.0842), "LAA": (33.8003, -117.8827),
+    "ATH": (38.5802, -121.5000), "PHI": (39.9061, -75.1665),
+    "NYM": (40.7571, -73.8458), "ATL": (33.8907, -84.4677),
+    "WSH": (38.8730, -77.0074), "MIA": (25.7781, -80.2197),
+    "MIL": (43.0280, -87.9712), "CHC": (41.9484, -87.6553),
+    "STL": (38.6226, -90.1928), "CIN": (39.0975, -84.5061),
+    "PIT": (40.4469, -80.0057), "LAD": (34.0739, -118.2400),
+    "SD":  (32.7076, -117.1570), "SF": (37.7786, -122.3893),
+    "ARI": (33.4455, -112.0667), "COL": (39.7559, -104.9942),
+}
+
+# Domes / roofs usually closed — weather doesn't move the total
+MLB_INDOOR_TEAMS: set[str] = {"TB", "MIA", "HOU", "TEX", "ARI", "TOR", "MIL"}
+
 # All 2026 World Cup venue coordinates
 VENUE_COORDS: dict[str, tuple[float, float]] = {
     "AT&T Stadium, Dallas":            (32.7480,  -97.0931),
@@ -161,16 +198,29 @@ async def fetch_weather(venue: str) -> Optional[WeatherReport]:
 
 async def fetch_nfl_weather(team_code: str) -> Optional[WeatherReport]:
     """Fetch current weather at an NFL team's home stadium."""
+    return await fetch_gridiron_weather("nfl", team_code)
+
+
+_LEAGUE_STADIUMS: dict[str, tuple[dict, set]] = {
+    "nfl": (NFL_STADIUM_COORDS, NFL_INDOOR_TEAMS),
+    "cfl": (CFL_STADIUM_COORDS, CFL_INDOOR_TEAMS),
+    "mlb": (MLB_STADIUM_COORDS, MLB_INDOOR_TEAMS),
+}
+
+
+async def fetch_gridiron_weather(league: str, team_code: str) -> Optional[WeatherReport]:
+    """Fetch current weather at a team's home stadium (NFL / CFL / MLB)."""
     code = team_code.upper()
-    coords = NFL_STADIUM_COORDS.get(code)
+    coords_map, indoor = _LEAGUE_STADIUMS.get(league, (NFL_STADIUM_COORDS, NFL_INDOOR_TEAMS))
+    coords = coords_map.get(code)
     if coords is None:
-        log.warning("No stadium coordinates for NFL team: %r", code)
+        log.warning("No stadium coordinates for %s team: %r", league.upper(), code)
         return None
     lat, lon = coords
     return await fetch_weather_at(
         lat, lon,
         venue=f"{code} home stadium",
-        is_indoor=code in NFL_INDOOR_TEAMS,
+        is_indoor=code in indoor,
     )
 
 

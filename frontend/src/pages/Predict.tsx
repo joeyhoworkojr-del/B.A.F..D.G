@@ -13,6 +13,7 @@ import { ConditionsPanel } from '../components/ConditionsPanel'
 import { LineupManager } from '../components/LineupManager'
 import { EdgesTable } from '../components/EdgesTable'
 import { LineExplorer } from '../components/LineExplorer'
+import { LiveScoreboard } from '../components/LiveScoreboard'
 
 type Tab = 'overview' | 'totals' | 'edge' | 'props' | 'heatmap' | 'simulation' | 'why'
 
@@ -126,6 +127,9 @@ export function Predict() {
           Dixon-Coles Elo model with team styles, live weather and team news. 50k Monte Carlo simulations.
         </p>
       </div>
+
+      {/* Live World Cup board */}
+      <LiveScoreboard league="wc" title="World Cup today — live" />
 
       {/* Setup card */}
       <div className="rounded-xl border border-terminal-border bg-terminal-surface p-4 space-y-4">

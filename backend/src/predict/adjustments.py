@@ -210,6 +210,8 @@ def nfl_lineup_adjustments(
     away_code: str,
     extra_out_home: list[str] | None = None,
     extra_out_away: list[str] | None = None,
+    *,
+    sport: str = "nfl",   # "nfl" | "cfl" — same impact model for both
 ) -> list[Adjustment]:
     adj: list[Adjustment] = []
 
@@ -235,8 +237,77 @@ def nfl_lineup_adjustments(
             home_pts_delta=opp_delta, away_pts_delta=own_delta,
         )
 
-    for player, weight in unavailable_players("nfl", home_code, extra_out_home):
+    for player, weight in unavailable_players(sport, home_code, extra_out_home):
         adj.append(_absence("home", player.name, player.position, player.importance, weight))
-    for player, weight in unavailable_players("nfl", away_code, extra_out_away):
+    for player, weight in unavailable_players(sport, away_code, extra_out_away):
+        adj.append(_absence("away", player.name, player.position, player.importance, weight))
+    return adj
+
+
+# ─── MLB: weather ─────────────────────────────────────────────────────────────
+
+def mlb_weather_adjustments(w: WeatherReport | None) -> list[Adjustment]:
+    if w is None or w.is_indoor:
+        return []
+    adj: list[Adjustment] = []
+
+    if w.temperature_c >= 30:
+        adj.append(Adjustment(
+            label=f"Hot ({w.temperature_c:.0f}°C)",
+            detail="The ball carries in heat — both teams' expected runs up 4%.",
+            source="weather", home_xg_mult=1.04, away_xg_mult=1.04,
+        ))
+    elif w.temperature_c <= 5:
+        adj.append(Adjustment(
+            label=f"Cold ({w.temperature_c:.0f}°C)",
+            detail="Cold air knocks down fly balls — expected runs down 5%.",
+            source="weather", home_xg_mult=0.95, away_xg_mult=0.95,
+        ))
+
+    if w.wind_speed_kmh >= 30:
+        adj.append(Adjustment(
+            label=f"Strong wind ({w.wind_speed_kmh:.0f} km/h)",
+            detail="High wind (direction unknown) adds noise — slight run suppression.",
+            source="weather", home_xg_mult=0.97, away_xg_mult=0.97,
+        ))
+
+    if w.wmo_code in _HEAVY_WMO:
+        adj.append(Adjustment(
+            label=f"Severe weather: {w.condition}",
+            detail="Rain risk — sloppy conditions suppress offense slightly.",
+            source="weather", home_xg_mult=0.97, away_xg_mult=0.97,
+        ))
+
+    return adj
+
+
+# ─── MLB: lineups ─────────────────────────────────────────────────────────────
+
+def mlb_lineup_adjustments(
+    home_code: str,
+    away_code: str,
+    extra_out_home: list[str] | None = None,
+    extra_out_away: list[str] | None = None,
+) -> list[Adjustment]:
+    """Ace scratched → opponent scores more; star bat out → own runs dip."""
+    adj: list[Adjustment] = []
+
+    def _absence(side: str, name: str, position: str, impact: float, weight: float) -> Adjustment:
+        own_mult, opp_mult = 1.0, 1.0
+        if position == "P":
+            opp_mult = 1.0 + 0.15 * impact * weight
+            detail = f"{name} (SP) not starting — opponent expected runs up {(opp_mult - 1) * 100:.0f}%."
+        else:
+            own_mult = 1.0 - 0.06 * impact * weight
+            detail = f"{name} ({position}) out — own expected runs down {(1 - own_mult) * 100:.0f}%."
+        if side == "home":
+            return Adjustment(label=f"{name} out (home)", detail=detail, source="lineup",
+                              home_xg_mult=own_mult, away_xg_mult=opp_mult)
+        return Adjustment(label=f"{name} out (away)", detail=detail, source="lineup",
+                          home_xg_mult=opp_mult, away_xg_mult=own_mult)
+
+    for player, weight in unavailable_players("mlb", home_code, extra_out_home):
+        adj.append(_absence("home", player.name, player.position, player.importance, weight))
+    for player, weight in unavailable_players("mlb", away_code, extra_out_away):
         adj.append(_absence("away", player.name, player.position, player.importance, weight))
     return adj

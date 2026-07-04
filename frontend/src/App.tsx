@@ -1,7 +1,10 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { NavBar } from './components/NavBar'
 import { Predict } from './pages/Predict'
+import { Today } from './pages/Today'
 import { NFL } from './pages/NFL'
+import { CFL } from './pages/CFL'
+import { MLB } from './pages/MLB'
 import { BestBets } from './pages/BestBets'
 import { Rankings } from './pages/Rankings'
 import { History } from './pages/History'
@@ -15,7 +18,10 @@ export default function App() {
         <main>
           <Routes>
             <Route path="/" element={<Predict />} />
+            <Route path="/today" element={<Today />} />
             <Route path="/nfl" element={<NFL />} />
+            <Route path="/cfl" element={<CFL />} />
+            <Route path="/mlb" element={<MLB />} />
             <Route path="/best-bets" element={<BestBets />} />
             <Route path="/rankings" element={<Rankings />} />
             <Route path="/history" element={<History />} />

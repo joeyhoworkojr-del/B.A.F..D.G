@@ -3,7 +3,7 @@ import { api } from '../api/client'
 import type { KeyPlayerOut } from '../types'
 
 interface Props {
-  sport: 'soccer' | 'nfl'
+  sport: 'soccer' | 'nfl' | 'cfl' | 'mlb'
   homeTeam: string   // team code
   awayTeam: string
   homeLabel?: string
@@ -57,7 +57,7 @@ function TeamColumn({
   label,
   onChanged,
 }: {
-  sport: 'soccer' | 'nfl'
+  sport: 'soccer' | 'nfl' | 'cfl' | 'mlb'
   team: string
   label: string
   onChanged?: () => void

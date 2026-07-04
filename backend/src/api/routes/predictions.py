@@ -25,6 +25,8 @@ from src.api.schemas import (
     WeatherInfoOut,
     WhyFactorOut,
 )
+from src.data.cfl import all_cfl_teams_sorted, get_cfl_team
+from src.data.mlb import all_mlb_teams_sorted, get_mlb_team
 from src.data.nfl import all_nfl_teams_sorted, get_nfl_team
 from src.data.world_cup import (
     R16_FIXTURES,
@@ -32,13 +34,17 @@ from src.data.world_cup import (
     get_scorers_for_team,
     get_team,
 )
-from src.ingest.weather import WeatherReport, fetch_nfl_weather, fetch_weather
+from src.ingest.espn import fetch_scoreboard
+from src.ingest.weather import WeatherReport, fetch_gridiron_weather, fetch_weather
 from src.predict.adjustments import (
+    mlb_lineup_adjustments,
+    mlb_weather_adjustments,
     nfl_lineup_adjustments,
     nfl_weather_adjustments,
     soccer_lineup_adjustments,
     soccer_weather_adjustments,
 )
+from src.predict.baseball import predict_mlb_game
 from src.predict.gridiron import predict_nfl_game
 from src.predict.soccer import predict_match
 from src.simulate.monte_carlo import simulate_soccer
@@ -264,14 +270,17 @@ def list_nfl_teams() -> list[TeamInfo]:
     ]
 
 
-@router.post("/predict/nfl", response_model=NFLPredictResponse, tags=["Predictions"])
-async def predict_nfl(req: NFLPredictRequest) -> NFLPredictResponse:
+_TEAM_GETTERS = {"nfl": get_nfl_team, "cfl": get_cfl_team, "mlb": get_mlb_team}
+
+
+async def _predict_gridiron(req: NFLPredictRequest, league: str) -> NFLPredictResponse:
     home_code = req.home.upper()
     away_code = req.away.upper()
+    get_team_fn = _TEAM_GETTERS[league]
 
     try:
-        home_t = get_nfl_team(home_code)
-        away_t = get_nfl_team(away_code)
+        home_t = get_team_fn(home_code)
+        away_t = get_team_fn(away_code)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -279,21 +288,41 @@ async def predict_nfl(req: NFLPredictRequest) -> NFLPredictResponse:
     adjustments = []
     weather: Optional[WeatherReport] = None
     if req.apply_weather and not req.neutral_site:
-        weather = await fetch_nfl_weather(home_code)
-        adjustments.extend(nfl_weather_adjustments(weather))
+        weather = await fetch_gridiron_weather(league, home_code)
+        adjustments.extend(
+            mlb_weather_adjustments(weather) if league == "mlb"
+            else nfl_weather_adjustments(weather)
+        )
     if req.apply_lineups:
-        adjustments.extend(nfl_lineup_adjustments(
-            home_code, away_code, req.missing_home, req.missing_away,
-        ))
+        if league == "mlb":
+            adjustments.extend(mlb_lineup_adjustments(
+                home_code, away_code, req.missing_home, req.missing_away,
+            ))
+        else:
+            adjustments.extend(nfl_lineup_adjustments(
+                home_code, away_code, req.missing_home, req.missing_away,
+                sport=league,
+            ))
 
-    result = predict_nfl_game(
-        home_code, away_code,
-        home_t.elo, away_t.elo,
-        neutral_site=req.neutral_site,
-        spread_line=req.spread_line,
-        total_line=req.total_line,
-        adjustments=adjustments,
-    )
+    if league == "mlb":
+        result = predict_mlb_game(
+            home_code, away_code,
+            home_t.elo, away_t.elo,
+            neutral_site=req.neutral_site,
+            spread_line=req.spread_line,
+            total_line=req.total_line,
+            adjustments=adjustments,
+        )
+    else:
+        result = predict_nfl_game(
+            home_code, away_code,
+            home_t.elo, away_t.elo,
+            neutral_site=req.neutral_site,
+            spread_line=req.spread_line,
+            total_line=req.total_line,
+            adjustments=adjustments,
+            league=league,
+        )
 
     # ── Market edges ──
     edges: list[BetEdge] = []
@@ -330,12 +359,12 @@ async def predict_nfl(req: NFLPredictRequest) -> NFLPredictResponse:
         home_team=TeamInfo(
             code=home_t.code, name=f"{home_t.city} {home_t.name}",
             flag=home_t.flag, elo=home_t.elo,
-            conference=home_t.conference, division=home_t.division,
+            conference=getattr(home_t, "conference", None), division=home_t.division,
         ),
         away_team=TeamInfo(
             code=away_t.code, name=f"{away_t.city} {away_t.name}",
             flag=away_t.flag, elo=away_t.elo,
-            conference=away_t.conference, division=away_t.division,
+            conference=getattr(away_t, "conference", None), division=away_t.division,
         ),
         home_win_prob=result.home_win_prob,
         away_win_prob=result.away_win_prob,
@@ -359,6 +388,181 @@ async def predict_nfl(req: NFLPredictRequest) -> NFLPredictResponse:
         fair_odds=result.fair_odds,
         edges=_edges_out(edges),
     )
+
+
+@router.post("/predict/nfl", response_model=NFLPredictResponse, tags=["Predictions"])
+async def predict_nfl(req: NFLPredictRequest) -> NFLPredictResponse:
+    return await _predict_gridiron(req, "nfl")
+
+
+@router.post("/predict/cfl", response_model=NFLPredictResponse, tags=["Predictions"])
+async def predict_cfl(req: NFLPredictRequest) -> NFLPredictResponse:
+    """CFL prediction — same engine, 3-down scoring environment."""
+    return await _predict_gridiron(req, "cfl")
+
+
+@router.get("/teams/cfl", response_model=list[TeamInfo], tags=["Teams"])
+def list_cfl_teams() -> list[TeamInfo]:
+    return [
+        TeamInfo(
+            code=t.code, name=f"{t.city} {t.name}", flag=t.flag,
+            elo=t.elo, division=t.division,
+        )
+        for t in all_cfl_teams_sorted()
+    ]
+
+
+@router.get("/rankings/cfl", response_model=RankingsResponse, tags=["Rankings"])
+def cfl_rankings() -> RankingsResponse:
+    teams = [
+        RankedTeam(
+            rank=i + 1, code=t.code, name=f"{t.city} {t.name}",
+            flag=t.flag, elo=t.elo,
+        )
+        for i, t in enumerate(all_cfl_teams_sorted())
+    ]
+    return RankingsResponse(sport="cfl", teams=teams)
+
+
+@router.post("/predict/mlb", response_model=NFLPredictResponse, tags=["Predictions"])
+async def predict_mlb(req: NFLPredictRequest) -> NFLPredictResponse:
+    """MLB prediction — Poisson run-scoring grid with park factors."""
+    return await _predict_gridiron(req, "mlb")
+
+
+@router.get("/teams/mlb", response_model=list[TeamInfo], tags=["Teams"])
+def list_mlb_teams() -> list[TeamInfo]:
+    return [
+        TeamInfo(
+            code=t.code, name=f"{t.city} {t.name}", flag=t.flag,
+            elo=t.elo, conference=t.league, division=t.division,
+        )
+        for t in all_mlb_teams_sorted()
+    ]
+
+
+@router.get("/rankings/mlb", response_model=RankingsResponse, tags=["Rankings"])
+def mlb_rankings() -> RankingsResponse:
+    teams = [
+        RankedTeam(
+            rank=i + 1, code=t.code, name=f"{t.city} {t.name}",
+            flag=t.flag, elo=t.elo, conference=t.league,
+        )
+        for i, t in enumerate(all_mlb_teams_sorted())
+    ]
+    return RankingsResponse(sport="mlb", teams=teams)
+
+
+# ─── Today: auto-predict every game + live market comparison ─────────────────
+
+# ESPN abbreviation → our team code, where they differ
+_ESPN_ALIASES: dict[str, dict[str, str]] = {
+    "nfl": {"LAR": "LA", "WAS": "WSH"},
+    "cfl": {"SAS": "SSK", "WNP": "WPG"},
+    "mlb": {"OAK": "ATH", "CWS": "CHW", "AZ": "ARI"},
+}
+
+
+def _map_code(league: str, abbr: str) -> Optional[str]:
+    code = _ESPN_ALIASES.get(league, {}).get(abbr.upper(), abbr.upper())
+    try:
+        _TEAM_GETTERS[league](code)
+        return code
+    except KeyError:
+        return None
+
+
+@router.get("/today/{league}", tags=["Predictions"])
+async def today(league: str) -> dict:
+    """
+    The whole slate, auto-predicted: every game on today's board for a league
+    (nfl | cfl | mlb) gets a model prediction with live weather + lineups,
+    compared against the live sportsbook market from the ESPN feed —
+    model probability vs where the public's money actually is.
+    """
+    league = league.lower()
+    if league not in _TEAM_GETTERS:
+        raise HTTPException(status_code=404, detail="league must be one of: nfl, cfl, mlb")
+
+    board = await fetch_scoreboard(league)
+    out_games: list[dict] = []
+
+    for g in board.games:
+        entry: dict = {
+            "game": g.__dict__,
+            "mapped": False,
+            "model": None,
+            "edges": [],
+        }
+        home = _map_code(league, g.home_abbr)
+        away = _map_code(league, g.away_abbr)
+        if home and away and home != away:
+            try:
+                req = NFLPredictRequest(
+                    home=home, away=away,
+                    spread_line=g.market_spread,
+                    total_line=g.market_over_under,
+                )
+                pred = await _predict_gridiron(req, league)
+                entry["mapped"] = True
+                entry["model"] = {
+                    "home_win_prob": pred.home_win_prob,
+                    "away_win_prob": pred.away_win_prob,
+                    "home_expected": pred.home_expected_pts,
+                    "away_expected": pred.away_expected_pts,
+                    "total_estimate": pred.total_points_estimate,
+                    "over_prob": pred.over_prob,
+                    "under_prob": pred.under_prob,
+                    "home_cover_prob": pred.home_cover_prob,
+                    "total_line": pred.total_line,
+                    "conditions": [c.model_dump() for c in pred.conditions],
+                }
+
+                # ── Model vs the live market ──
+                edges: list[BetEdge] = []
+                if g.market_home_ml and g.market_away_ml:
+                    edges += evaluate_market(
+                        "Moneyline (live)",
+                        [
+                            (f"{home} ML", pred.home_win_prob, g.market_home_ml),
+                            (f"{away} ML", pred.away_win_prob, g.market_away_ml),
+                        ],
+                        odds_format="american",
+                    )
+                if g.market_over_under is not None:
+                    # Standard -110 pricing assumed when the feed has no prices
+                    edges += evaluate_market(
+                        f"Total {g.market_over_under} (−110 assumed)",
+                        [
+                            (f"Over {g.market_over_under}", pred.over_prob, -110),
+                            (f"Under {g.market_over_under}", pred.under_prob, -110),
+                        ],
+                        odds_format="american",
+                    )
+                if g.market_spread is not None:
+                    edges += evaluate_market(
+                        f"Spread {g.market_spread:+.1f} (−110 assumed)",
+                        [
+                            (f"{home} {g.market_spread:+.1f}", pred.home_cover_prob, -110),
+                            (f"{away} {-g.market_spread:+.1f}", pred.away_cover_prob, -110),
+                        ],
+                        odds_format="american",
+                    )
+                edges.sort(key=lambda e: -e.edge_pp)
+                entry["edges"] = [_edges_out([e])[0].model_dump() for e in edges]
+            except HTTPException:
+                pass
+        out_games.append(entry)
+
+    return {
+        "league": league,
+        "fetched_at": board.fetched_at,
+        "source_ok": board.ok,
+        "market_source": next(
+            (g.market_provider for g in board.games if g.market_provider), "",
+        ),
+        "games": out_games,
+    }
 
 
 # ─── Best bets scanner ────────────────────────────────────────────────────────
