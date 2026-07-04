@@ -47,11 +47,6 @@ jobs:
           fi
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-      - name: Ensure app exists
-        run: |
-          flyctl apps list | grep -q statedge-api && echo "App already exists" || flyctl apps create statedge-api
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       - name: Deploy combined app
         run: flyctl deploy --remote-only --ha=false
         env:
