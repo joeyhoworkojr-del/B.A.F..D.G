@@ -86,11 +86,12 @@
     transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
-  /* Scrolling ticker tape (stock-market strip) */
+  /* Scrolling ticker tape (stock-market strip) — slow, calm drift */
   .ticker-track {
     display: flex;
     width: max-content;
-    animation: ticker 45s linear infinite;
+    animation: ticker 110s linear infinite;
+    will-change: transform;
   }
   .ticker-track:hover {
     animation-play-state: paused;
@@ -98,5 +99,15 @@
   @keyframes ticker {
     0% { transform: translateX(0); }
     100% { transform: translateX(-50%); }
+  }
+  /* Soft fade at both edges so items slide in/out instead of hard-cutting */
+  .ticker-mask {
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 4%, #000 96%, transparent);
+    mask-image: linear-gradient(to right, transparent, #000 4%, #000 96%, transparent);
+  }
+
+  /* Respect users who prefer reduced motion — hold the tape still */
+  @media (prefers-reduced-motion: reduce) {
+    .ticker-track { animation: none; }
   }
 }

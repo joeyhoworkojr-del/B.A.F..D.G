@@ -44,7 +44,7 @@ export function NavBar() {
   const [open, setOpen] = useState(false)
 
   return (
-    <nav className="sticky top-0 z-50 border-b border-terminal-border bg-white/95">
+    <nav className="sticky top-0 z-50 border-b border-terminal-border bg-white/95 shadow-[0_1px_3px_rgba(15,23,42,0.05)] backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center gap-x-5 px-4 py-3">
         {/* Brand: STAT EDGE — better data, sharper edge */}
         <NavLink to="/" onClick={() => setOpen(false)} className="flex items-center gap-1.5 mr-auto md:mr-4">
