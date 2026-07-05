@@ -60,6 +60,8 @@ export function Predict() {
   const [knockout, setKnockout] = useState(false)
   const [neutral, setNeutral] = useState(true)
   const [applyWeather, setApplyWeather] = useState(true)
+  const [venue, setVenue] = useState('')
+  const [venues, setVenues] = useState<string[]>([])
   const [result, setResult] = useState<SoccerPredictResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -74,6 +76,7 @@ export function Predict() {
 
   useEffect(() => {
     api.soccerTeams().then(setTeams).catch(() => {})
+    api.venues().then(setVenues).catch(() => {})
   }, [])
 
   const buildOdds = useCallback((): SoccerMarketOdds | null => {
@@ -100,6 +103,7 @@ export function Predict() {
         knockout,
         neutral,
         applyWeather,
+        venue: venue || null,
         odds: buildOdds(),
       })
       setResult(data)
@@ -109,7 +113,7 @@ export function Predict() {
     } finally {
       setLoading(false)
     }
-  }, [home, away, knockout, neutral, applyWeather, buildOdds])
+  }, [home, away, knockout, neutral, applyWeather, venue, buildOdds])
 
   // Re-run silently when team news changes so the numbers stay live
   const onLineupChanged = useCallback(() => {
@@ -169,6 +173,23 @@ export function Predict() {
             <span className="text-sm text-zinc-400 font-body">🌦 Live weather</span>
           </label>
         </div>
+
+        {/* Venue — drives weather + altitude (e.g. Estadio Azteca at 2,240 m) */}
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] font-display uppercase tracking-widest text-zinc-500">
+            🏔 Venue (altitude &amp; weather)
+          </span>
+          <select
+            value={venue}
+            onChange={e => setVenue(e.target.value)}
+            className="rounded-lg border border-terminal-border bg-terminal-muted px-3 py-2 text-sm font-body text-zinc-200 focus:border-signal-amber focus:outline-none"
+          >
+            <option value="">Neutral / unspecified</option>
+            {venues.map(v => (
+              <option key={v} value={v}>{v}</option>
+            ))}
+          </select>
+        </label>
 
         {/* Live team news — mark players out and the model re-prices */}
         <LineupManager

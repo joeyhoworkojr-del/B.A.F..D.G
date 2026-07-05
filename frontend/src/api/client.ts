@@ -47,6 +47,7 @@ export interface SoccerPredictOpts {
   missingHome?: string[]
   missingAway?: string[]
   odds?: SoccerMarketOdds | null
+  venue?: string | null
 }
 
 export interface NFLPredictOpts {
@@ -73,7 +74,10 @@ export const api = {
       missing_home: opts.missingHome ?? [],
       missing_away: opts.missingAway ?? [],
       odds: opts.odds ?? null,
+      venue: opts.venue ?? null,
     }),
+
+  venues: () => get<string[]>('/api/v1/venues'),
 
   predictGridiron: (league: GridironLeague, home: string, away: string, opts: NFLPredictOpts = {}) =>
     post<NFLPredictResponse>(`/api/v1/predict/${league}`, {

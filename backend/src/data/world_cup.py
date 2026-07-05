@@ -125,6 +125,19 @@ TEAMS: dict[str, Team] = {t.code: t for t in [
     Team("AUT", "Austria", "🇦🇹", 1850, "L", confederation="UEFA"),
     Team("BIH", "Bosnia & Herz.", "🇧🇦", 1756, "L", confederation="UEFA"),
     Team("CPV", "Cape Verde", "🇨🇻", 1600, "L", confederation="CAF"),
+
+    # Other ranked nations — selectable in the predictor even though they are
+    # outside this 48-team bracket (group "—").
+    Team("NOR", "Norway", "🇳🇴", 1945, "—", confederation="UEFA"),
+    Team("SWE", "Sweden", "🇸🇪", 1808, "—", confederation="UEFA"),
+    Team("SCO", "Scotland", "🏴󠁧󠁢󠁳󠁣󠁴󠁿", 1792, "—", confederation="UEFA"),
+    Team("HUN", "Hungary", "🇭🇺", 1786, "—", confederation="UEFA"),
+    Team("CZE", "Czechia", "🇨🇿", 1778, "—", confederation="UEFA"),
+    Team("GRE", "Greece", "🇬🇷", 1762, "—", confederation="UEFA"),
+    Team("SVN", "Slovenia", "🇸🇮", 1720, "—", confederation="UEFA"),
+    Team("KSA", "Saudi Arabia", "🇸🇦", 1626, "—", confederation="AFC"),
+    Team("QAT", "Qatar", "🇶🇦", 1588, "—", confederation="AFC"),
+    Team("NZL", "New Zealand", "🇳🇿", 1502, "—", confederation="OFC"),
 ]}
 
 

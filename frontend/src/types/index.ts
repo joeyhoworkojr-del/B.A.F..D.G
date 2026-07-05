@@ -44,7 +44,7 @@ export interface TotalsOut {
 export interface AdjustmentOut {
   label: string
   detail: string
-  source: 'weather' | 'lineup'
+  source: 'weather' | 'lineup' | 'altitude'
   home_xg_mult: number
   away_xg_mult: number
   home_pts_delta: number
