@@ -184,7 +184,7 @@ export function History() {
 
         <button
           onClick={addEntry}
-          className="w-full rounded-lg bg-signal-amber px-4 py-2 font-display font-semibold text-terminal-bg hover:bg-amber-400 transition-colors"
+          className="w-full rounded-lg bg-signal-amber px-4 py-2 font-display font-semibold text-terminal-bg hover:bg-blue-700 transition-colors"
         >
           Log Result
         </button>

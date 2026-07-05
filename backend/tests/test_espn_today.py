@@ -146,6 +146,51 @@ def test_live_scores_endpoint_shape() -> None:
     assert data["fetched_at"]
 
 
+def test_is_current_filters_stale_games() -> None:
+    """Yesterday's finals must not pollute today's board (the CFL bug)."""
+    from datetime import datetime, timezone
+    from src.ingest.espn import LiveGame, is_current
+
+    now = datetime(2026, 7, 5, 16, 0, tzinfo=timezone.utc)   # Sat 12:00 ET
+
+    def game(state: str, kickoff: str) -> LiveGame:
+        return LiveGame(
+            league="cfl", event_id="1", home="A", away="B",
+            home_abbr="A", away_abbr="B", home_score=None, away_score=None,
+            state=state, detail="", kickoff=kickoff,
+        )
+
+    assert is_current(game("post", "2026-07-03T23:00Z"), now) is False   # Thursday final
+    assert is_current(game("post", "2026-07-05T17:00Z"), now) is True    # today's final
+    assert is_current(game("in", "2026-07-01T00:00Z"), now) is True      # live always shows
+    assert is_current(game("pre", "2026-07-06T17:00Z"), now) is True     # tomorrow
+    assert is_current(game("pre", "2026-07-08T17:00Z"), now) is False    # 3 days out
+    assert is_current(game("pre", ""), now) is True                      # unparseable → keep
+
+
+def test_today_drops_stale_finals_but_still_grades_them() -> None:
+    """A finished game from a previous day is graded, then hidden."""
+    from src.track import ledger
+
+    stale_final = {
+        **SAMPLE_EVENT,
+        "id": "9001",
+        "date": "2020-01-02T20:00Z",
+        "status": {"type": {"state": "post", "shortDetail": "Final"}},
+    }
+    ledger.record_pregame(
+        event_id="nfl:9001", league="nfl", kickoff="2020-01-02T20:00Z",
+        home="Kansas City Chiefs", away="Buffalo Bills",
+        model_home_prob=0.7,
+    )
+    board = Scoreboard(league="nfl",
+                       games=[_parse_event("nfl", stale_final)], fetched_at="x")
+    with patch("src.api.routes.predictions.fetch_scoreboard", return_value=board), _patch_poly():
+        data = client.get("/api/v1/today/nfl").json()
+    assert data["games"] == []                                  # hidden from the slate
+    assert ledger.accuracy_summary()["overall"]["games_graded"] == 1   # but settled
+
+
 def test_cfl_predict_endpoint() -> None:
     resp = client.post("/api/v1/predict/cfl", json={
         "home": "SSK", "away": "TOR", "apply_weather": False,

@@ -25,19 +25,19 @@ interface LeagueConfig {
 
 export const LEAGUE_CONFIGS: Record<GridironLeague, LeagueConfig> = {
   nfl: {
-    league: 'nfl', title: 'NFL Predictor', accent: '2025 Season', icon: '🏈',
+    league: 'nfl', title: 'NFL Predictor', accent: '2026 Season', icon: '🏈',
     subtitle: 'Expected-points model: win probability, spread cover and over/under at any line, adjusted live for stadium weather and inactives.',
     unit: 'points', spreadLabel: 'Spread (home)', spreadPlaceholder: '-3.5',
     totalPlaceholder: '44.5', neutralLabel: 'Neutral site (Super Bowl, London, etc.)',
   },
   cfl: {
-    league: 'cfl', title: 'CFL Predictor', accent: '2025 Season', icon: '🍁',
+    league: 'cfl', title: 'CFL Predictor', accent: '2026 Season', icon: '🍁',
     subtitle: 'Three-down football: same expected-points engine tuned to CFL scoring, with prairie-wind weather adjustments and QB availability.',
     unit: 'points', spreadLabel: 'Spread (home)', spreadPlaceholder: '-4.5',
     totalPlaceholder: '49.5', neutralLabel: 'Neutral site (Grey Cup)',
   },
   mlb: {
-    league: 'mlb', title: 'MLB Predictor', accent: '2025 Season', icon: '⚾',
+    league: 'mlb', title: 'MLB Predictor', accent: '2026 Season', icon: '⚾',
     subtitle: 'Poisson run-scoring model with park factors — win probability, run line, and over/under at any total, adjusted for weather and starting pitchers.',
     unit: 'runs', spreadLabel: 'Run line (home)', spreadPlaceholder: '-1.5',
     totalPlaceholder: '8.5', neutralLabel: 'Neutral site',
@@ -198,7 +198,7 @@ export function GridironPredictor({ config }: { config: LeagueConfig }) {
         <button
           onClick={runPrediction}
           disabled={!home || !away || loading}
-          className="w-full rounded-lg bg-signal-amber px-4 py-2.5 font-display font-semibold text-terminal-bg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-amber-400 transition-colors"
+          className="w-full rounded-lg bg-signal-amber px-4 py-2.5 font-display font-semibold text-terminal-bg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors"
         >
           {loading ? 'Analysing…' : 'Run Prediction'}
         </button>

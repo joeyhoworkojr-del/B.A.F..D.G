@@ -59,11 +59,13 @@ export function MonteCarloChart({ sim, homeLabel, awayLabel, knockout = false }:
             />
             <Tooltip
               contentStyle={{
-                background: '#111118',
-                border: '1px solid #1e1e2e',
+                background: '#ffffff',
+                border: '1px solid #e2e8f0',
                 borderRadius: 6,
                 fontFamily: 'JetBrains Mono',
                 fontSize: 11,
+                color: '#0f172a',
+                boxShadow: '0 4px 12px rgba(15,23,42,0.08)',
               }}
               formatter={(v: number) => [`${v.toFixed(1)}%`, 'P']}
               labelFormatter={l => `${l} goals`}
@@ -72,8 +74,8 @@ export function MonteCarloChart({ sim, homeLabel, awayLabel, knockout = false }:
               {data.map(d => (
                 <Cell
                   key={d.goals}
-                  fill={d.goals === peakGoals ? '#f59e0b' : '#3b82f6'}
-                  opacity={d.goals === peakGoals ? 1 : 0.65}
+                  fill={d.goals === peakGoals ? '#2563eb' : '#93c5fd'}
+                  opacity={d.goals === peakGoals ? 1 : 0.85}
                 />
               ))}
             </Bar>

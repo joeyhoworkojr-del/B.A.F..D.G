@@ -184,7 +184,13 @@ def test_soccer_predict_missing_player_and_odds() -> None:
 
 
 def test_best_bets_endpoint() -> None:
-    resp = client.get("/api/v1/best-bets")
+    from unittest.mock import patch
+    from src.ingest.espn import Scoreboard
+
+    empty = Scoreboard(league="none", games=[], fetched_at="x", ok=False)
+    with patch("src.api.routes.predictions.fetch_scoreboard", return_value=empty), \
+         patch("src.api.routes.predictions.fetch_league_markets", return_value=[]):
+        resp = client.get("/api/v1/best-bets")
     assert resp.status_code == 200
     data = resp.json()
     assert "bets" in data

@@ -11,6 +11,7 @@ import type {
   ScoreboardOut,
   TodayResponse,
   GridironLeague,
+  AccuracyResponse,
 } from '../types'
 
 // Strip trailing slashes so VITE_API_BASE="/" (same-origin via nginx proxy)
@@ -109,4 +110,7 @@ export const api = {
 
   // Value
   bestBets: () => get<BestBetsResponse>('/api/v1/best-bets'),
+
+  // Track record
+  accuracy: () => get<AccuracyResponse>('/api/v1/accuracy'),
 }

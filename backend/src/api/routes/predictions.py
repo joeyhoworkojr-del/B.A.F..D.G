@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -34,7 +35,7 @@ from src.data.world_cup import (
     get_scorers_for_team,
     get_team,
 )
-from src.ingest.espn import fetch_scoreboard
+from src.ingest.espn import LiveGame, fetch_scoreboard, is_current
 from src.ingest.polymarket import fetch_league_markets, match_game
 from src.ingest.weather import WeatherReport, fetch_gridiron_weather, fetch_weather
 from src.predict.adjustments import (
@@ -48,6 +49,8 @@ from src.predict.adjustments import (
 from src.predict.baseball import predict_mlb_game
 from src.predict.gridiron import predict_nfl_game
 from src.predict.soccer import predict_match
+from src.track import ledger
+from src.value.edge import american_to_decimal
 from src.simulate.monte_carlo import simulate_soccer
 from src.value.edge import BetEdge, evaluate_market
 
@@ -456,10 +459,19 @@ def mlb_rankings() -> RankingsResponse:
 
 # ─── Today: auto-predict every game + live market comparison ─────────────────
 
-# ESPN abbreviation → our team code, where they differ
+# ESPN abbreviation → our team code, where they differ. ESPN is inconsistent
+# about CFL abbreviations across endpoints, so we cover every form seen.
 _ESPN_ALIASES: dict[str, dict[str, str]] = {
     "nfl": {"LAR": "LA", "WAS": "WSH"},
-    "cfl": {"SAS": "SSK", "WNP": "WPG"},
+    "cfl": {
+        "SAS": "SSK", "SASK": "SSK",             # Saskatchewan
+        "WNP": "WPG", "WIN": "WPG", "WPG": "WPG",  # Winnipeg
+        "BCL": "BC", "BClions": "BC",             # BC Lions
+        "CAL": "CGY",                             # Calgary
+        "EDM": "EDM", "ESK": "EDM",               # Edmonton (ex-Eskimos)
+        "MTL": "MTL", "MON": "MTL",               # Montreal
+        "HAM": "HAM", "TOR": "TOR", "OTT": "OTT",
+    },
     "mlb": {"OAK": "ATH", "CWS": "CHW", "AZ": "ARI"},
 }
 
@@ -471,6 +483,115 @@ def _map_code(league: str, abbr: str) -> Optional[str]:
         return code
     except KeyError:
         return None
+
+
+async def _slate_entry(league: str, g: LiveGame, poly_markets) -> dict:
+    """Model + live-market comparison for one scoreboard game. Snapshots
+    pre-game picks to the ledger as a side effect."""
+    entry: dict = {
+        "game": g.__dict__,
+        "mapped": False,
+        "model": None,
+        "edges": [],
+        "polymarket": match_game(poly_markets, g.home, g.away),
+    }
+    home = _map_code(league, g.home_abbr)
+    away = _map_code(league, g.away_abbr)
+    if not (home and away and home != away):
+        return entry
+    try:
+        req = NFLPredictRequest(
+            home=home, away=away,
+            spread_line=g.market_spread,
+            total_line=g.market_over_under,
+        )
+        pred = await _predict_gridiron(req, league)
+        entry["mapped"] = True
+        entry["model"] = {
+            "home_win_prob": pred.home_win_prob,
+            "away_win_prob": pred.away_win_prob,
+            "home_expected": pred.home_expected_pts,
+            "away_expected": pred.away_expected_pts,
+            "total_estimate": pred.total_points_estimate,
+            "over_prob": pred.over_prob,
+            "under_prob": pred.under_prob,
+            "home_cover_prob": pred.home_cover_prob,
+            "total_line": pred.total_line,
+            "conditions": [c.model_dump() for c in pred.conditions],
+        }
+
+        # ── Model vs the live market ──
+        edges: list[BetEdge] = []
+        if g.market_home_ml and g.market_away_ml:
+            edges += evaluate_market(
+                "Moneyline (live)",
+                [
+                    (f"{home} ML", pred.home_win_prob, g.market_home_ml),
+                    (f"{away} ML", pred.away_win_prob, g.market_away_ml),
+                ],
+                odds_format="american",
+            )
+        if g.market_over_under is not None:
+            # Standard -110 pricing assumed when the feed has no prices
+            edges += evaluate_market(
+                f"Total {g.market_over_under} (−110 assumed)",
+                [
+                    (f"Over {g.market_over_under}", pred.over_prob, -110),
+                    (f"Under {g.market_over_under}", pred.under_prob, -110),
+                ],
+                odds_format="american",
+            )
+        if g.market_spread is not None:
+            edges += evaluate_market(
+                f"Spread {g.market_spread:+.1f} (−110 assumed)",
+                [
+                    (f"{home} {g.market_spread:+.1f}", pred.home_cover_prob, -110),
+                    (f"{away} {-g.market_spread:+.1f}", pred.away_cover_prob, -110),
+                ],
+                odds_format="american",
+            )
+        pm = entry["polymarket"]
+        if pm:
+            # Crowd prices are probabilities; 1/p = crowd decimal odds
+            edges += evaluate_market(
+                "Polymarket crowd",
+                [
+                    (f"{home} vs crowd", pred.home_win_prob,
+                     max(1.01, 1.0 / max(pm["home_prob"], 1e-6))),
+                    (f"{away} vs crowd", pred.away_win_prob,
+                     max(1.01, 1.0 / max(pm["away_prob"], 1e-6))),
+                ],
+                odds_format="decimal",
+            )
+        edges.sort(key=lambda e: -e.edge_pp)
+        entry["edges"] = [_edges_out([e])[0].model_dump() for e in edges]
+
+        # ── Track record: snapshot pre-game; grading happens on every board fetch ──
+        if g.state == "pre":
+            book_home = None
+            if g.market_home_ml and g.market_away_ml:
+                try:
+                    ih = 1.0 / american_to_decimal(g.market_home_ml)
+                    ia = 1.0 / american_to_decimal(g.market_away_ml)
+                    book_home = ih / (ih + ia)   # no-vig
+                except ValueError:
+                    pass
+            ledger.record_pregame(
+                event_id=f"{league}:{g.event_id}",
+                league=league,
+                kickoff=g.kickoff,
+                home=g.home,
+                away=g.away,
+                model_home_prob=pred.home_win_prob,
+                model_total=pred.total_points_estimate,
+                book_home_prob=book_home,
+                crowd_home_prob=pm["home_prob"] if pm else None,
+                market_spread=g.market_spread,
+                market_total=g.market_over_under,
+            )
+    except HTTPException:
+        pass
+    return entry
 
 
 @router.get("/today/{league}", tags=["Predictions"])
@@ -489,95 +610,18 @@ async def today(league: str) -> dict:
         fetch_scoreboard(league),
         fetch_league_markets(league),
     )
-    out_games: list[dict] = []
-
-    for g in board.games:
-        entry: dict = {
-            "game": g.__dict__,
-            "mapped": False,
-            "model": None,
-            "edges": [],
-            "polymarket": match_game(poly_markets, g.home, g.away),
-        }
-        home = _map_code(league, g.home_abbr)
-        away = _map_code(league, g.away_abbr)
-        if home and away and home != away:
-            try:
-                req = NFLPredictRequest(
-                    home=home, away=away,
-                    spread_line=g.market_spread,
-                    total_line=g.market_over_under,
-                )
-                pred = await _predict_gridiron(req, league)
-                entry["mapped"] = True
-                entry["model"] = {
-                    "home_win_prob": pred.home_win_prob,
-                    "away_win_prob": pred.away_win_prob,
-                    "home_expected": pred.home_expected_pts,
-                    "away_expected": pred.away_expected_pts,
-                    "total_estimate": pred.total_points_estimate,
-                    "over_prob": pred.over_prob,
-                    "under_prob": pred.under_prob,
-                    "home_cover_prob": pred.home_cover_prob,
-                    "total_line": pred.total_line,
-                    "conditions": [c.model_dump() for c in pred.conditions],
-                }
-
-                # ── Model vs the live market ──
-                edges: list[BetEdge] = []
-                if g.market_home_ml and g.market_away_ml:
-                    edges += evaluate_market(
-                        "Moneyline (live)",
-                        [
-                            (f"{home} ML", pred.home_win_prob, g.market_home_ml),
-                            (f"{away} ML", pred.away_win_prob, g.market_away_ml),
-                        ],
-                        odds_format="american",
-                    )
-                if g.market_over_under is not None:
-                    # Standard -110 pricing assumed when the feed has no prices
-                    edges += evaluate_market(
-                        f"Total {g.market_over_under} (−110 assumed)",
-                        [
-                            (f"Over {g.market_over_under}", pred.over_prob, -110),
-                            (f"Under {g.market_over_under}", pred.under_prob, -110),
-                        ],
-                        odds_format="american",
-                    )
-                if g.market_spread is not None:
-                    edges += evaluate_market(
-                        f"Spread {g.market_spread:+.1f} (−110 assumed)",
-                        [
-                            (f"{home} {g.market_spread:+.1f}", pred.home_cover_prob, -110),
-                            (f"{away} {-g.market_spread:+.1f}", pred.away_cover_prob, -110),
-                        ],
-                        odds_format="american",
-                    )
-                pm = entry["polymarket"]
-                if pm:
-                    # Crowd prices are probabilities; 1/p = crowd decimal odds
-                    edges += evaluate_market(
-                        "Polymarket crowd",
-                        [
-                            (f"{home} vs crowd", pred.home_win_prob,
-                             max(1.01, 1.0 / max(pm["home_prob"], 1e-6))),
-                            (f"{away} vs crowd", pred.away_win_prob,
-                             max(1.01, 1.0 / max(pm["away_prob"], 1e-6))),
-                        ],
-                        odds_format="decimal",
-                    )
-                edges.sort(key=lambda e: -e.edge_pp)
-                entry["edges"] = [_edges_out([e])[0].model_dump() for e in edges]
-            except HTTPException:
-                pass
-        out_games.append(entry)
+    # Settle any finished games first (including yesterday's, which the date
+    # window still covers), then keep only games that belong on today's board.
+    ledger.grade_board(league, board.games)
+    current = [g for g in board.games if is_current(g)]
+    out_games = [await _slate_entry(league, g, poly_markets) for g in current]
 
     return {
         "league": league,
         "fetched_at": board.fetched_at,
         "source_ok": board.ok,
         "market_source": next(
-            (g.market_provider for g in board.games if g.market_provider), "",
+            (g.market_provider for g in current if g.market_provider), "",
         ),
         "games": out_games,
     }
@@ -585,20 +629,62 @@ async def today(league: str) -> dict:
 
 # ─── Best bets scanner ────────────────────────────────────────────────────────
 
+_LEAGUE_FLAGS = {"mlb": "⚾", "nfl": "🏈", "cfl": "🍁"}
+
+
+def _kickoff_upcoming(kickoff: str, now: datetime) -> bool:
+    try:
+        return datetime.fromisoformat(kickoff) > now
+    except ValueError:
+        return True   # unparseable — keep rather than silently hide
+
+
 @router.get("/best-bets", response_model=BestBetsResponse, tags=["Predictions"])
 async def best_bets() -> BestBetsResponse:
     """
-    Scan all upcoming fixtures with live weather + lineups applied and rank
-    the biggest disagreements between our model and the SportRadar reference
-    prices, plus strong totals signals.
+    Scan today's live slates (MLB/NFL/CFL) and upcoming soccer fixtures with
+    live weather + lineups applied, and rank the biggest disagreements between
+    our model and the live market prices. Games already played never appear.
     """
-    # Fetch weather for all fixture venues concurrently (deduplicated)
-    venues = {f.venue for f in R16_FIXTURES if f.venue}
+    now = datetime.now(timezone.utc)
+    bets: list[BestBetOut] = []
+
+    # ── Live league slates: model vs the live sportsbook/crowd prices ──
+    for lg in ("mlb", "nfl", "cfl"):
+        board, poly = await asyncio.gather(
+            fetch_scoreboard(lg),
+            fetch_league_markets(lg),
+        )
+        ledger.grade_board(lg, board.games)
+        flag = _LEAGUE_FLAGS[lg]
+        for g in board.games:
+            if g.state != "pre" or not is_current(g):
+                continue
+            entry = await _slate_entry(lg, g, poly)
+            if not entry["mapped"]:
+                continue
+            for e in entry["edges"][:2]:   # top two edges per game, A/B only
+                if e["rating"] not in ("A", "B"):
+                    continue
+                bets.append(BestBetOut(
+                    fixture_id=f"{lg}:{g.event_id}",
+                    kickoff=g.kickoff, venue="",
+                    home=g.home, away=g.away,
+                    home_flag=flag, away_flag=flag,
+                    market=f"{lg.upper()} · {e['market']}",
+                    selection=e["selection"],
+                    model_prob=e["model_prob"], market_prob=e["market_prob"],
+                    edge_pp=e["edge_pp"], rating=e["rating"],
+                    note=f"Model vs live {g.market_provider or 'market'} price",
+                ))
+
+    # ── Soccer: upcoming fixtures only ──
+    upcoming = [f for f in R16_FIXTURES if _kickoff_upcoming(f.kickoff, now)]
+    venues = {f.venue for f in upcoming if f.venue}
     reports = await asyncio.gather(*(fetch_weather(v) for v in venues))
     weather_by_venue = dict(zip(venues, reports))
 
-    bets: list[BestBetOut] = []
-    for fix in R16_FIXTURES:
+    for fix in upcoming:
         try:
             ht = get_team(fix.home)
             at = get_team(fix.away)
@@ -661,9 +747,25 @@ async def best_bets() -> BestBetsResponse:
 
     bets.sort(key=lambda b: (b.edge_pp is None, -(b.edge_pp or 0), -b.model_prob))
     return BestBetsResponse(
-        generated_with="Dixon-Coles Elo model + live weather + lineup availability",
-        bets=bets,
+        generated_with="Live slates (MLB/NFL/CFL) + Dixon-Coles soccer, with live weather + lineups",
+        bets=bets[:24],
     )
+
+
+# ─── Track record ─────────────────────────────────────────────────────────────
+
+@router.get("/accuracy", tags=["Track record"])
+def accuracy() -> dict:
+    """
+    The verifiable track record: every mapped pre-game prediction is
+    snapshotted (model + book + crowd at the same instant) and auto-graded
+    when the game goes final. Brier scores head-to-head on identical games.
+    """
+    return {
+        **ledger.accuracy_summary(),
+        "performance": ledger.performance(),
+        "recent": ledger.recent_graded(25),
+    }
 
 
 # ─── Rankings ─────────────────────────────────────────────────────────────────

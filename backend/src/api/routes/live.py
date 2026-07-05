@@ -15,6 +15,7 @@ from src.api.schemas import (
 )
 from src.data import lineups
 from src.ingest.espn import LEAGUE_PATHS, fetch_all_scoreboards, fetch_scoreboard
+from src.track import ledger
 from src.ingest.weather import (
     CFL_INDOOR_TEAMS,
     CFL_STADIUM_COORDS,
@@ -120,6 +121,8 @@ async def get_live_scores() -> AllScoreboardsOut:
     Keyless ESPN source, cached 60s — genuinely live, no API key required.
     """
     boards = await fetch_all_scoreboards()
+    for lg, b in boards.items():
+        ledger.grade_board(lg, b.games)   # finals settle pending picks live
     return AllScoreboardsOut(
         boards={lg: _board_out(b) for lg, b in boards.items()},
         fetched_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -134,7 +137,9 @@ async def get_league_scores(league: str) -> ScoreboardOut:
             status_code=404,
             detail=f"Unknown league {league!r}; expected one of {sorted(LEAGUE_PATHS)}",
         )
-    return _board_out(await fetch_scoreboard(league))
+    board = await fetch_scoreboard(league)
+    ledger.grade_board(league.lower(), board.games)
+    return _board_out(board)
 
 
 @router.get("/venues", tags=["Live"])
