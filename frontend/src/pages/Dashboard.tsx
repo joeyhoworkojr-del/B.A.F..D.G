@@ -78,6 +78,12 @@ export function Dashboard() {
     ? Object.values(boards.boards).flatMap(b => b.games.filter(g => g.state === 'in'))
     : []
   const perf = acc?.performance
+  const hasResults = (perf?.total_picks ?? 0) > 0
+  const gamesPriced = Object.values(slates).reduce(
+    (n, t) => n + t.games.filter(g => g.game.market_home_ml != null || g.game.market_spread != null).length, 0,
+  )
+  const bestEdge = edges && edges.length ? edges[0] : null
+  const leaguesLive = Object.values(slates).filter(t => t.games.length > 0).length
   const board = slates[boardLeague]
   const boardGames: TodayGameOut[] = (board?.games ?? []).filter(g => g.game.market_spread != null || g.game.market_home_ml != null).slice(0, 5)
   const projCards = Object.values(slates)
@@ -110,30 +116,57 @@ export function Dashboard() {
           </p>
         </div>
 
-        {/* Model performance (real, from the graded ledger) */}
-        <div className="card-lift rounded-2xl border border-terminal-border bg-terminal-surface p-5 space-y-4">
-          <div className="flex items-baseline justify-between">
-            <p className="font-display font-semibold text-zinc-100">Model P/L <span className="text-zinc-500 font-normal text-sm">(all sports, units)</span></p>
-            <Link to="/track" className="text-xs font-body text-signal-amber hover:underline">details →</Link>
-          </div>
-          <div>
-            <span className={`font-display text-4xl font-bold ${((perf?.profit_units ?? 0) >= 0) ? 'text-signal-green' : 'text-signal-red'}`}>
-              {perf?.profit_units != null ? `${perf.profit_units >= 0 ? '+' : ''}${perf.profit_units.toFixed(1)}u` : '—'}
-            </span>
-            {perf?.roi_pct != null && (
-              <span className="ml-2 rounded-lg bg-signal-amber-dim px-2 py-0.5 text-xs font-mono text-signal-amber">
-                ROI {perf.roi_pct >= 0 ? '+' : ''}{perf.roi_pct}%
+        {/* Headline card: real P/L once games have graded, otherwise a live
+            model-scan of today's board so the slot is always meaningful. */}
+        {hasResults ? (
+          <div className="card-lift rounded-2xl border border-terminal-border bg-terminal-surface p-5 space-y-4">
+            <div className="flex items-baseline justify-between">
+              <p className="font-display font-semibold text-zinc-100">Model P/L <span className="text-zinc-500 font-normal text-sm">(all sports, units)</span></p>
+              <Link to="/track" className="text-xs font-body text-signal-amber hover:underline">details →</Link>
+            </div>
+            <div>
+              <span className={`font-display text-4xl font-bold ${((perf?.profit_units ?? 0) >= 0) ? 'text-signal-green' : 'text-signal-red'}`}>
+                {perf?.profit_units != null ? `${perf.profit_units >= 0 ? '+' : ''}${perf.profit_units.toFixed(1)}u` : '—'}
               </span>
-            )}
+              {perf?.roi_pct != null && (
+                <span className="ml-2 rounded-lg bg-signal-amber-dim px-2 py-0.5 text-xs font-mono text-signal-amber">
+                  ROI {perf.roi_pct >= 0 ? '+' : ''}{perf.roi_pct}%
+                </span>
+              )}
+            </div>
+            <Sparkline data={perf?.series ?? []} id="dash-pl" />
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <Stat label="Graded picks" value={`${perf?.total_picks ?? 0}`} />
+              <Stat label="Win rate" value={pct(perf?.win_rate)} good={(perf?.win_rate ?? 0) > 0.5} />
+              <Stat label="Avg edge" value={perf?.avg_edge_pp != null ? `${perf.avg_edge_pp >= 0 ? '+' : ''}${perf.avg_edge_pp.toFixed(1)}pp` : '—'} good={(perf?.avg_edge_pp ?? 0) > 0} />
+              <Stat label="Pending" value={`${acc?.pending ?? 0}`} />
+            </div>
           </div>
-          <Sparkline data={perf?.series ?? []} id="dash-pl" />
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <Stat label="Graded picks" value={`${perf?.total_picks ?? 0}`} />
-            <Stat label="Win rate" value={pct(perf?.win_rate)} good={(perf?.win_rate ?? 0) > 0.5} />
-            <Stat label="Avg edge" value={perf?.avg_edge_pp != null ? `${perf.avg_edge_pp >= 0 ? '+' : ''}${perf.avg_edge_pp.toFixed(1)}pp` : '—'} good={(perf?.avg_edge_pp ?? 0) > 0} />
-            <Stat label="Pending" value={`${acc?.pending ?? 0}`} />
+        ) : (
+          <div className="card-lift rounded-2xl border border-terminal-border bg-terminal-surface p-5 space-y-4">
+            <div className="flex items-baseline justify-between">
+              <p className="font-display font-semibold text-zinc-100">Live Model Scan <span className="ml-1 rounded bg-signal-amber-dim px-1.5 py-0.5 text-[10px] font-mono text-signal-amber align-middle">LIVE</span></p>
+              <Link to="/today" className="text-xs font-body text-signal-amber hover:underline">open board →</Link>
+            </div>
+            <div>
+              <span className="font-display text-4xl font-bold text-signal-amber">
+                {bestEdge ? `+${bestEdge.edge_pp.toFixed(1)}pp` : gamesPriced > 0 ? gamesPriced : '—'}
+              </span>
+              <span className="ml-2 text-sm font-body text-zinc-500">
+                {bestEdge ? 'biggest edge on the board' : gamesPriced > 0 ? 'games priced right now' : 'waiting for today’s lines'}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <Stat label="Priced games" value={`${gamesPriced}`} />
+              <Stat label="Live now" value={`${liveGames.length}`} good={liveGames.length > 0} />
+              <Stat label="Edges ≥2.5pp" value={`${edges?.length ?? 0}`} good={(edges?.length ?? 0) > 0} />
+              <Stat label="Leagues" value={`${leaguesLive}`} />
+            </div>
+            <p className="text-[11px] font-body text-zinc-500">
+              🛡 Verified P/L begins logging as today&rsquo;s games settle — <Link to="/track" className="text-signal-amber hover:underline">track record</Link>.
+            </p>
           </div>
-        </div>
+        )}
       </div>
 
       {/* ── Live Now ── */}
