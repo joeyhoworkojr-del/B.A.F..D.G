@@ -47,12 +47,15 @@ jobs:
           fi
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN || secrets.ORG || secrets.FLY_ORG || secrets.ORG_TOKEN || secrets.FLY_ORG_TOKEN }}
-      - name: Ensure persistent data volume exists
+      - name: Ensure persistent data volume exists in dfw
         run: |
-          if flyctl volumes list -a statedge-api 2>/dev/null | grep -qw statedge_data; then
-            echo "Volume statedge_data already exists."
+          # The mount in fly.toml needs a statedge_data volume in the app's
+          # region (dfw). Match name AND region so a stray volume in another
+          # region can't fool the guard into skipping creation.
+          if flyctl volumes list -a statedge-api 2>/dev/null | grep -w statedge_data | grep -qw dfw; then
+            echo "A statedge_data volume already exists in dfw."
           else
-            echo "Creating volume statedge_data in dfw..."
+            echo "Creating statedge_data volume in dfw..."
             flyctl volumes create statedge_data --region dfw --size 1 -a statedge-api --yes
           fi
         env:

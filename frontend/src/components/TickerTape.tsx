@@ -41,7 +41,7 @@ export function TickerTape() {
   const doubled = [...games, ...games]   // seamless loop
 
   return (
-    <div className="overflow-hidden border-b border-terminal-border bg-white/70">
+    <div className="ticker-mask overflow-hidden border-b border-terminal-border bg-white/70">
       <div className="ticker-track">
         {doubled.map((g, i) => <Item key={`${g.league}-${g.event_id}-${i}`} g={g} />)}
       </div>
