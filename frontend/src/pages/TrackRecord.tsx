@@ -75,33 +75,45 @@ export function TrackRecord() {
         </p>
       </div>
 
-      {/* P/L chart — the "stock" view */}
-      <div className="rounded-xl border border-terminal-border bg-terminal-surface p-5 card-lift">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="text-[11px] font-body font-semibold uppercase tracking-widest text-zinc-500">Model P/L — 1 unit per pick at fair book odds</p>
-            <p className={`mt-1 font-mono text-3xl font-bold ${profit >= 0 ? 'text-signal-green' : 'text-signal-red'}`}>
-              {profit >= 0 ? '+' : ''}{num(profit)}u
-            </p>
+      {/* P/L chart — the "stock" view. Only shown once picks have actually
+          graded; before that a zeroed chart would read as a real result. */}
+      {performance.total_picks > 0 ? (
+        <div className="rounded-xl border border-terminal-border bg-terminal-surface p-5 card-lift">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="text-[11px] font-body font-semibold uppercase tracking-widest text-zinc-500">Model P/L — 1 unit per pick at fair book odds</p>
+              <p className={`mt-1 font-mono text-3xl font-bold ${profit >= 0 ? 'text-signal-green' : 'text-signal-red'}`}>
+                {profit >= 0 ? '+' : ''}{num(profit)}u
+              </p>
+            </div>
+            <div className="flex gap-6 text-right">
+              {[
+                ['Graded picks', String(performance.total_picks)],
+                ['Win rate', pct(performance.win_rate)],
+                ['Avg edge', performance.avg_edge_pp == null ? '—' : `${performance.avg_edge_pp.toFixed(1)}pp`],
+                ['ROI', performance.roi_pct == null ? '—' : `${performance.roi_pct >= 0 ? '+' : ''}${performance.roi_pct.toFixed(1)}%`],
+              ].map(([l, v]) => (
+                <div key={l}>
+                  <p className="text-[10px] font-body uppercase tracking-wider text-zinc-500">{l}</p>
+                  <p className="font-mono text-sm font-semibold text-zinc-100">{v}</p>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="flex gap-6 text-right">
-            {[
-              ['Graded picks', String(performance.total_picks)],
-              ['Win rate', pct(performance.win_rate)],
-              ['Avg edge', performance.avg_edge_pp == null ? '—' : `${performance.avg_edge_pp.toFixed(1)}pp`],
-              ['ROI', performance.roi_pct == null ? '—' : `${performance.roi_pct >= 0 ? '+' : ''}${performance.roi_pct.toFixed(1)}%`],
-            ].map(([l, v]) => (
-              <div key={l}>
-                <p className="text-[10px] font-body uppercase tracking-wider text-zinc-500">{l}</p>
-                <p className="font-mono text-sm font-semibold text-zinc-100">{v}</p>
-              </div>
-            ))}
+          <div className="mt-4">
+            <Sparkline data={performance.series} id="track-pl" height={120} />
           </div>
         </div>
-        <div className="mt-4">
-          <Sparkline data={performance.series} id="track-pl" height={120} />
+      ) : (
+        <div className="rounded-xl border border-dashed border-terminal-border bg-terminal-surface p-8 text-center">
+          <p className="font-display text-lg font-semibold text-zinc-100">Profit/loss starts here</p>
+          <p className="mx-auto mt-1 max-w-md text-sm font-body text-zinc-500">
+            The P/L curve appears once graded games exist. Every prediction is snapshotted before kickoff
+            and settled automatically at the final whistle — no results have graded yet.
+            {pending > 0 && <span className="text-zinc-300"> {pending} pick{pending === 1 ? '' : 's'} are snapshotted and pending.</span>}
+          </p>
         </div>
-      </div>
+      )}
 
       {/* Head-to-head Brier */}
       <section className="space-y-3">
