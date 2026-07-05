@@ -67,6 +67,34 @@ def test_ratings_form_endpoint() -> None:
     assert "SSK" in codes
 
 
+def test_k_factor_decays_with_experience() -> None:
+    assert ratings._k_factor(0) == ratings.K * (1 + ratings.PROV_BOOST)   # fastest when new
+    assert ratings._k_factor(ratings.PROV_GAMES) == ratings.K             # settled
+    assert ratings._k_factor(50) == ratings.K                            # stays settled
+    assert ratings._k_factor(0) > ratings._k_factor(5) > ratings._k_factor(ratings.PROV_GAMES)
+
+
+def test_new_team_learns_faster_than_settled_team() -> None:
+    # Same fixed matchup/score; a brand-new team's rating moves more than one
+    # that already has a long history (confidence weighting).
+    fresh = ratings.record_result("nfl", "AAA", "BBB", 1500, 1500, 24, 10)
+    for _ in range(12):
+        ratings.record_result("nfl", "AAA", "CCC", 1500, 1500, 24, 10)
+    settled = ratings.record_result("nfl", "AAA", "DDD", 1500, 1500, 24, 10)
+    assert abs(settled) < abs(fresh)
+
+
+def test_regression_pulls_form_back_toward_baseline() -> None:
+    # Build up a positive delta, then post an *expected* win (near-zero update):
+    # regression should shrink the accumulated form.
+    for _ in range(3):
+        ratings.record_result("mlb", "AAA", "BBB", 1500, 1500, 10, 0)
+    before = ratings.get_delta("mlb", "AAA")
+    assert before > 0
+    ratings.record_result("mlb", "AAA", "ZZZ", 2300, 1500, 10, 9)  # heavy favourite wins by 1
+    assert ratings.get_delta("mlb", "AAA") < before
+
+
 def test_predictions_use_learned_rating() -> None:
     """After a team is boosted, its predicted win probability rises."""
     base = client.post("/api/v1/predict/nfl", json={
