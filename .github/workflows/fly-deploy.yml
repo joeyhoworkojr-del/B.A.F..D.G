@@ -47,6 +47,16 @@ jobs:
           fi
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN || secrets.ORG || secrets.FLY_ORG || secrets.ORG_TOKEN || secrets.FLY_ORG_TOKEN }}
+      - name: Ensure persistent data volume exists
+        run: |
+          if flyctl volumes list -a statedge-api 2>/dev/null | grep -qw statedge_data; then
+            echo "Volume statedge_data already exists."
+          else
+            echo "Creating volume statedge_data in dfw..."
+            flyctl volumes create statedge_data --region dfw --size 1 -a statedge-api --yes
+          fi
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN || secrets.ORG || secrets.FLY_ORG || secrets.ORG_TOKEN || secrets.FLY_ORG_TOKEN }}
       - name: Deploy combined app
         run: flyctl deploy --remote-only --ha=false
         env:

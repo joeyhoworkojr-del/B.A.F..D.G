@@ -62,7 +62,22 @@ _MIGRATIONS = [
 
 
 def _db_path() -> str:
-    return os.getenv("LEDGER_PATH", "ledger.db")
+    """
+    Resolve the ledger path, guaranteeing it is writable. If the configured
+    path's directory can't be created or written (e.g. the Fly volume didn't
+    mount), fall back to a local file so the API never 500s over storage.
+    """
+    path = os.getenv("LEDGER_PATH", "ledger.db")
+    parent = os.path.dirname(path)
+    try:
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        # cheap writability probe on the directory
+        if not os.access(parent or ".", os.W_OK):
+            raise OSError(f"{parent!r} not writable")
+        return path
+    except OSError:
+        return "ledger.db"   # ephemeral fallback — better than a hard failure
 
 
 def _connect() -> sqlite3.Connection:
