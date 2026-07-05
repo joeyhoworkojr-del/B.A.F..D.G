@@ -14,8 +14,8 @@ primary_region = "dfw"   # Dallas — closest to the World Cup action
   API_HOST = "0.0.0.0"
   API_PORT = "8000"
   MONTE_CARLO_SIMS = "50000"
-  ELO_MU = "1.06"
-  ELO_Q = "1540"
+  ELO_MU = "1.35"
+  ELO_Q = "1200"
   ELO_HOST_EDGE = "150"
   SR_BLEND_WEIGHT = "0.60"
   # NOTE: the ledger is currently ephemeral (reset on each deploy). To make it

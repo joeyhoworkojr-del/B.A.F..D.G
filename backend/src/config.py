@@ -30,8 +30,12 @@ class Settings(BaseSettings):
     )
 
     # ── Model params (soccer Elo-Poisson) ─────────────────────────────────────
-    elo_mu: float = Field(default=1.06, alias="ELO_MU")        # base goals per side
-    elo_q: float = Field(default=1540.0, alias="ELO_Q")        # Elo scale divisor
+    # μ ≈ 1.35 goals/side matches real average totals (~2.7); the old 1.06
+    # projected only ~2.1, over-weighting unders and — because low-scoring games
+    # are coin-flippier — under-rating favourites. Q=1200 gives favourites a bit
+    # more separation than the old 1540.
+    elo_mu: float = Field(default=1.35, alias="ELO_MU")        # base goals per side
+    elo_q: float = Field(default=1200.0, alias="ELO_Q")        # Elo scale divisor
     elo_host_edge: float = Field(default=150.0, alias="ELO_HOST_EDGE")  # home-field Elo bonus
     sr_blend_weight: float = Field(default=0.60, alias="SR_BLEND_WEIGHT")  # SportRadar weight
 
