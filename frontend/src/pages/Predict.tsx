@@ -14,6 +14,8 @@ import { LineupManager } from '../components/LineupManager'
 import { EdgesTable } from '../components/EdgesTable'
 import { LineExplorer } from '../components/LineExplorer'
 import { LiveScoreboard } from '../components/LiveScoreboard'
+import { MatchupHero } from '../components/MatchupHero'
+import { PitchBackdrop, SoccerBall } from '../components/PitchBackdrop'
 
 type Tab = 'overview' | 'totals' | 'edge' | 'props' | 'heatmap' | 'simulation' | 'why'
 
@@ -122,14 +124,22 @@ export function Predict() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="font-display text-2xl font-bold text-zinc-100">
-          Match Predictor — <span className="text-signal-amber">World Cup 2026</span>
-        </h1>
-        <p className="text-sm text-zinc-500 mt-1 font-body">
-          Dixon-Coles Elo model with team styles, live weather and team news. 50k Monte Carlo simulations.
-        </p>
+      {/* Header — pitch-art banner */}
+      <div className="relative overflow-hidden rounded-2xl border border-terminal-border bg-terminal-surface">
+        <PitchBackdrop className="pointer-events-none absolute inset-0 h-full w-full" />
+        <div className="relative flex items-center gap-3 px-5 py-6">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-signal-amber-dim text-signal-blue">
+            <SoccerBall className="h-7 w-7" />
+          </span>
+          <div>
+            <h1 className="font-display text-2xl font-bold text-zinc-100">
+              Match Predictor — <span className="text-signal-amber">World Cup 2026</span>
+            </h1>
+            <p className="mt-1 font-body text-sm text-zinc-500">
+              Dixon-Coles Elo model with team styles, altitude, live weather and team news. 50k Monte Carlo simulations.
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Live World Cup board */}
@@ -220,20 +230,8 @@ export function Predict() {
       {/* Results */}
       {result && (
         <div className="space-y-4">
-          {/* Match header */}
-          <div className="flex items-center justify-center gap-6 py-4">
-            <div className="text-center">
-              <div className="text-4xl">{result.home_team.flag}</div>
-              <div className="font-display font-semibold text-zinc-100 mt-1">{result.home_team.name}</div>
-              <div className="font-mono text-xs text-zinc-500">Elo {result.home_team.elo}</div>
-            </div>
-            <div className="font-display text-2xl text-zinc-600 font-bold">vs</div>
-            <div className="text-center">
-              <div className="text-4xl">{result.away_team.flag}</div>
-              <div className="font-display font-semibold text-zinc-100 mt-1">{result.away_team.name}</div>
-              <div className="font-mono text-xs text-zinc-500">Elo {result.away_team.elo}</div>
-            </div>
-          </div>
+          {/* Art-forward matchup header */}
+          <MatchupHero result={result} />
 
           {/* Live conditions actively shaping this prediction */}
           <ConditionsPanel
