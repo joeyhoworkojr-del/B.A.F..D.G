@@ -60,10 +60,12 @@ MLB_TEAMS: dict[str, MLBTeam] = {t.code: t for t in [
 ]}
 
 # League scoring environment (runs per team per game)
-MLB_LEAGUE_AVG_RPG = 4.40
+MLB_LEAGUE_AVG_RPG = 4.50   # ~9.0 total; the old 4.40 leaned slightly under
 
-_OFF_COEF = 0.0045   # runs of offense per Elo point above 1500
-_DEF_COEF = 0.0035
+# Widened from 0.0045/0.0035 so team strength separates favourites a touch more
+# — the narrow spread was compressing win probabilities toward the underdog.
+_OFF_COEF = 0.0058   # runs of offense per Elo point above 1500
+_DEF_COEF = 0.0046
 
 _STYLE_OVERRIDES: dict[str, tuple[float, float]] = {
     # code: (off_delta, def_delta) — runs per game vs the Elo baseline

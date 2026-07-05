@@ -11,9 +11,9 @@ Pipeline:
      independent Poisson models (too few draws / low-scoring results), which
      directly improves draw and under-2.5 calibration.
 
-Calibrated parameters (fit to SportRadar's published Round-of-16 probabilities):
-  μ  = 1.06   base expected goals per team per 90 min
-  Q  = 1540   Elo scale divisor
+Calibrated parameters:
+  μ  = 1.35   base expected goals per team per 90 min (matches real ~2.7 totals)
+  Q  = 1200   Elo scale divisor (favourite separation)
   host_edge = +150 Elo for host-nation home advantage (USA / MEX / CAN)
   ρ  = -0.13  Dixon-Coles low-score correlation
 """
