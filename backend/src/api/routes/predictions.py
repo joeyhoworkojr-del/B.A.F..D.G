@@ -43,6 +43,7 @@ from src.predict.adjustments import (
     mlb_weather_adjustments,
     nfl_lineup_adjustments,
     nfl_weather_adjustments,
+    soccer_altitude_adjustments,
     soccer_lineup_adjustments,
     soccer_weather_adjustments,
 )
@@ -145,6 +146,11 @@ async def predict_soccer(req: SoccerPredictRequest) -> SoccerPredictResponse:
         if venue:
             weather = await fetch_weather(venue)
             adjustments.extend(soccer_weather_adjustments(weather))
+            # Altitude is a property of the venue, not the weather — it applies
+            # even indoors and regardless of the host designation.
+            adjustments.extend(soccer_altitude_adjustments(
+                venue, home_code, away_code, home_t.name, away_t.name,
+            ))
     if req.apply_lineups:
         adjustments.extend(soccer_lineup_adjustments(
             home_code, away_code, req.missing_home, req.missing_away,
@@ -692,6 +698,7 @@ async def best_bets() -> BestBetsResponse:
             continue
 
         adjustments = list(soccer_weather_adjustments(weather_by_venue.get(fix.venue)))
+        adjustments += soccer_altitude_adjustments(fix.venue, fix.home, fix.away, ht.name, at.name)
         adjustments += soccer_lineup_adjustments(fix.home, fix.away)
 
         result = predict_match(

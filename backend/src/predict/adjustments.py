@@ -16,6 +16,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from src.data.altitude import (
+    ALTITUDE_THRESHOLD_M,
+    altitude_disadvantage_m,
+    venue_altitude,
+)
 from src.data.lineups import unavailable_players
 from src.ingest.weather import WeatherReport
 
@@ -109,6 +114,61 @@ def soccer_weather_adjustments(w: WeatherReport | None) -> list[Adjustment]:
         ))
 
     return adj
+
+
+# ─── Soccer: altitude ─────────────────────────────────────────────────────────
+
+# Per 1,000 m a non-acclimatized side is above its comfort zone:
+_ALT_OWN_SUPPRESS = 0.05    # its own xG down (aerobic disadvantage)
+_ALT_OPP_BOOST = 0.035      # opponent's xG up (they exploit the fatigue)
+_ALT_CAP_M = 3000.0         # effect saturates past ~3 km of gap
+
+
+def soccer_altitude_adjustments(
+    venue: str,
+    home_code: str,
+    away_code: str,
+    home_name: str | None = None,
+    away_name: str | None = None,
+) -> list[Adjustment]:
+    """
+    Model the high-altitude edge. Returns [] for sea-level venues or when both
+    sides are equally acclimatized (e.g. Mexico vs Ecuador at Estadio Azteca —
+    both used to thin air, so no altitude edge, only the host advantage).
+    """
+    alt = venue_altitude(venue)
+    if alt < ALTITUDE_THRESHOLD_M:
+        return []
+
+    d_home = min(altitude_disadvantage_m(alt, home_code), _ALT_CAP_M) / 1000.0
+    d_away = min(altitude_disadvantage_m(alt, away_code), _ALT_CAP_M) / 1000.0
+    if d_home == 0.0 and d_away == 0.0:
+        return []   # both acclimatized — no differential effect
+
+    home_mult = (1.0 - _ALT_OWN_SUPPRESS * d_home) * (1.0 + _ALT_OPP_BOOST * d_away)
+    away_mult = (1.0 - _ALT_OWN_SUPPRESS * d_away) * (1.0 + _ALT_OPP_BOOST * d_home)
+
+    home_name = home_name or home_code
+    away_name = away_name or away_code
+    # Describe from the perspective of the more-disadvantaged (visiting) side.
+    if d_away >= d_home:
+        acclimatized, struggler = home_name, away_name
+        swing = (1.0 - away_mult) * 100.0
+    else:
+        acclimatized, struggler = away_name, home_name
+        swing = (1.0 - home_mult) * 100.0
+    detail = (
+        f"{acclimatized} is acclimatized to {alt:,.0f} m; {struggler} is not — "
+        f"the visiting side's xG drops ~{abs(swing):.0f}% at this elevation."
+    )
+
+    return [Adjustment(
+        label=f"Altitude ({alt:,.0f} m)",
+        detail=detail,
+        source="altitude",
+        home_xg_mult=home_mult,
+        away_xg_mult=away_mult,
+    )]
 
 
 # ─── Soccer: lineups ──────────────────────────────────────────────────────────

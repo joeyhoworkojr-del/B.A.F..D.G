@@ -11,7 +11,9 @@ interface Props {
 }
 
 function sourceIcon(source: string): string {
-  return source === 'weather' ? '🌦' : '🩹'
+  if (source === 'weather') return '🌦'
+  if (source === 'altitude') return '🏔'
+  return '🩹'
 }
 
 export function ConditionsPanel({ conditions, weather, baseProb, currentProb, baseLabel }: Props) {
