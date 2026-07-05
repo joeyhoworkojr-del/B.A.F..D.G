@@ -44,9 +44,11 @@ def expected_runs(
     away_code: str,
     *,
     neutral_site: bool = False,
+    home_elo: Optional[float] = None,
+    away_elo: Optional[float] = None,
 ) -> tuple[float, float]:
-    home_off, home_def = get_mlb_ratings(home_code)
-    away_off, away_def = get_mlb_ratings(away_code)
+    home_off, home_def = get_mlb_ratings(home_code, home_elo)
+    away_off, away_def = get_mlb_ratings(away_code, away_elo)
     pf = 1.0 if neutral_site else get_park_factor(home_code)
     home_runs = (home_off + away_def) / 2.0 * pf
     away_runs = (away_off + home_def) / 2.0 * pf
@@ -66,7 +68,10 @@ def predict_mlb_game(
     total_line: Optional[float] = None,    # e.g. 8.5
     adjustments: Optional[list] = None,    # list[Adjustment] from live conditions
 ) -> NFLPrediction:
-    base_home, base_away = expected_runs(home_code, away_code, neutral_site=neutral_site)
+    base_home, base_away = expected_runs(
+        home_code, away_code, neutral_site=neutral_site,
+        home_elo=home_elo, away_elo=away_elo,
+    )
 
     conditions = list(adjustments or [])
     home_mu, away_mu = base_home, base_away

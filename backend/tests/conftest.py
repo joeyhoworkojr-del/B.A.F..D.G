@@ -22,12 +22,13 @@ def _clear_live_caches():
     """
     from src.ingest import espn, polymarket, weather
 
-    from src.track import ledger
+    from src.track import ledger, ratings
 
     weather._weather_cache.clear()
     espn._cache.clear()
     polymarket._cache.clear()
     ledger.reset()
+    ratings.reset()
     yield
     weather._weather_cache.clear()
     espn._cache.clear()

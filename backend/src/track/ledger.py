@@ -42,9 +42,23 @@ CREATE TABLE IF NOT EXISTS predictions (
     home_score      INTEGER,
     away_score      INTEGER,
     home_won        INTEGER,
-    graded_at       TEXT
+    graded_at       TEXT,
+    home_code       TEXT,
+    away_code       TEXT,
+    home_elo        REAL,
+    away_elo        REAL,
+    elo_applied     INTEGER DEFAULT 0
 );
 """
+
+# Columns added after the original release — backfilled onto existing DBs.
+_MIGRATIONS = [
+    ("home_code", "TEXT"),
+    ("away_code", "TEXT"),
+    ("home_elo", "REAL"),
+    ("away_elo", "REAL"),
+    ("elo_applied", "INTEGER DEFAULT 0"),
+]
 
 
 def _db_path() -> str:
@@ -55,6 +69,11 @@ def _connect() -> sqlite3.Connection:
     conn = sqlite3.connect(_db_path())
     conn.row_factory = sqlite3.Row
     conn.execute(_SCHEMA)
+    # Backfill columns for DBs created before they existed.
+    existing = {r["name"] for r in conn.execute("PRAGMA table_info(predictions)")}
+    for col, decl in _MIGRATIONS:
+        if col not in existing:
+            conn.execute(f"ALTER TABLE predictions ADD COLUMN {col} {decl}")
     return conn
 
 
@@ -75,16 +94,25 @@ def record_pregame(
     crowd_home_prob: Optional[float] = None,
     market_spread: Optional[float] = None,
     market_total: Optional[float] = None,
+    home_code: Optional[str] = None,
+    away_code: Optional[str] = None,
+    home_elo: Optional[float] = None,
+    away_elo: Optional[float] = None,
 ) -> None:
-    """Upsert the latest pre-game snapshot; frozen once the game is graded."""
+    """Upsert the latest pre-game snapshot; frozen once the game is graded.
+
+    `home_code`/`away_code` and the snapshot Elos are what the self-correcting
+    ratings module reconciles from once the game grades.
+    """
     with _LOCK, _connect() as conn:
         conn.execute(
             """
             INSERT INTO predictions (
                 event_id, league, kickoff, home, away, snapshot_at,
                 model_home_prob, model_total, book_home_prob,
-                crowd_home_prob, market_spread, market_total
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                crowd_home_prob, market_spread, market_total,
+                home_code, away_code, home_elo, away_elo
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(event_id) DO UPDATE SET
                 snapshot_at     = excluded.snapshot_at,
                 model_home_prob = excluded.model_home_prob,
@@ -92,12 +120,17 @@ def record_pregame(
                 book_home_prob  = excluded.book_home_prob,
                 crowd_home_prob = excluded.crowd_home_prob,
                 market_spread   = excluded.market_spread,
-                market_total    = excluded.market_total
+                market_total    = excluded.market_total,
+                home_code       = excluded.home_code,
+                away_code       = excluded.away_code,
+                home_elo        = excluded.home_elo,
+                away_elo        = excluded.away_elo
             WHERE predictions.graded = 0
             """,
             (event_id, league, kickoff, home, away, _now(),
              model_home_prob, model_total, book_home_prob,
-             crowd_home_prob, market_spread, market_total),
+             crowd_home_prob, market_spread, market_total,
+             home_code, away_code, home_elo, away_elo),
         )
 
 
