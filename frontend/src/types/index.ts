@@ -162,6 +162,9 @@ export interface AllScoreboardsOut {
 export interface TodayModelOut {
   home_win_prob: number
   away_win_prob: number
+  calibrated_home_win?: number
+  calibrated_away_win?: number
+  market_anchored?: boolean
   home_expected: number
   away_expected: number
   total_estimate: number

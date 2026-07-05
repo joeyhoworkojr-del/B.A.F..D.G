@@ -27,8 +27,27 @@ from src.track.ledger import _db_path
 _LOCK = threading.Lock()
 
 BASE = 400.0        # logistic scale for the win-probability expectation
-K = 20.0            # base update step
+K = 20.0            # settled base update step (once a team has enough games)
 DELTA_CAP = 150.0   # cap on cumulative adjustment per team (Elo points)
+
+# Confidence-weighted learning rate: a brand-new team's rating should move fast
+# and then settle as evidence accumulates (a cheap stand-in for a Bayesian
+# rating with shrinking variance). K starts at K*(1+PROV_BOOST) and decays
+# linearly to K over the first PROV_GAMES graded games.
+PROV_GAMES = 10
+PROV_BOOST = 1.0
+
+# Regression to the mean: each time a team plays, its accumulated form is pulled
+# a little back toward its static prior (delta → 0). This down-weights stale
+# results so recent form dominates and no rating drifts permanently.
+REGRESS = 0.99
+
+
+def _k_factor(games: int) -> float:
+    """Higher learning rate while a team has few graded games, settling to K."""
+    if games >= PROV_GAMES:
+        return K
+    return K * (1.0 + PROV_BOOST * (PROV_GAMES - games) / PROV_GAMES)
 
 # Modest home-field advantage per sport, on the 400 scale, so the expected
 # result isn't biased. Over a balanced home/away schedule any misspecification
@@ -76,13 +95,22 @@ def adjust(sport: str, code: str, base_elo: float) -> float:
     return base_elo + get_delta(sport, code)
 
 
-def _apply_delta(conn: sqlite3.Connection, sport: str, code: str, change: float) -> None:
+def _update_team(conn: sqlite3.Connection, sport: str, code: str, signed_base: float) -> float:
+    """
+    Fold one result into a team's rating delta with a confidence-weighted step
+    and regression to the mean. `signed_base` is the outcome term
+    log(|margin|+1)·(actual − expected), positive if the team over-performed.
+    Returns the outcome-driven change applied (before regression).
+    """
     row = conn.execute(
         "SELECT delta, games FROM ratings WHERE sport = ? AND code = ?",
         (sport, code.upper()),
     ).fetchone()
     prev = float(row["delta"]) if row else 0.0
-    games = (int(row["games"]) if row else 0) + 1
+    games = int(row["games"]) if row else 0
+
+    change = _k_factor(games) * signed_base
+    new_delta = _clamp(prev * REGRESS + change)   # regress old form, then update
     conn.execute(
         """
         INSERT INTO ratings (sport, code, delta, games, updated_at)
@@ -90,8 +118,9 @@ def _apply_delta(conn: sqlite3.Connection, sport: str, code: str, change: float)
         ON CONFLICT(sport, code) DO UPDATE SET
             delta = excluded.delta, games = excluded.games, updated_at = excluded.updated_at
         """,
-        (sport, code.upper(), _clamp(prev + change), games, _now()),
+        (sport, code.upper(), new_delta, games + 1, _now()),
     )
+    return change
 
 
 def record_result(
@@ -104,9 +133,11 @@ def record_result(
     away_score: int,
 ) -> float:
     """
-    Standard Elo update from one final score. `home_elo`/`away_elo` are the
-    ratings that were in effect for the game (base + delta at snapshot time).
-    Returns the signed rating change applied to the home side.
+    Elo update from one final score. `home_elo`/`away_elo` are the ratings that
+    were in effect for the game (base + delta at snapshot time). Each team
+    learns at its own confidence-weighted rate and its prior form is regressed
+    slightly toward baseline. Returns the outcome change applied to the home
+    side (negative if the home side lost ground).
     """
     if home_score == away_score:
         return 0.0   # ties don't move ratings here
@@ -114,12 +145,11 @@ def record_result(
     dr = (home_elo + hfa) - away_elo
     exp_home = 1.0 / (1.0 + 10 ** (-dr / BASE))
     s_home = 1.0 if home_score > away_score else 0.0
-    mov_mult = math.log(abs(home_score - away_score) + 1.0)
-    change = K * mov_mult * (s_home - exp_home)
+    signed_base = math.log(abs(home_score - away_score) + 1.0) * (s_home - exp_home)
     with _LOCK, _connect() as conn:
-        _apply_delta(conn, sport, home_code, change)
-        _apply_delta(conn, sport, away_code, -change)
-    return change
+        home_change = _update_team(conn, sport, home_code, signed_base)
+        _update_team(conn, sport, away_code, -signed_base)
+    return home_change
 
 
 def reconcile() -> int:

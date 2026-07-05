@@ -496,6 +496,26 @@ def _map_code(league: str, abbr: str) -> Optional[str]:
         return None
 
 
+# How far to shrink the model's headline win probability toward the no-vig
+# market. Raw rating models are systematically over-confident; the closing line
+# is the sharpest public estimator, so a modest anchor de-biases the number the
+# user actually reads. The RAW model is still used for edge detection and the
+# track record, so this never manufactures or erases an edge.
+MARKET_ANCHOR_WEIGHT = 0.35
+
+
+def _no_vig_home_prob(g: LiveGame) -> Optional[float]:
+    """No-vig implied home win probability from the live moneylines, or None."""
+    if not (g.market_home_ml and g.market_away_ml):
+        return None
+    try:
+        ih = 1.0 / american_to_decimal(g.market_home_ml)
+        ia = 1.0 / american_to_decimal(g.market_away_ml)
+    except ValueError:
+        return None
+    return ih / (ih + ia)
+
+
 async def _slate_entry(league: str, g: LiveGame, poly_markets) -> dict:
     """Model + live-market comparison for one scoreboard game. Snapshots
     pre-game picks to the ledger as a side effect."""
@@ -518,9 +538,22 @@ async def _slate_entry(league: str, g: LiveGame, poly_markets) -> dict:
         )
         pred = await _predict_gridiron(req, league)
         entry["mapped"] = True
+
+        # Market-anchored calibration: shrink the headline win prob toward the
+        # no-vig line. Falls back to the raw model when no market is available.
+        book_home = _no_vig_home_prob(g)
+        if book_home is not None:
+            w = MARKET_ANCHOR_WEIGHT
+            cal_home = w * book_home + (1 - w) * pred.home_win_prob
+        else:
+            cal_home = pred.home_win_prob
+
         entry["model"] = {
             "home_win_prob": pred.home_win_prob,
             "away_win_prob": pred.away_win_prob,
+            "calibrated_home_win": cal_home,
+            "calibrated_away_win": 1.0 - cal_home,
+            "market_anchored": book_home is not None,
             "home_expected": pred.home_expected_pts,
             "away_expected": pred.away_expected_pts,
             "total_estimate": pred.total_points_estimate,
@@ -578,15 +611,9 @@ async def _slate_entry(league: str, g: LiveGame, poly_markets) -> dict:
         entry["edges"] = [_edges_out([e])[0].model_dump() for e in edges]
 
         # ── Track record: snapshot pre-game; grading happens on every board fetch ──
+        # The ledger stores the RAW model prob (book_home is logged separately),
+        # so the head-to-head Brier stays an honest model-vs-book comparison.
         if g.state == "pre":
-            book_home = None
-            if g.market_home_ml and g.market_away_ml:
-                try:
-                    ih = 1.0 / american_to_decimal(g.market_home_ml)
-                    ia = 1.0 / american_to_decimal(g.market_away_ml)
-                    book_home = ih / (ih + ia)   # no-vig
-                except ValueError:
-                    pass
             ledger.record_pregame(
                 event_id=f"{league}:{g.event_id}",
                 league=league,

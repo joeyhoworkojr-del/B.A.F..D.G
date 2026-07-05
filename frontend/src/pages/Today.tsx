@@ -110,6 +110,13 @@ function GameCard({ entry }: { entry: TodayGameOut }) {
               bookHome != null ? { dot: 'bg-signal-amber', text: `book ${pct(bookHome)} (${mlToStr(g.market_home_ml)})` } : null,
               pm ? { dot: 'bg-signal-purple', text: `crowd ${pct(pm.home_prob)} · ${volume(pm.volume_usd)}` } : null,
             ]} />
+            {m.market_anchored && m.calibrated_home_win != null && (
+              <p className="text-[10px] font-mono text-zinc-500" title="Model win probability shrunk toward the no-vig market line — the most reliable single number to trust.">
+                consensus estimate:{' '}
+                <span className="font-semibold text-zinc-300">{pct(m.calibrated_home_win)} {g.home_abbr}</span>
+                {' '}<span className="text-zinc-600">(model tempered by the market)</span>
+              </p>
+            )}
             {pm && Math.abs(m.home_win_prob - pm.home_prob) >= 0.05 && (
               <p className="text-[10px] font-mono">
                 <span className={m.home_win_prob > pm.home_prob ? 'text-signal-green' : 'text-signal-red'}>

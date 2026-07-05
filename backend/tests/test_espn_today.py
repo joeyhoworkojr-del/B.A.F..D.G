@@ -93,6 +93,32 @@ def test_today_predicts_slate_and_compares_market() -> None:
         assert e["rating"] in ("A", "B", "C", "-")
 
 
+def test_today_calibrates_toward_market() -> None:
+    with patch("src.api.routes.predictions.fetch_scoreboard", return_value=_mock_board()), _patch_poly():
+        data = client.get("/api/v1/today/nfl").json()
+    m = data["games"][0]["model"]
+    assert m["market_anchored"] is True
+    # Calibrated prob sits between the raw model and the no-vig book number.
+    lo, hi = sorted([m["home_win_prob"], 0.6164])   # ~no-vig home from -180/+150
+    assert lo - 1e-3 <= m["calibrated_home_win"] <= hi + 1e-3
+    # It has actually moved off the raw model toward the market.
+    assert m["calibrated_home_win"] != m["home_win_prob"]
+    assert abs(m["calibrated_home_win"] + m["calibrated_away_win"] - 1.0) < 1e-9
+
+
+def test_today_calibration_falls_back_without_market() -> None:
+    ev = {**SAMPLE_EVENT}
+    ev["competitions"] = [{
+        "competitors": SAMPLE_EVENT["competitions"][0]["competitors"],  # no odds block
+    }]
+    board = Scoreboard(league="nfl", games=[_parse_event("nfl", ev)], fetched_at="x")
+    with patch("src.api.routes.predictions.fetch_scoreboard", return_value=board), _patch_poly():
+        data = client.get("/api/v1/today/nfl").json()
+    m = data["games"][0]["model"]
+    assert m["market_anchored"] is False
+    assert m["calibrated_home_win"] == m["home_win_prob"]
+
+
 def test_today_unmapped_team_included_without_model() -> None:
     ev = {**SAMPLE_EVENT}
     ev["competitions"] = [{
