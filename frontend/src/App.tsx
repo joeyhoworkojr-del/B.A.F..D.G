@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { NavBar } from './components/NavBar'
+import { TickerTape } from './components/TickerTape'
 import { Dashboard } from './pages/Dashboard'
 import { Predict } from './pages/Predict'
 import { Today } from './pages/Today'
@@ -9,6 +10,7 @@ import { MLB } from './pages/MLB'
 import { BestBets } from './pages/BestBets'
 import { Rankings } from './pages/Rankings'
 import { History } from './pages/History'
+import { TrackRecord } from './pages/TrackRecord'
 import { About } from './pages/About'
 
 export default function App() {
@@ -16,6 +18,7 @@ export default function App() {
     <BrowserRouter>
       <div className="min-h-screen text-zinc-100">
         <NavBar />
+        <TickerTape />
         <main>
           <Routes>
             <Route path="/" element={<Dashboard />} />
@@ -27,6 +30,7 @@ export default function App() {
             <Route path="/best-bets" element={<BestBets />} />
             <Route path="/rankings" element={<Rankings />} />
             <Route path="/history" element={<History />} />
+            <Route path="/track" element={<TrackRecord />} />
             <Route path="/about" element={<About />} />
           </Routes>
         </main>

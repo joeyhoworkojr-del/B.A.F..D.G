@@ -187,7 +187,7 @@ export function Predict() {
             w-full rounded-lg bg-signal-amber px-4 py-2.5
             font-display font-semibold text-terminal-bg
             disabled:opacity-40 disabled:cursor-not-allowed
-            hover:bg-amber-400 transition-colors
+            hover:bg-blue-700 transition-colors
           "
         >
           {loading ? 'Analysing…' : 'Run Prediction'}
@@ -349,7 +349,7 @@ export function Predict() {
                   <button
                     onClick={() => runPrediction(true)}
                     disabled={loading}
-                    className="w-full rounded-lg bg-signal-amber px-3 py-1.5 font-display font-semibold text-sm text-terminal-bg disabled:opacity-40 hover:bg-amber-400 transition-colors"
+                    className="w-full rounded-lg bg-signal-amber px-3 py-1.5 font-display font-semibold text-sm text-terminal-bg disabled:opacity-40 hover:bg-blue-700 transition-colors"
                   >
                     {loading ? '…' : 'Evaluate'}
                   </button>

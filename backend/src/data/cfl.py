@@ -1,8 +1,10 @@
 """
 CFL teams with power ratings.
 
-Ratings calibrated to the 2025 CFL season (Grey Cup form). Three-down
-football scores more than the NFL: league average ≈ 25.2 points per team.
+Ratings are a 2026-season prior anchored on 2025 Grey Cup form; they update
+implicitly each game because predictions are always evaluated at the live
+market line from the ESPN feed. Three-down football scores more than the
+NFL: league average ≈ 25.2 points per team.
 """
 from __future__ import annotations
 from dataclasses import dataclass

@@ -1,10 +1,16 @@
 """pytest configuration — adds src/ to sys.path and isolates live caches."""
 import sys
 import os
+import tempfile
 
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+# Isolate the prediction ledger from any real ledger.db
+os.environ.setdefault(
+    "LEDGER_PATH", os.path.join(tempfile.mkdtemp(prefix="ledger-test-"), "ledger.db"),
+)
 
 
 @pytest.fixture(autouse=True)
@@ -16,9 +22,12 @@ def _clear_live_caches():
     """
     from src.ingest import espn, polymarket, weather
 
+    from src.track import ledger
+
     weather._weather_cache.clear()
     espn._cache.clear()
     polymarket._cache.clear()
+    ledger.reset()
     yield
     weather._weather_cache.clear()
     espn._cache.clear()

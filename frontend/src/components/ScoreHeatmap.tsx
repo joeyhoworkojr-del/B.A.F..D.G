@@ -41,8 +41,8 @@ export function ScoreHeatmap({ grid, homeLabel, awayLabel, maxGoals = 6 }: Props
                       key={j}
                       className={`p-1 w-10 rounded transition-colors ${isHighest ? 'ring-1 ring-signal-amber' : ''}`}
                       style={{
-                        backgroundColor: `rgba(245,158,11,${opacity * 0.7})`,
-                        color: opacity > 0.6 ? '#0a0a0f' : '#a1a1aa',
+                        backgroundColor: `rgba(37,99,235,${opacity * 0.65})`,
+                        color: opacity > 0.55 ? '#ffffff' : '#475569',
                       }}
                       title={`${i}–${j}: ${(p * 100).toFixed(1)}%`}
                     >

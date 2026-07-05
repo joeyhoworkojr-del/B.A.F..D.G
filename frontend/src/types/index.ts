@@ -198,6 +198,54 @@ export interface TodayResponse {
 
 export type GridironLeague = 'nfl' | 'cfl' | 'mlb'
 
+// ─── Track record ─────────────────────────────────────────────────────────────
+
+export interface SignalScore {
+  n: number
+  brier: number
+  winner_hit_rate: number
+}
+
+export interface AccuracyBucket {
+  games_graded: number
+  model?: SignalScore | null
+  book?: SignalScore | null
+  crowd?: SignalScore | null
+}
+
+export interface PerformanceOut {
+  total_picks: number
+  win_rate?: number | null
+  avg_edge_pp?: number | null
+  profit_units?: number | null
+  roi_pct?: number | null
+  series: number[]
+}
+
+export interface GradedRow {
+  event_id: string
+  league: string
+  kickoff: string
+  home: string
+  away: string
+  model_home_prob: number
+  book_home_prob?: number | null
+  crowd_home_prob?: number | null
+  home_score: number
+  away_score: number
+  home_won: number
+  graded_at: string
+}
+
+export interface AccuracyResponse {
+  overall: AccuracyBucket
+  by_league: Record<string, AccuracyBucket>
+  pending: number
+  note: string
+  performance: PerformanceOut
+  recent: GradedRow[]
+}
+
 export interface PlayerPropOut {
   name: string
   team: string

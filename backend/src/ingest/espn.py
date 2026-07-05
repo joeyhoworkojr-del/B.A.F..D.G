@@ -16,14 +16,19 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 import httpx
 
 log = logging.getLogger(__name__)
 
 ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports"
+
+# The North American sports day is anchored to US/Eastern: a 10 PM PT game is
+# still "tonight" in ET, and ESPN's own boards roll over on ET midnight.
+_ET = ZoneInfo("America/New_York")
 
 LEAGUE_PATHS: dict[str, str] = {
     "wc": "soccer/fifa.world",
@@ -132,6 +137,32 @@ def _parse_event(league: str, ev: dict) -> Optional[LiveGame]:
         return None
 
 
+def _dates_window() -> str:
+    """Explicit yesterday→tomorrow (ET) range for the scoreboard request.
+
+    Without a `dates` param ESPN returns the whole *current week* for
+    football leagues, so a Saturday CFL board would still be full of
+    Thursday's finals presented as if they were current.
+    """
+    today = datetime.now(_ET).date()
+    return f"{today - timedelta(days=1):%Y%m%d}-{today + timedelta(days=1):%Y%m%d}"
+
+
+def is_current(game: "LiveGame", now: Optional[datetime] = None) -> bool:
+    """Whether a game belongs on 'today's board': in progress, finished on
+    today's ET sports day, or scheduled within the next 48 hours."""
+    if game.state == "in":
+        return True
+    try:
+        kickoff = datetime.fromisoformat(game.kickoff.replace("Z", "+00:00"))
+    except ValueError:
+        return True   # unparseable kickoff — keep rather than silently hide
+    now = now or datetime.now(timezone.utc)
+    if game.state == "post":
+        return kickoff.astimezone(_ET).date() >= now.astimezone(_ET).date()
+    return kickoff - now <= timedelta(hours=48)
+
+
 async def fetch_scoreboard(league: str) -> Scoreboard:
     """Fetch today's games for a league. Never raises — ok=False on failure."""
     league = league.lower()
@@ -147,7 +178,10 @@ async def fetch_scoreboard(league: str) -> Scoreboard:
 
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
-            resp = await client.get(f"{ESPN_BASE}/{path}/scoreboard")
+            resp = await client.get(
+                f"{ESPN_BASE}/{path}/scoreboard",
+                params={"dates": _dates_window()},
+            )
             resp.raise_for_status()
             data = resp.json()
         games = [g for g in (_parse_event(league, ev) for ev in data.get("events", [])) if g]

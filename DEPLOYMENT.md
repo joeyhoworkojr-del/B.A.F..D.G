@@ -49,6 +49,29 @@ GitHub once set up) and **docker compose** (any VPS or local machine).
    `FLY_API_TOKEN`. From then on, `.github/workflows/fly-deploy.yml` tests
    and ships the app on every push to `main`.
 
+## Persisting the track record (optional but recommended)
+
+The verified track record lives in a SQLite file. By default it is written to
+`ledger.db` in the working directory, which is **wiped on every deploy**. To
+keep the record across deploys, attach a Fly volume and point `LEDGER_PATH` at
+it:
+
+```bash
+fly volumes create statedge_data --size 1 --app statedge-api
+fly secrets set LEDGER_PATH=/data/ledger.db --app statedge-api
+```
+
+Then mount the volume in `fly.toml`:
+
+```toml
+[[mounts]]
+  source = "statedge_data"
+  destination = "/data"
+```
+
+Predictions snapshot themselves whenever a slate loads and grade themselves as
+games go final, so the ledger fills in on its own once the volume is attached.
+
 ## docker compose — self-hosted
 
 ```bash
