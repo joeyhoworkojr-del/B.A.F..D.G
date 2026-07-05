@@ -18,6 +18,15 @@ primary_region = "dfw"   # Dallas — closest to the World Cup action
   ELO_Q = "1540"
   ELO_HOST_EDGE = "150"
   SR_BLEND_WEIGHT = "0.60"
+  # Track record + self-correcting ratings live here, on the volume below, so
+  # they survive deploys. Falls back to ephemeral storage if the mount fails.
+  LEDGER_PATH = "/data/ledger.db"
+
+# Persistent storage for the prediction ledger. The deploy workflow creates
+# this volume automatically if it does not exist yet.
+[[mounts]]
+  source = "statedge_data"
+  destination = "/data"
 
 # Secrets (set via: fly secrets set KEY=value --app statedge-api)
 # Optional: DATABASE_URL, REDIS_URL, FOOTBALL_DATA_API_KEY, SPORTRADAR_API_KEY
