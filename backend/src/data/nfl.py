@@ -97,11 +97,15 @@ _STYLE_OVERRIDES: dict[str, tuple[float, float]] = {
 }
 
 
-def get_nfl_ratings(code: str) -> tuple[float, float]:
-    """Return (offense_ppg, defense_ppg_allowed) for a team."""
+def get_nfl_ratings(code: str, elo: float | None = None) -> tuple[float, float]:
+    """Return (offense_ppg, defense_ppg_allowed) for a team.
+
+    `elo` overrides the static prior (e.g. the self-correcting rating).
+    """
     t = get_nfl_team(code)
-    off = LEAGUE_AVG_PPG + (t.elo - 1500) * _OFF_COEF
-    dfn = LEAGUE_AVG_PPG - (t.elo - 1500) * _DEF_COEF
+    rating = t.elo if elo is None else elo
+    off = LEAGUE_AVG_PPG + (rating - 1500) * _OFF_COEF
+    dfn = LEAGUE_AVG_PPG - (rating - 1500) * _DEF_COEF
     d_off, d_def = _STYLE_OVERRIDES.get(t.code, (0.0, 0.0))
     return off + d_off, dfn + d_def
 

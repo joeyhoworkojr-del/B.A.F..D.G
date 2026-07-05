@@ -104,11 +104,15 @@ def get_mlb_team(code: str) -> MLBTeam:
     return t
 
 
-def get_mlb_ratings(code: str) -> tuple[float, float]:
-    """Return (runs_scored_pg, runs_allowed_pg) vs league-average opposition."""
+def get_mlb_ratings(code: str, elo: float | None = None) -> tuple[float, float]:
+    """Return (runs_scored_pg, runs_allowed_pg) vs league-average opposition.
+
+    `elo` overrides the static prior (e.g. the self-correcting rating).
+    """
     t = get_mlb_team(code)
-    off = MLB_LEAGUE_AVG_RPG + (t.elo - 1500) * _OFF_COEF
-    dfn = MLB_LEAGUE_AVG_RPG - (t.elo - 1500) * _DEF_COEF
+    rating = t.elo if elo is None else elo
+    off = MLB_LEAGUE_AVG_RPG + (rating - 1500) * _OFF_COEF
+    dfn = MLB_LEAGUE_AVG_RPG - (rating - 1500) * _DEF_COEF
     d_off, d_def = _STYLE_OVERRIDES.get(t.code, (0.0, 0.0))
     return off + d_off, dfn + d_def
 

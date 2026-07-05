@@ -88,15 +88,20 @@ def expected_points(
     *,
     neutral_site: bool = False,
     league: str = "nfl",
+    home_elo: Optional[float] = None,
+    away_elo: Optional[float] = None,
 ) -> tuple[float, float]:
     """
     Expected points for each side: the average of what the offense usually
     scores and what the opposing defense usually allows, centered on the
     league scoring environment, plus home field.
+
+    `home_elo`/`away_elo` override the teams' static ratings — this is how the
+    self-correcting ratings feed the model.
     """
     params = LEAGUE_PARAMS[league]
-    home_off, home_def = params["ratings"](home_code)
-    away_off, away_def = params["ratings"](away_code)
+    home_off, home_def = params["ratings"](home_code, home_elo)
+    away_off, away_def = params["ratings"](away_code, away_elo)
     home_pts = (home_off + away_def) / 2.0
     away_pts = (away_off + home_def) / 2.0
     if not neutral_site:
@@ -159,6 +164,7 @@ def predict_nfl_game(
 
     base_home_pts, base_away_pts = expected_points(
         home_code, away_code, neutral_site=neutral_site, league=league,
+        home_elo=home_elo, away_elo=away_elo,
     )
 
     # Live conditions: weather and inactives shift expected points

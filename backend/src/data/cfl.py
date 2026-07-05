@@ -59,11 +59,15 @@ def get_cfl_team(code: str) -> CFLTeam:
     return t
 
 
-def get_cfl_ratings(code: str) -> tuple[float, float]:
-    """Return (offense_ppg, defense_ppg_allowed) for a CFL team."""
+def get_cfl_ratings(code: str, elo: float | None = None) -> tuple[float, float]:
+    """Return (offense_ppg, defense_ppg_allowed) for a CFL team.
+
+    `elo` overrides the static prior (e.g. the self-correcting rating).
+    """
     t = get_cfl_team(code)
-    off = CFL_LEAGUE_AVG_PPG + (t.elo - 1500) * _OFF_COEF
-    dfn = CFL_LEAGUE_AVG_PPG - (t.elo - 1500) * _DEF_COEF
+    rating = t.elo if elo is None else elo
+    off = CFL_LEAGUE_AVG_PPG + (rating - 1500) * _OFF_COEF
+    dfn = CFL_LEAGUE_AVG_PPG - (rating - 1500) * _DEF_COEF
     d_off, d_def = _STYLE_OVERRIDES.get(t.code, (0.0, 0.0))
     return off + d_off, dfn + d_def
 

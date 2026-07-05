@@ -50,7 +50,7 @@ from src.predict.adjustments import (
 from src.predict.baseball import predict_mlb_game
 from src.predict.gridiron import predict_nfl_game
 from src.predict.soccer import predict_match
-from src.track import ledger
+from src.track import ledger, ratings
 from src.value.edge import american_to_decimal
 from src.simulate.monte_carlo import simulate_soccer
 from src.value.edge import BetEdge, evaluate_market
@@ -160,7 +160,8 @@ async def predict_soccer(req: SoccerPredictRequest) -> SoccerPredictResponse:
 
     result = predict_match(
         home_code, away_code,
-        home_t.elo, away_t.elo,
+        ratings.adjust("wc", home_code, home_t.elo),
+        ratings.adjust("wc", away_code, away_t.elo),
         home_is_host=home_t.is_host,
         neutral=req.neutral,
         defensive_dampener=req.defensive_dampener,
@@ -294,6 +295,10 @@ async def _predict_gridiron(req: NFLPredictRequest, league: str) -> NFLPredictRe
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    # Self-correcting ratings: base prior + whatever recent results have taught us.
+    home_elo = ratings.adjust(league, home_code, home_t.elo)
+    away_elo = ratings.adjust(league, away_code, away_t.elo)
+
     # ── Live conditions ──
     adjustments = []
     weather: Optional[WeatherReport] = None
@@ -317,7 +322,7 @@ async def _predict_gridiron(req: NFLPredictRequest, league: str) -> NFLPredictRe
     if league == "mlb":
         result = predict_mlb_game(
             home_code, away_code,
-            home_t.elo, away_t.elo,
+            home_elo, away_elo,
             neutral_site=req.neutral_site,
             spread_line=req.spread_line,
             total_line=req.total_line,
@@ -326,7 +331,7 @@ async def _predict_gridiron(req: NFLPredictRequest, league: str) -> NFLPredictRe
     else:
         result = predict_nfl_game(
             home_code, away_code,
-            home_t.elo, away_t.elo,
+            home_elo, away_elo,
             neutral_site=req.neutral_site,
             spread_line=req.spread_line,
             total_line=req.total_line,
@@ -594,6 +599,10 @@ async def _slate_entry(league: str, g: LiveGame, poly_markets) -> dict:
                 crowd_home_prob=pm["home_prob"] if pm else None,
                 market_spread=g.market_spread,
                 market_total=g.market_over_under,
+                home_code=home,
+                away_code=away,
+                home_elo=ratings.adjust(league, home, _TEAM_GETTERS[league](home).elo),
+                away_elo=ratings.adjust(league, away, _TEAM_GETTERS[league](away).elo),
             )
     except HTTPException:
         pass
@@ -617,8 +626,10 @@ async def today(league: str) -> dict:
         fetch_league_markets(league),
     )
     # Settle any finished games first (including yesterday's, which the date
-    # window still covers), then keep only games that belong on today's board.
+    # window still covers), fold results into the self-correcting ratings, then
+    # keep only games that belong on today's board.
     ledger.grade_board(league, board.games)
+    ratings.reconcile()
     current = [g for g in board.games if is_current(g)]
     out_games = [await _slate_entry(league, g, poly_markets) for g in current]
 
@@ -768,11 +779,26 @@ def accuracy() -> dict:
     snapshotted (model + book + crowd at the same instant) and auto-graded
     when the game goes final. Brier scores head-to-head on identical games.
     """
+    ratings.reconcile()
     return {
         **ledger.accuracy_summary(),
         "performance": ledger.performance(),
         "recent": ledger.recent_graded(25),
     }
+
+
+@router.get("/ratings/{league}/form", tags=["Track record"])
+def ratings_form(league: str) -> dict:
+    """
+    How much recent results have moved each team's rating off its static prior
+    (Elo points). Positive = playing above its baseline, negative = below.
+    """
+    league = league.lower()
+    ratings.reconcile()
+    rows = [r for r in ratings.standings(league) if abs(r["delta"]) >= 0.05]
+    for r in rows:
+        r["delta"] = round(r["delta"], 1)
+    return {"league": league, "teams": rows}
 
 
 # ─── Rankings ─────────────────────────────────────────────────────────────────
