@@ -9,6 +9,8 @@ import { LineupManager } from './LineupManager'
 import { EdgesTable } from './EdgesTable'
 import { LineExplorer } from './LineExplorer'
 import { LiveScoreboard } from './LiveScoreboard'
+import { PageHero } from './PageHero'
+import { GridironMatchup } from './GridironMatchup'
 
 interface LeagueConfig {
   league: GridironLeague
@@ -136,12 +138,7 @@ export function GridironPredictor({ config }: { config: LeagueConfig }) {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 space-y-6">
-      <div>
-        <h1 className="font-display text-2xl font-bold text-zinc-100">
-          {config.title} — <span className="text-signal-amber">{config.accent}</span>
-        </h1>
-        <p className="text-sm text-zinc-500 mt-1 font-body">{config.subtitle}</p>
-      </div>
+      <PageHero sport={league} title={config.title} accent={config.accent} subtitle={config.subtitle} />
 
       {/* Live board for this league */}
       <LiveScoreboard league={league} title={`${league.toUpperCase()} today — live`} />
@@ -208,21 +205,7 @@ export function GridironPredictor({ config }: { config: LeagueConfig }) {
       {/* Results */}
       {result && (
         <div className="space-y-4">
-          <div className="flex items-center justify-center gap-6 py-4">
-            <div className="text-center">
-              <div className="text-4xl">{config.icon}</div>
-              <div className="font-display font-semibold text-zinc-100 mt-1">{result.home_team.name}</div>
-              <div className="font-mono text-2xl text-signal-amber">{result.home_expected_pts.toFixed(1)}</div>
-              <div className="font-mono text-xs text-zinc-500">Elo {result.home_team.elo}</div>
-            </div>
-            <div className="font-display text-2xl text-zinc-600 font-bold">@</div>
-            <div className="text-center">
-              <div className="text-4xl">{config.icon}</div>
-              <div className="font-display font-semibold text-zinc-100 mt-1">{result.away_team.name}</div>
-              <div className="font-mono text-2xl text-signal-amber">{result.away_expected_pts.toFixed(1)}</div>
-              <div className="font-mono text-xs text-zinc-500">Elo {result.away_team.elo}</div>
-            </div>
-          </div>
+          <GridironMatchup result={result} league={league} unit={config.unit} />
 
           <ConditionsPanel
             conditions={result.conditions}
