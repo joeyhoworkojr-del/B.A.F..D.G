@@ -24,3 +24,8 @@ celerybeat.pid
 .DS_Store
 *.sqlite3
 pgdata/
+
+# Local prediction-ledger SQLite artifacts (runtime only)
+ledger.db
+*.db
+backend/ledger.db
