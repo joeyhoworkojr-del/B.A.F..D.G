@@ -201,6 +201,27 @@ export interface TodayResponse {
 
 export type GridironLeague = 'nfl' | 'cfl' | 'mlb'
 
+// ─── World Cup spotlight ──────────────────────────────────────────────────────
+
+export interface SoccerUpcomingGame {
+  id: string
+  kickoff: string
+  venue: string
+  home: { code: string; name: string; flag: string }
+  away: { code: string; name: string; flag: string }
+  home_win: number
+  draw: number
+  away_win: number
+  expected_scoreline: [number, number]
+  over_2_5: number
+  conditions: string[]
+}
+
+export interface SoccerUpcomingResponse {
+  generated_with: string
+  games: SoccerUpcomingGame[]
+}
+
 // ─── Track record ─────────────────────────────────────────────────────────────
 
 export interface SignalScore {
