@@ -3,9 +3,11 @@ import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import type {
   AllScoreboardsOut, TodayResponse, EdgeOut, AccuracyResponse, TodayGameOut, GridironLeague,
+  SoccerUpcomingGame, BestBetOut,
 } from '../types'
 import { RatingChip } from '../components/EdgesTable'
 import { Sparkline } from '../components/Sparkline'
+import { SoccerBall } from '../components/SportArt'
 
 const LEAGUE_META: Record<string, { label: string; icon: string }> = {
   wc: { label: 'Soccer', icon: '⚽' },
@@ -43,11 +45,15 @@ export function Dashboard() {
   const [edges, setEdges] = useState<DashEdge[] | null>(null)
   const [acc, setAcc] = useState<AccuracyResponse | null>(null)
   const [boardLeague, setBoardLeague] = useState<GridironLeague>('mlb')
+  const [wc, setWc] = useState<SoccerUpcomingGame[]>([])
+  const [bestBets, setBestBets] = useState<BestBetOut[]>([])
 
   useEffect(() => {
     const load = () => {
       api.liveScores().then(setBoards).catch(() => {})
       api.accuracy().then(setAcc).catch(() => {})
+      api.soccerUpcoming().then(r => setWc(r.games)).catch(() => {})
+      api.bestBets().then(r => setBestBets(r.bets)).catch(() => {})
       Promise.allSettled((['mlb', 'nfl', 'cfl'] as const).map(lg => api.today(lg)))
         .then(results => {
           const all: DashEdge[] = []
@@ -168,6 +174,71 @@ export function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* ── World Cup spotlight — the model pre-run on upcoming fixtures ── */}
+      {wc.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex items-baseline justify-between">
+            <h2 className="flex items-center gap-2 font-display font-semibold text-zinc-100">
+              <SoccerBall className="h-5 w-5 text-signal-blue" /> World Cup 2026 — model board
+              <span className="rounded bg-signal-amber-dim px-1.5 py-0.5 text-[10px] font-mono text-signal-amber">SIMULATED</span>
+            </h2>
+            <Link to="/soccer" className="text-xs font-body text-signal-amber hover:underline">full predictor →</Link>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {wc.slice(0, 4).map(g => {
+              const ph = Math.round(g.home_win * 100), pd = Math.round(g.draw * 100), pa = Math.round(g.away_win * 100)
+              return (
+                <Link key={g.id} to="/soccer" className="card-lift rounded-xl border border-terminal-border bg-terminal-surface p-4 space-y-2">
+                  <div className="flex items-center justify-between font-display font-semibold text-zinc-100">
+                    <span className="flex items-center gap-1.5"><span className="text-lg">{g.home.flag}</span>{g.home.code}</span>
+                    <span className="text-[10px] text-zinc-500">vs</span>
+                    <span className="flex items-center gap-1.5">{g.away.code}<span className="text-lg">{g.away.flag}</span></span>
+                  </div>
+                  <div className="flex h-2 overflow-hidden rounded-full ring-1 ring-terminal-border">
+                    <div style={{ width: `${ph}%` }} className="bg-signal-blue" />
+                    <div style={{ width: `${pd}%` }} className="bg-zinc-400" />
+                    <div style={{ width: `${pa}%` }} className="bg-signal-red" />
+                  </div>
+                  <div className="flex justify-between text-[10px] font-mono">
+                    <span className="text-signal-blue">{ph}%</span>
+                    <span className="text-zinc-500">{pd}% draw</span>
+                    <span className="text-signal-red">{pa}%</span>
+                  </div>
+                  <div className="flex justify-between border-t border-terminal-border pt-1.5 text-[11px] font-body text-zinc-500">
+                    <span>proj {g.expected_scoreline[0]}–{g.expected_scoreline[1]}</span>
+                    <span>{new Date(g.kickoff).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                  </div>
+                </Link>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* ── Best Bets across every sport, odds pulled automatically ── */}
+      {bestBets.length > 0 && (
+        <section className="space-y-2">
+          <div className="flex items-baseline justify-between">
+            <h2 className="font-display font-semibold text-zinc-100">
+              🔥 Best Bets <span className="text-sm font-normal text-zinc-500">— every sport, live odds pulled for you</span>
+            </h2>
+            <Link to="/best-bets" className="text-xs font-body text-signal-amber hover:underline">view all →</Link>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {bestBets.slice(0, 6).map((b, i) => (
+              <div key={i} className="flex items-center gap-3 rounded-xl border border-terminal-border bg-terminal-surface px-3 py-2.5">
+                <RatingChip rating={b.rating} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-body font-medium text-zinc-200">{b.selection}</p>
+                  <p className="truncate text-[10px] font-mono text-zinc-500">{b.market} · {b.away} @ {b.home}</p>
+                </div>
+                {b.edge_pp != null && <span className="shrink-0 font-display font-bold text-signal-green">+{b.edge_pp.toFixed(1)}pp</span>}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ── Live Now ── */}
       {liveGames.length > 0 && (

@@ -797,6 +797,56 @@ async def best_bets() -> BestBetsResponse:
     )
 
 
+# ─── World Cup spotlight for the dashboard ────────────────────────────────────
+
+@router.get("/soccer/upcoming", tags=["Predictions"])
+async def soccer_upcoming(limit: int = 8) -> dict:
+    """
+    Upcoming World Cup fixtures with the model already run (win/draw/win,
+    projected scoreline, over 2.5) plus live weather/altitude — so the front
+    page can feature the tournament with nothing to fill in.
+    """
+    now = datetime.now(timezone.utc)
+    upcoming = sorted(
+        (f for f in R16_FIXTURES if _kickoff_upcoming(f.kickoff, now)),
+        key=lambda f: f.kickoff,
+    )
+    venues = {f.venue for f in upcoming if f.venue}
+    reports = await asyncio.gather(*(fetch_weather(v) for v in venues))
+    wx = dict(zip(venues, reports))
+
+    games: list[dict] = []
+    for fix in upcoming[:limit]:
+        try:
+            ht = get_team(fix.home)
+            at = get_team(fix.away)
+        except KeyError:
+            continue
+        adj = list(soccer_weather_adjustments(wx.get(fix.venue)))
+        adj += soccer_altitude_adjustments(fix.venue, fix.home, fix.away, ht.name, at.name)
+        adj += soccer_lineup_adjustments(fix.home, fix.away)
+        r = predict_match(
+            fix.home, fix.away,
+            ratings.adjust("wc", fix.home, ht.elo),
+            ratings.adjust("wc", fix.away, at.elo),
+            home_is_host=fix.home_is_host_nation, neutral=fix.neutral,
+            sr_home_win=fix.sr_home_win, sr_draw=fix.sr_draw, sr_away_win=fix.sr_away_win,
+            adjustments=adj,
+        )
+        b = r.blended_probs
+        games.append({
+            "id": fix.id, "kickoff": fix.kickoff, "venue": fix.venue,
+            "home": {"code": ht.code, "name": ht.name, "flag": ht.flag},
+            "away": {"code": at.code, "name": at.name, "flag": at.flag},
+            "home_win": b.home_win, "draw": b.draw, "away_win": b.away_win,
+            "expected_scoreline": list(r.totals.expected_scoreline),
+            "over_2_5": r.totals.over_2_5,
+            "conditions": [a.label for a in adj],
+        })
+
+    return {"generated_with": "Dixon-Coles model + live conditions", "games": games}
+
+
 # ─── Track record ─────────────────────────────────────────────────────────────
 
 @router.get("/accuracy", tags=["Track record"])

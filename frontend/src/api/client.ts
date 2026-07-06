@@ -12,6 +12,7 @@ import type {
   TodayResponse,
   GridironLeague,
   AccuracyResponse,
+  SoccerUpcomingResponse,
 } from '../types'
 
 // Strip trailing slashes so VITE_API_BASE="/" (same-origin via nginx proxy)
@@ -117,4 +118,7 @@ export const api = {
 
   // Track record
   accuracy: () => get<AccuracyResponse>('/api/v1/accuracy'),
+
+  // World Cup spotlight (model pre-run on upcoming fixtures)
+  soccerUpcoming: () => get<SoccerUpcomingResponse>('/api/v1/soccer/upcoming'),
 }
