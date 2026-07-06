@@ -206,15 +206,17 @@ export type GridironLeague = 'nfl' | 'cfl' | 'mlb'
 export interface SoccerUpcomingGame {
   id: string
   kickoff: string
-  venue: string
+  state: 'pre' | 'in' | 'post'
+  detail: string
   home: { code: string; name: string; flag: string }
   away: { code: string; name: string; flag: string }
+  home_score?: number | null
+  away_score?: number | null
   home_win: number
   draw: number
   away_win: number
   expected_scoreline: [number, number]
   over_2_5: number
-  conditions: string[]
 }
 
 export interface SoccerUpcomingResponse {

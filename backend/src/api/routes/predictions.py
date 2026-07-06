@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -31,6 +31,7 @@ from src.data.mlb import all_mlb_teams_sorted, get_mlb_team
 from src.data.nfl import all_nfl_teams_sorted, get_nfl_team
 from src.data.world_cup import (
     R16_FIXTURES,
+    TEAMS,
     all_teams_sorted,
     get_scorers_for_team,
     get_team,
@@ -690,7 +691,6 @@ async def best_bets() -> BestBetsResponse:
     live weather + lineups applied, and rank the biggest disagreements between
     our model and the live market prices. Games already played never appear.
     """
-    now = datetime.now(timezone.utc)
     bets: list[BestBetOut] = []
 
     # ── Live league slates: model vs the live sportsbook/crowd prices ──
@@ -722,72 +722,32 @@ async def best_bets() -> BestBetsResponse:
                     note=f"Model vs live {g.market_provider or 'market'} price",
                 ))
 
-    # ── Soccer: upcoming fixtures only ──
-    upcoming = [f for f in R16_FIXTURES if _kickoff_upcoming(f.kickoff, now)]
-    venues = {f.venue for f in upcoming if f.venue}
-    reports = await asyncio.gather(*(fetch_weather(v) for v in venues))
-    weather_by_venue = dict(zip(venues, reports))
-
-    for fix in upcoming:
-        try:
-            ht = get_team(fix.home)
-            at = get_team(fix.away)
-        except KeyError:
-            continue
-
-        adjustments = list(soccer_weather_adjustments(weather_by_venue.get(fix.venue)))
-        adjustments += soccer_altitude_adjustments(fix.venue, fix.home, fix.away, ht.name, at.name)
-        adjustments += soccer_lineup_adjustments(fix.home, fix.away)
-
-        result = predict_match(
-            fix.home, fix.away, ht.elo, at.elo,
-            home_is_host=fix.home_is_host_nation,
-            neutral=fix.neutral,
-            sr_home_win=fix.sr_home_win,
-            sr_draw=fix.sr_draw,
-            sr_away_win=fix.sr_away_win,
-            adjustments=adjustments,
-        )
-
+    # ── Soccer: only real, scheduled World Cup games from the live feed ──
+    for wc in await _wc_model_games():
+        if wc["state"] != "pre":
+            continue   # conviction plays are for games that haven't kicked off
+        h, a = wc["home"], wc["away"]
         common = dict(
-            fixture_id=fix.id, kickoff=fix.kickoff, venue=fix.venue,
-            home=ht.name, away=at.name, home_flag=ht.flag, away_flag=at.flag,
+            fixture_id=f"wc:{wc['id']}", kickoff=wc["kickoff"], venue="",
+            home=h["name"], away=a["name"], home_flag=h["flag"], away_flag=a["flag"],
         )
-
-        # Blended probs vs SR reference: the blend already anchors to SR, so a
-        # residual gap only appears when live data or the model disagree hard.
-        # Draws are excluded — Poisson models systematically inflate them.
-        if fix.sr_home_win is not None:
-            for selection, model_p, sr_p in (
-                (f"{ht.name} win", result.blended_probs.home_win, fix.sr_home_win),
-                (f"{at.name} win", result.blended_probs.away_win, fix.sr_away_win),
-            ):
-                if sr_p is None:
-                    continue
-                edge = (model_p - sr_p) * 100.0
-                if edge >= 2.5:
-                    bets.append(BestBetOut(
-                        **common, market="1X2", selection=selection,
-                        model_prob=model_p, market_prob=sr_p,
-                        edge_pp=edge,
-                        rating="A" if edge >= 4 else "B",
-                        note="Blended model vs SportRadar reference price",
-                    ))
-
-        # Totals signals: strong model conviction on 2.5 either way
-        if result.totals.over_2_5 >= 0.62:
+        # Strong-favourite conviction (no live soccer price to compare against)
+        fav_p, fav = (wc["home_win"], h) if wc["home_win"] >= wc["away_win"] else (wc["away_win"], a)
+        if fav_p >= 0.55:
             bets.append(BestBetOut(
-                **common, market="Total 2.5", selection="Over 2.5",
-                model_prob=result.totals.over_2_5, market_prob=None, edge_pp=None,
-                rating="B" if result.totals.over_2_5 >= 0.68 else "C",
-                note="Model conviction incl. live weather/lineups — compare to your book's price",
+                **common, market="1X2", selection=f"{fav['name']} win",
+                model_prob=fav_p, market_prob=None, edge_pp=None,
+                rating="B" if fav_p >= 0.6 else "C",
+                note="Model conviction — compare to your book's price",
             ))
-        elif result.totals.under_2_5 >= 0.62:
+        over = wc["over_2_5"]
+        if over >= 0.60 or over <= 0.40:
+            sel, p = ("Over 2.5", over) if over >= 0.60 else ("Under 2.5", 1 - over)
             bets.append(BestBetOut(
-                **common, market="Total 2.5", selection="Under 2.5",
-                model_prob=result.totals.under_2_5, market_prob=None, edge_pp=None,
-                rating="B" if result.totals.under_2_5 >= 0.68 else "C",
-                note="Model conviction incl. live weather/lineups — compare to your book's price",
+                **common, market="Total 2.5", selection=sel,
+                model_prob=p, market_prob=None, edge_pp=None,
+                rating="B" if p >= 0.66 else "C",
+                note="Model total conviction — compare to your book's price",
             ))
 
     bets.sort(key=lambda b: (b.edge_pp is None, -(b.edge_pp or 0), -b.model_prob))
@@ -799,52 +759,64 @@ async def best_bets() -> BestBetsResponse:
 
 # ─── World Cup spotlight for the dashboard ────────────────────────────────────
 
-@router.get("/soccer/upcoming", tags=["Predictions"])
-async def soccer_upcoming(limit: int = 8) -> dict:
-    """
-    Upcoming World Cup fixtures with the model already run (win/draw/win,
-    projected scoreline, over 2.5) plus live weather/altitude — so the front
-    page can feature the tournament with nothing to fill in.
-    """
-    now = datetime.now(timezone.utc)
-    upcoming = sorted(
-        (f for f in R16_FIXTURES if _kickoff_upcoming(f.kickoff, now)),
-        key=lambda f: f.kickoff,
-    )
-    venues = {f.venue for f in upcoming if f.venue}
-    reports = await asyncio.gather(*(fetch_weather(v) for v in venues))
-    wx = dict(zip(venues, reports))
+# Map an ESPN World Cup entrant (display name or abbreviation) to our team.
+_WC_NAME_TO_CODE = {t.name.lower(): t.code for t in TEAMS.values()}
+_WC_ABBR_ALIASES = {"USA": "USA", "MEX": "MEX", "KOR": "KOR", "NED": "NED"}
 
+
+def _map_wc_team(name: str, abbr: str) -> Optional[str]:
+    """Resolve a live World Cup team to our code by name first, then abbr."""
+    if name and name.lower() in _WC_NAME_TO_CODE:
+        return _WC_NAME_TO_CODE[name.lower()]
+    code = _WC_ABBR_ALIASES.get(abbr.upper(), abbr.upper())
+    return code if code in TEAMS else None
+
+
+async def _wc_model_games() -> list[dict]:
+    """
+    Real World Cup games from the live ESPN feed (scheduled or in progress),
+    each with the model run. Returns [] when nothing is on — we never invent
+    fixtures for the front page.
+    """
+    board = await fetch_scoreboard("wc")
+    ledger.grade_board("wc", board.games)
     games: list[dict] = []
-    for fix in upcoming[:limit]:
-        try:
-            ht = get_team(fix.home)
-            at = get_team(fix.away)
-        except KeyError:
+    for g in board.games:
+        if g.state == "post" or not is_current(g):
             continue
-        adj = list(soccer_weather_adjustments(wx.get(fix.venue)))
-        adj += soccer_altitude_adjustments(fix.venue, fix.home, fix.away, ht.name, at.name)
-        adj += soccer_lineup_adjustments(fix.home, fix.away)
+        home = _map_wc_team(g.home, g.home_abbr)
+        away = _map_wc_team(g.away, g.away_abbr)
+        if not (home and away and home != away):
+            continue
+        ht, at = get_team(home), get_team(away)
         r = predict_match(
-            fix.home, fix.away,
-            ratings.adjust("wc", fix.home, ht.elo),
-            ratings.adjust("wc", fix.away, at.elo),
-            home_is_host=fix.home_is_host_nation, neutral=fix.neutral,
-            sr_home_win=fix.sr_home_win, sr_draw=fix.sr_draw, sr_away_win=fix.sr_away_win,
-            adjustments=adj,
+            home, away,
+            ratings.adjust("wc", home, ht.elo),
+            ratings.adjust("wc", away, at.elo),
+            neutral=True,
         )
         b = r.blended_probs
         games.append({
-            "id": fix.id, "kickoff": fix.kickoff, "venue": fix.venue,
+            "id": g.event_id, "kickoff": g.kickoff, "state": g.state, "detail": g.detail,
             "home": {"code": ht.code, "name": ht.name, "flag": ht.flag},
             "away": {"code": at.code, "name": at.name, "flag": at.flag},
+            "home_score": g.home_score, "away_score": g.away_score,
             "home_win": b.home_win, "draw": b.draw, "away_win": b.away_win,
             "expected_scoreline": list(r.totals.expected_scoreline),
             "over_2_5": r.totals.over_2_5,
-            "conditions": [a.label for a in adj],
         })
+    return games
 
-    return {"generated_with": "Dixon-Coles model + live conditions", "games": games}
+
+@router.get("/soccer/upcoming", tags=["Predictions"])
+async def soccer_upcoming(limit: int = 8) -> dict:
+    """
+    Real, scheduled/live World Cup games (from the ESPN feed) with the model
+    already run. Empty when no World Cup games are actually on — the front page
+    never shows invented fixtures.
+    """
+    games = sorted(await _wc_model_games(), key=lambda x: (x["state"] != "in", x["kickoff"]))
+    return {"generated_with": "Dixon-Coles model on live ESPN fixtures", "games": games[:limit]}
 
 
 # ─── Track record ─────────────────────────────────────────────────────────────
