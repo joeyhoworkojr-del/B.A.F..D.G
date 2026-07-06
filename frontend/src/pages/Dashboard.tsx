@@ -181,7 +181,7 @@ export function Dashboard() {
           <div className="flex items-baseline justify-between">
             <h2 className="flex items-center gap-2 font-display font-semibold text-zinc-100">
               <SoccerBall className="h-5 w-5 text-signal-blue" /> World Cup 2026 — model board
-              <span className="rounded bg-signal-amber-dim px-1.5 py-0.5 text-[10px] font-mono text-signal-amber">SIMULATED</span>
+              <span className="rounded bg-signal-amber-dim px-1.5 py-0.5 text-[10px] font-mono text-signal-amber">LIVE FIXTURES</span>
             </h2>
             <Link to="/soccer" className="text-xs font-body text-signal-amber hover:underline">full predictor →</Link>
           </div>
@@ -205,9 +205,13 @@ export function Dashboard() {
                     <span className="text-zinc-500">{pd}% draw</span>
                     <span className="text-signal-red">{pa}%</span>
                   </div>
-                  <div className="flex justify-between border-t border-terminal-border pt-1.5 text-[11px] font-body text-zinc-500">
-                    <span>proj {g.expected_scoreline[0]}–{g.expected_scoreline[1]}</span>
-                    <span>{new Date(g.kickoff).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                  <div className="flex justify-between border-t border-terminal-border pt-1.5 text-[11px] font-body">
+                    {g.state === 'in'
+                      ? <span className="font-semibold text-signal-green">{g.home_score ?? 0}–{g.away_score ?? 0} · {g.detail}</span>
+                      : <span className="text-zinc-500">proj {g.expected_scoreline[0]}–{g.expected_scoreline[1]}</span>}
+                    <span className="text-zinc-500">
+                      {g.state === 'in' ? 'LIVE' : new Date(g.kickoff).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                    </span>
                   </div>
                 </Link>
               )
