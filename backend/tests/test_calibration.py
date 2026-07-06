@@ -27,6 +27,25 @@ def test_soccer_big_mismatch_not_overconfident() -> None:
     assert r.model_probs.home_win < 0.80
 
 
+def test_soccer_styles_are_net_neutral() -> None:
+    # Style multipliers must only redistribute scoring, never shave totals
+    # across the board (that was re-introducing an under-lean).
+    from src.data.world_cup import TEAMS, get_style
+    atts = [get_style(c)[0] for c in TEAMS]
+    defs = [get_style(c)[1] for c in TEAMS]
+    assert abs(sum(atts) / len(atts) - 1.0) < 0.02
+    assert abs(sum(defs) / len(defs) - 1.0) < 0.02
+
+
+def test_soccer_styled_even_match_not_under_biased() -> None:
+    # With styles applied (as the live model runs), an average matchup must
+    # still land on the league total, not below it.
+    r = predict_match("A", "B", 1850, 1850, use_styles=True)
+    total = r.model_probs.home_xg + r.model_probs.away_xg
+    assert 2.5 <= total <= 2.95
+    assert 0.45 <= r.totals.over_2_5 <= 0.56
+
+
 def test_mlb_favourite_not_compressed_to_a_coin_flip() -> None:
     # KC/MIN carry no park factor or style override → pure rating effect.
     r = predict_mlb_game("KC", "MIN", 1545, 1455)              # +90 Elo home fav

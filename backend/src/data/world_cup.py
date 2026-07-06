@@ -285,9 +285,19 @@ TEAM_STYLES: dict[str, tuple[float, float]] = {
 }
 
 
+# The hand-set style multipliers average slightly below 1.0 (attack ≈ 0.978,
+# defense ≈ 0.993), so applying them raw shaves a few percent off *every* total
+# and re-introduces an under-lean on top of the μ calibration. Normalise by the
+# means so styles only ever redistribute scoring between teams — an average
+# matchup lands on the league total, defensive sides below it, open sides above.
+_STYLE_MEAN_ATT = sum(a for a, _ in TEAM_STYLES.values()) / len(TEAM_STYLES)
+_STYLE_MEAN_DEF = sum(d for _, d in TEAM_STYLES.values()) / len(TEAM_STYLES)
+
+
 def get_style(code: str) -> tuple[float, float]:
-    """Return (attack, defense) multipliers; (1.0, 1.0) if unlisted."""
-    return TEAM_STYLES.get(code.upper(), (1.0, 1.0))
+    """Return net-neutral (attack, defense) multipliers; average team = (1, 1)."""
+    att, dfn = TEAM_STYLES.get(code.upper(), (_STYLE_MEAN_ATT, _STYLE_MEAN_DEF))
+    return att / _STYLE_MEAN_ATT, dfn / _STYLE_MEAN_DEF
 
 
 def get_team(code: str) -> Team:
