@@ -15,7 +15,7 @@ import { EdgesTable } from '../components/EdgesTable'
 import { LineExplorer } from '../components/LineExplorer'
 import { LiveScoreboard } from '../components/LiveScoreboard'
 import { MatchupHero } from '../components/MatchupHero'
-import { PitchBackdrop, SoccerBall } from '../components/PitchBackdrop'
+import { PageHero } from '../components/PageHero'
 
 type Tab = 'overview' | 'totals' | 'edge' | 'props' | 'heatmap' | 'simulation' | 'why'
 
@@ -124,23 +124,12 @@ export function Predict() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 space-y-6">
-      {/* Header — pitch-art banner */}
-      <div className="relative overflow-hidden rounded-2xl border border-terminal-border bg-terminal-surface">
-        <PitchBackdrop className="pointer-events-none absolute inset-0 h-full w-full" />
-        <div className="relative flex items-center gap-3 px-5 py-6">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-signal-amber-dim text-signal-blue">
-            <SoccerBall className="h-7 w-7" />
-          </span>
-          <div>
-            <h1 className="font-display text-2xl font-bold text-zinc-100">
-              Match Predictor — <span className="text-signal-amber">World Cup 2026</span>
-            </h1>
-            <p className="mt-1 font-body text-sm text-zinc-500">
-              Dixon-Coles Elo model with team styles, altitude, live weather and team news. 50k Monte Carlo simulations.
-            </p>
-          </div>
-        </div>
-      </div>
+      <PageHero
+        sport="wc"
+        title="Match Predictor"
+        accent="World Cup 2026"
+        subtitle="Dixon-Coles Elo model with team styles, altitude, live weather and team news. 50k Monte Carlo simulations."
+      />
 
       {/* Live World Cup board */}
       <LiveScoreboard league="wc" title="World Cup today — live" />
