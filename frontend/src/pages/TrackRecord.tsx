@@ -127,6 +127,17 @@ export function TrackRecord() {
           <SignalCard label="Sportsbook" score={overall.book} best={isBest(overall.book)} accent="#b45309" />
           <SignalCard label="Polymarket crowd" score={overall.crowd} best={isBest(overall.crowd)} accent="#7c3aed" />
         </div>
+        {overall.model?.brier != null && overall.book?.brier != null && (
+          <div className={`rounded-lg border px-4 py-3 text-sm font-body ${
+            overall.model.brier <= overall.book.brier
+              ? 'border-signal-green/40 bg-green-50 text-signal-green'
+              : 'border-terminal-border bg-terminal-muted text-zinc-500'
+          }`}>
+            {overall.model.brier <= overall.book.brier
+              ? `Model is beating the sportsbook by ${((overall.book.brier - overall.model.brier)).toFixed(4)} Brier over ${overall.model.n} graded games — that's the number that actually matters.`
+              : `Model is trailing the sportsbook by ${((overall.model.brier - overall.book.brier)).toFixed(4)} Brier over ${overall.model.n} games. Nothing public reliably beats the closing line; the market-anchored "consensus" pick keeps our recommendations close to it while the ratings keep learning.`}
+          </div>
+        )}
       </section>
 
       {/* Per-league */}

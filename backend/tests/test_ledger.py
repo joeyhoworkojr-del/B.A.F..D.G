@@ -84,6 +84,21 @@ def test_performance_units_math() -> None:
     assert len(perf["series"]) == 2
 
 
+def test_performance_settles_on_consensus_pick() -> None:
+    # Raw model leans home (0.65) but the market-anchored consensus leans away
+    # (home 0.40). The consensus pick (away) — what the product recommends —
+    # should drive win rate and P/L; the raw model is kept only for Brier.
+    ledger.record_pregame(
+        event_id="nfl:c1", league="nfl", kickoff="2026-07-04T20:00Z",
+        home="Chiefs", away="Bills", model_home_prob=0.65,
+        book_home_prob=0.45, consensus_home_prob=0.40,
+    )
+    ledger.grade("nfl:c1", 10, 24)          # away won
+    perf = ledger.performance()
+    assert perf["win_rate"] == 1.0          # consensus picked away, away won
+    assert perf["profit_units"] > 0
+
+
 def test_today_flow_populates_ledger() -> None:
     """Pre-game slate snapshots; a later final grades it."""
     from src.ingest.espn import Scoreboard, _parse_event

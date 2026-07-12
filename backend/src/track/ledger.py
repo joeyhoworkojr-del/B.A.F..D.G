@@ -47,7 +47,8 @@ CREATE TABLE IF NOT EXISTS predictions (
     away_code       TEXT,
     home_elo        REAL,
     away_elo        REAL,
-    elo_applied     INTEGER DEFAULT 0
+    elo_applied     INTEGER DEFAULT 0,
+    consensus_home_prob REAL
 );
 """
 
@@ -58,6 +59,8 @@ _MIGRATIONS = [
     ("home_elo", "REAL"),
     ("away_elo", "REAL"),
     ("elo_applied", "INTEGER DEFAULT 0"),
+    # Market-anchored "consensus" prob — what the product actually recommends.
+    ("consensus_home_prob", "REAL"),
 ]
 
 
@@ -113,11 +116,14 @@ def record_pregame(
     away_code: Optional[str] = None,
     home_elo: Optional[float] = None,
     away_elo: Optional[float] = None,
+    consensus_home_prob: Optional[float] = None,
 ) -> None:
     """Upsert the latest pre-game snapshot; frozen once the game is graded.
 
     `home_code`/`away_code` and the snapshot Elos are what the self-correcting
-    ratings module reconciles from once the game grades.
+    ratings module reconciles from once the game grades. `consensus_home_prob`
+    is the market-anchored recommendation (what P/L is settled on); the raw
+    `model_home_prob` is kept for the honest model-vs-book Brier comparison.
     """
     with _LOCK, _connect() as conn:
         conn.execute(
@@ -126,8 +132,8 @@ def record_pregame(
                 event_id, league, kickoff, home, away, snapshot_at,
                 model_home_prob, model_total, book_home_prob,
                 crowd_home_prob, market_spread, market_total,
-                home_code, away_code, home_elo, away_elo
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                home_code, away_code, home_elo, away_elo, consensus_home_prob
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(event_id) DO UPDATE SET
                 snapshot_at     = excluded.snapshot_at,
                 model_home_prob = excluded.model_home_prob,
@@ -139,13 +145,14 @@ def record_pregame(
                 home_code       = excluded.home_code,
                 away_code       = excluded.away_code,
                 home_elo        = excluded.home_elo,
-                away_elo        = excluded.away_elo
+                away_elo        = excluded.away_elo,
+                consensus_home_prob = excluded.consensus_home_prob
             WHERE predictions.graded = 0
             """,
             (event_id, league, kickoff, home, away, _now(),
              model_home_prob, model_total, book_home_prob,
              crowd_home_prob, market_spread, market_total,
-             home_code, away_code, home_elo, away_elo),
+             home_code, away_code, home_elo, away_elo, consensus_home_prob),
         )
 
 
@@ -227,9 +234,14 @@ def accuracy_summary() -> dict:
 
 def performance() -> dict:
     """
-    Honest trading-desk stats for the graded ledger, treating the model's
-    moneyline pick as a 1-unit bet settled at the book's no-vig fair odds:
+    Honest trading-desk stats for the graded ledger. The recommended pick is
+    settled as a 1-unit bet at the book's no-vig fair odds:
       win  → +(1/p_book − 1) units,  loss → −1 unit.
+
+    The pick follows the market-anchored *consensus* probability (what the
+    product actually advises) when present, falling back to the raw model for
+    older rows. `avg_edge_pp` still measures the raw model's divergence from the
+    book on the bet side, so we can see what the model adds.
     """
     with _LOCK, _connect() as conn:
         rows = conn.execute(
@@ -244,18 +256,20 @@ def performance() -> dict:
     edge_n = 0
 
     for r in rows:
-        model_p = r["model_home_prob"]
-        if model_p is None:
+        raw_p = r["model_home_prob"]
+        if raw_p is None:
             continue
-        pick_home = model_p >= 0.5
+        cons_p = r["consensus_home_prob"]
+        pick_p = cons_p if cons_p is not None else raw_p
+        pick_home = pick_p >= 0.5
         pick_won = bool(r["home_won"]) == pick_home
         wins += 1 if pick_won else 0
 
         book_home = r["book_home_prob"]
         if book_home is not None:
             pick_book_p = book_home if pick_home else 1 - book_home
-            pick_model_p = model_p if pick_home else 1 - model_p
-            edge_sum += (pick_model_p - pick_book_p) * 100
+            pick_raw_p = raw_p if pick_home else 1 - raw_p
+            edge_sum += (pick_raw_p - pick_book_p) * 100
             edge_n += 1
             payout = (1.0 / max(pick_book_p, 1e-6)) - 1.0
             cum += payout if pick_won else -1.0

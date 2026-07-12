@@ -502,7 +502,7 @@ def _map_code(league: str, abbr: str) -> Optional[str]:
 # is the sharpest public estimator, so a modest anchor de-biases the number the
 # user actually reads. The RAW model is still used for edge detection and the
 # track record, so this never manufactures or erases an edge.
-MARKET_ANCHOR_WEIGHT = 0.35
+MARKET_ANCHOR_WEIGHT = 0.50
 
 
 def _no_vig_home_prob(g: LiveGame) -> Optional[float]:
@@ -631,6 +631,7 @@ async def _slate_entry(league: str, g: LiveGame, poly_markets) -> dict:
                 away_code=away,
                 home_elo=ratings.adjust(league, home, _TEAM_GETTERS[league](home).elo),
                 away_elo=ratings.adjust(league, away, _TEAM_GETTERS[league](away).elo),
+                consensus_home_prob=cal_home,
             )
     except HTTPException:
         pass
