@@ -504,6 +504,21 @@ def _map_code(league: str, abbr: str) -> Optional[str]:
 # track record, so this never manufactures or erases an edge.
 MARKET_ANCHOR_WEIGHT = 0.50
 
+# Raw rating models are systematically over-confident, so hunting for edges
+# straight off the raw probability makes the model disagree with the market on
+# *every* game — it "always fades the crowd." Before comparing to a market
+# price we shrink the raw prob toward a 50/50 coin flip: marginal leans collapse
+# into agreement with the book/crowd, and only a genuinely strong disagreement
+# still clears the A/B edge bar and gets flagged. This is the share of the raw
+# deviation from 50% we keep when detecting edges (headline prob + the Brier
+# ledger keep the un-shrunk model).
+EDGE_CONFIDENCE_SHRINK = 0.72
+
+
+def _debias(p: float) -> float:
+    """Shrink an over-confident model prob toward 50% for edge detection."""
+    return 0.5 + EDGE_CONFIDENCE_SHRINK * (p - 0.5)
+
 
 def _no_vig_home_prob(g: LiveGame) -> Optional[float]:
     """No-vig implied home win probability from the live moneylines, or None."""
@@ -571,8 +586,8 @@ async def _slate_entry(league: str, g: LiveGame, poly_markets) -> dict:
             edges += evaluate_market(
                 "Moneyline (live)",
                 [
-                    (f"{home} ML", pred.home_win_prob, g.market_home_ml),
-                    (f"{away} ML", pred.away_win_prob, g.market_away_ml),
+                    (f"{home} ML", _debias(pred.home_win_prob), g.market_home_ml),
+                    (f"{away} ML", _debias(pred.away_win_prob), g.market_away_ml),
                 ],
                 odds_format="american",
             )
@@ -581,8 +596,8 @@ async def _slate_entry(league: str, g: LiveGame, poly_markets) -> dict:
             edges += evaluate_market(
                 f"Total {g.market_over_under} (−110 assumed)",
                 [
-                    (f"Over {g.market_over_under}", pred.over_prob, -110),
-                    (f"Under {g.market_over_under}", pred.under_prob, -110),
+                    (f"Over {g.market_over_under}", _debias(pred.over_prob), -110),
+                    (f"Under {g.market_over_under}", _debias(pred.under_prob), -110),
                 ],
                 odds_format="american",
             )
@@ -590,8 +605,8 @@ async def _slate_entry(league: str, g: LiveGame, poly_markets) -> dict:
             edges += evaluate_market(
                 f"Spread {g.market_spread:+.1f} (−110 assumed)",
                 [
-                    (f"{home} {g.market_spread:+.1f}", pred.home_cover_prob, -110),
-                    (f"{away} {-g.market_spread:+.1f}", pred.away_cover_prob, -110),
+                    (f"{home} {g.market_spread:+.1f}", _debias(pred.home_cover_prob), -110),
+                    (f"{away} {-g.market_spread:+.1f}", _debias(pred.away_cover_prob), -110),
                 ],
                 odds_format="american",
             )
@@ -601,9 +616,9 @@ async def _slate_entry(league: str, g: LiveGame, poly_markets) -> dict:
             edges += evaluate_market(
                 "Polymarket crowd",
                 [
-                    (f"{home} vs crowd", pred.home_win_prob,
+                    (f"{home} vs crowd", _debias(pred.home_win_prob),
                      max(1.01, 1.0 / max(pm["home_prob"], 1e-6))),
-                    (f"{away} vs crowd", pred.away_win_prob,
+                    (f"{away} vs crowd", _debias(pred.away_win_prob),
                      max(1.01, 1.0 / max(pm["away_prob"], 1e-6))),
                 ],
                 odds_format="decimal",
