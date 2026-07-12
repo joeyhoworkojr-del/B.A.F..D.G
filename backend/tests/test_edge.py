@@ -86,3 +86,21 @@ def test_invalid_odds_raise() -> None:
         implied_probability(0.9)
     with pytest.raises(ValueError):
         american_to_decimal(0)
+
+
+def test_debias_shrinks_overconfidence_toward_coinflip() -> None:
+    """Edge detection must not fade the crowd off raw over-confidence: shrinking
+    toward 50% keeps direction, halves-ish marginal edges, keeps strong ones."""
+    from src.api.routes.predictions import _debias, EDGE_CONFIDENCE_SHRINK
+
+    assert _debias(0.5) == 0.5                       # a coin flip stays a coin flip
+    assert abs(_debias(0.70) - (0.5 + EDGE_CONFIDENCE_SHRINK * 0.20)) < 1e-9
+    # Always pulled toward 50%, never past it, direction preserved.
+    for p in (0.55, 0.62, 0.80, 0.95):
+        assert 0.5 < _debias(p) < p
+        assert abs(_debias(1 - p) - (1 - _debias(p))) < 1e-12   # symmetric
+    # A marginal 3pp raw lean vs the market shrinks below the C bar (1.5pp);
+    # a strong 12pp raw lean still clears the A bar (6pp) — still "gets upset."
+    market = 0.55
+    assert (_debias(0.58) - market) * 100 < 1.5
+    assert (_debias(0.67) - market) * 100 >= 6.0
