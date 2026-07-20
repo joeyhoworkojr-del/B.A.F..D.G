@@ -196,6 +196,29 @@ The app is a standard Next.js 15 project and deploys cleanly to any Node host.
 3. Set `NEXT_PUBLIC_SITE_URL` (and email provider vars if used).
 4. Deploy — build command `next build`, output handled automatically.
 
+### GitHub Pages (free, no external account)
+
+A workflow at `.github/workflows/deploy-elysium-pages.yml` builds the site as a
+static export and publishes it to GitHub Pages. It enables Pages itself
+(`actions/configure-pages` with `enablement: true`), so **no manual repo setting
+is required** — it just needs to run on the default branch. Once this branch is
+merged to `main`, the site auto-deploys to:
+
+```
+https://<owner>.github.io/<repo>/
+```
+
+You can also trigger it manually from the repo's **Actions** tab → *Deploy
+Elysium site to GitHub Pages* → **Run workflow** (on `main`).
+
+**Static-export trade-off:** GitHub Pages serves static files only, so the
+server-side contact API (`/api/contact`) is not available there. In the static
+build the contact form falls back to opening the visitor's email client
+(`mailto:`) pre-filled with their message. Deploying to **Vercel** (above) keeps
+the full server-side API. Static mode is controlled by the `STATIC_EXPORT` /
+`NEXT_PUBLIC_STATIC_EXPORT` / `PAGES_BASE_PATH` / `NEXT_PUBLIC_BASE_PATH` env
+vars — see `next.config.ts` and the workflow.
+
 ### Self-hosted / Docker
 
 ```bash

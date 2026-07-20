@@ -7,6 +7,7 @@ import { Footer } from "@/components/layout/footer";
 import { CursorGlow } from "@/components/layout/cursor-glow";
 import { PageTransition } from "@/components/layout/page-transition";
 import { SITE_URL, organizationSchema } from "@/lib/metadata";
+import { asset } from "@/lib/asset";
 import { company } from "@/data/company";
 
 const inter = Inter({
@@ -44,7 +45,7 @@ export const metadata: Metadata = {
     "biosciences",
   ],
   robots: { index: true, follow: true },
-  icons: { icon: "/favicon.svg" },
+  icons: { icon: asset("/favicon.svg") },
 };
 
 export const viewport: Viewport = {

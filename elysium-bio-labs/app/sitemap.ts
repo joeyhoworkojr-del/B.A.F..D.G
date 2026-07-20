@@ -1,6 +1,9 @@
 import type { MetadataRoute } from "next";
 import { SITE_URL } from "@/lib/metadata";
 import { products } from "@/data/products";
+
+// Required so this route can be statically exported (GitHub Pages build).
+export const dynamic = "force-static";
 import { resources } from "@/data/resources";
 import { legalPages } from "@/data/legal";
 

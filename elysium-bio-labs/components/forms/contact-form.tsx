@@ -14,6 +14,9 @@ import {
 } from "@/lib/validation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { company } from "@/data/company";
+
+const CONTACT_EMAIL = company.email;
 
 type SubmitState = "idle" | "submitting" | "success" | "error";
 
@@ -42,9 +45,36 @@ export function ContactForm({
     },
   });
 
+  // In static-export builds (GitHub Pages) there is no server API route, so we
+  // fall back to opening the user's email client with a pre-filled message.
+  const isStatic = process.env.NEXT_PUBLIC_STATIC_EXPORT === "1";
+
   const onSubmit = async (values: ContactFormValues) => {
     setState("submitting");
     setServerError(null);
+
+    if (isStatic) {
+      const subject = `Inquiry: ${values.inquiryType}`;
+      const body = [
+        `Name: ${values.firstName} ${values.lastName}`,
+        `Organization: ${values.organization}`,
+        `Email: ${values.email}`,
+        values.phone ? `Phone: ${values.phone}` : null,
+        values.productOrBatch
+          ? `Product / batch: ${values.productOrBatch}`
+          : null,
+        "",
+        values.message,
+      ]
+        .filter(Boolean)
+        .join("\n");
+      window.location.href = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(
+        subject,
+      )}&body=${encodeURIComponent(body)}`;
+      setState("success");
+      return;
+    }
+
     try {
       const res = await fetch("/api/contact", {
         method: "POST",

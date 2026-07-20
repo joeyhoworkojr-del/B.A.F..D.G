@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { company } from "@/data/company";
+import { asset } from "@/lib/asset";
 
 /** Public site URL — set NEXT_PUBLIC_SITE_URL in the environment for production. */
 export const SITE_URL =
@@ -35,7 +36,7 @@ export function pageMetadata({
       url,
       images: [
         {
-          url: "/elysium-logo.png",
+          url: asset("/elysium-logo.png"),
           width: 1240,
           height: 1240,
           alt: `${company.name} logo`,
@@ -46,7 +47,7 @@ export function pageMetadata({
       card: "summary_large_image",
       title,
       description,
-      images: ["/elysium-logo.png"],
+      images: [asset("/elysium-logo.png")],
     },
   };
 }

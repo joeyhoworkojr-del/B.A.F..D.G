@@ -9,6 +9,7 @@ import { Menu, X, ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { RuoBadge } from "@/components/ui/badge";
+import { asset } from "@/lib/asset";
 import { NAV_LINKS } from "./nav-links";
 
 export function Header() {
@@ -52,7 +53,7 @@ export function Header() {
           aria-label="Elysium Bio Labs — home"
         >
           <Image
-            src="/elysium-logo.png"
+            src={asset("/elysium-logo.png")}
             alt=""
             width={140}
             height={140}

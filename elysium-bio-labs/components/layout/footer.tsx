@@ -4,6 +4,7 @@ import Image from "next/image";
 import { Linkedin, Twitter, Microscope } from "lucide-react";
 import { company } from "@/data/company";
 import { Emblem } from "@/components/ui/emblem";
+import { asset } from "@/lib/asset";
 
 const columns: { title: string; links: { label: string; href: string }[] }[] = [
   {
@@ -139,7 +140,7 @@ export function Footer() {
               Documentation
             </Link>
             <Image
-              src="/elysium-logo.png"
+              src={asset("/elysium-logo.png")}
               alt=""
               width={80}
               height={80}
