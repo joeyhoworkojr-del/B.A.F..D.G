@@ -1,0 +1,173 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   Elysium Bio Labs — design tokens
+   Central visual system: colors, typography, spacing, shadows, motion.
+   ========================================================================== */
+
+@theme {
+  /* Brand colors */
+  --color-elysium: #0757f7;
+  --color-elysium-600: #0448d0;
+  --color-elysium-700: #0339a6;
+  --color-navy: #08152f;
+  --color-navy-800: #0d1e40;
+  --color-ink: #111827;
+  --color-soft: #eaf2ff;
+  --color-cool: #f5f7fa;
+  --color-border-grey: #dde4ee;
+
+  /* Typography */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-space-grotesk), var(--font-inter), sans-serif;
+  --font-mono: var(--font-ibm-plex-mono), ui-monospace, monospace;
+
+  /* Radii — refined, moderately sharp */
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* Shadows — controlled */
+  --shadow-card: 0 1px 2px rgba(8, 21, 47, 0.04), 0 8px 24px -12px rgba(8, 21, 47, 0.12);
+  --shadow-card-hover: 0 2px 4px rgba(8, 21, 47, 0.06), 0 24px 48px -20px rgba(8, 21, 47, 0.22);
+  --shadow-glass: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 8px 32px -16px rgba(8, 21, 47, 0.16);
+
+  /* Motion */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Animations */
+  --animate-line-draw: line-draw 1.2s var(--ease-out-soft) forwards;
+}
+
+@keyframes line-draw {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* --------------------------------------------------------------------------
+   Base
+   -------------------------------------------------------------------------- */
+
+:root {
+  --header-height: 4.5rem;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+body {
+  background-color: #ffffff;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+::selection {
+  background-color: color-mix(in srgb, var(--color-elysium) 22%, transparent);
+  color: var(--color-navy);
+}
+
+/* Focus visibility for keyboard users */
+:focus-visible {
+  outline: 2px solid var(--color-elysium);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* --------------------------------------------------------------------------
+   Reusable primitives
+   -------------------------------------------------------------------------- */
+
+.container-el {
+  width: 100%;
+  max-width: 80rem;
+  margin-inline: auto;
+  padding-inline: 1.25rem;
+}
+
+@media (min-width: 768px) {
+  .container-el {
+    padding-inline: 2rem;
+  }
+}
+
+/* Mono eyebrow label */
+.mono-label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+/* Fine grid background */
+.grid-lines {
+  background-image:
+    linear-gradient(to right, rgba(8, 21, 47, 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(8, 21, 47, 0.045) 1px, transparent 1px);
+  background-size: 56px 56px;
+}
+
+.grid-lines-dark {
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 56px 56px;
+}
+
+/* Glass panel */
+.glass {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: saturate(180%) blur(14px);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
+}
+
+/* Soft luminous radial glow */
+.glow-soft {
+  background: radial-gradient(
+    60% 60% at 50% 0%,
+    color-mix(in srgb, var(--color-elysium) 12%, transparent) 0%,
+    transparent 70%
+  );
+}
+
+/* Animated thin blue rule that draws in on view */
+.rule-draw {
+  transform-origin: left;
+  animation: var(--animate-line-draw);
+}
+
+/* Scrollbar styling for horizontal category rails */
+.rail-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-grey) transparent;
+}
+.rail-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+.rail-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-border-grey);
+  border-radius: 999px;
+}
+
+/* Text balance for headings */
+.text-balance {
+  text-wrap: balance;
+}
