@@ -52,7 +52,7 @@ from src.predict.adjustments import (
 )
 from src.predict.baseball import predict_mlb_game
 from src.predict.gridiron import LEAGUE_PARAMS as GRIDIRON_PARAMS
-from src.predict.gridiron import predict_nfl_game, win_probability
+from src.predict.gridiron import live_projection, predict_nfl_game, win_probability
 from src.predict.soccer import predict_match
 from src.track import ledger, ratings
 from src.value.edge import american_to_decimal
@@ -578,6 +578,15 @@ def _spread_to_home_prob(spread: float, league: str) -> float:
     return win_probability(-spread, sigma)
 
 
+def _clock_seconds(clock: str) -> float:
+    """Seconds left in the current period from a 'MM:SS' game clock."""
+    try:
+        mm, ss = clock.split(":")
+        return int(mm) * 60 + int(ss)
+    except (ValueError, AttributeError):
+        return 0.0
+
+
 def _market_implied_score(g: LiveGame) -> Optional[tuple[float, float]]:
     """(home_pts, away_pts) implied by the market spread + total, or None."""
     if g.market_spread is None or g.market_over_under is None:
@@ -676,7 +685,31 @@ async def _slate_entry(league: str, g: LiveGame, poly_markets) -> dict:
             "home_cover_prob": pred.home_cover_prob,
             "total_line": pred.total_line,
             "conditions": [c.model_dump() for c in pred.conditions],
+            "live": False,
         }
+
+        # ── Live in-game update: revise win prob + projected score from the
+        #    current score, clock, and possession as events unfold ──
+        if g.state == "in" and g.home_score is not None and g.away_score is not None:
+            tot = pred.home_expected_pts + pred.away_expected_pts
+            share = pred.home_expected_pts / tot if tot > 0 else 0.5
+            live = live_projection(
+                league=league,
+                home_score=g.home_score, away_score=g.away_score,
+                period=g.period, clock_seconds=_clock_seconds(g.clock),
+                pregame_margin=pred.predicted_spread,
+                total_estimate=pred.total_points_estimate,
+                home_share=share,
+                possession_home=(bool(g.possession_abbr) and g.possession_abbr == g.home_abbr),
+            )
+            entry["model"].update({
+                "live": True,
+                "live_home_win": live["home_win"],
+                "live_away_win": live["away_win"],
+                "live_proj_home": live["proj_home"],
+                "live_proj_away": live["proj_away"],
+                "time_remaining_pct": live["time_remaining_pct"],
+            })
 
         # ── Model vs the live market ──
         edges: list[BetEdge] = []

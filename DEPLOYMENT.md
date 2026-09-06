@@ -49,35 +49,35 @@ GitHub once set up) and **docker compose** (any VPS or local machine).
    `FLY_API_TOKEN`. From then on, `.github/workflows/fly-deploy.yml` tests
    and ships the app on every push to `main`.
 
-## Persisting the track record (one-time manual step on Fly)
+## Persisting the track record (automated on Fly)
 
-The verified track record + self-correcting ratings live in a SQLite file. By
-default it's written to `ledger.db` in the container, which is **wiped on every
-deploy**. Making it durable needs a Fly volume — but Fly **cannot attach a
-volume to an already-running machine from CI** (the deploy errors with
-`needs volumes with name 'statedge_data' ... dfw=1`), so this one migration
-can't be automated. It's a one-time step from a machine with Fly access:
+The verified track record + self-correcting ratings live in a SQLite file, made
+durable by a Fly volume: `fly.toml` mounts `statedge_data` at `/data` and sets
+`LEDGER_PATH=/data/ledger.db`.
 
-```bash
-# 1. Create the volume once in the primary region (skip if it already exists;
-#    `fly volumes list --app statedge-api` shows what's there).
-fly volumes create statedge_data --size 1 --region dfw --app statedge-api
+Fly **cannot attach a volume to an already-running machine in place**, so the
+deploy workflow handles the migration itself (in the `deploy` job, before
+`flyctl deploy`):
 
-# 2. In fly.toml, uncomment the LEDGER_PATH env line and the [[mounts]] block:
-#      [env]  LEDGER_PATH = "/data/ledger.db"
-#      [[mounts]]
-#        source = "statedge_data"
-#        destination = "/data"
-
-# 3. Deploy interactively — this recreates the machine WITH the volume, which
-#    the non-interactive CI deploy refuses to do:
-fly deploy --ha=false
+```yaml
+- name: Ensure ledger volume + migrate machine
+  run: |
+    # Create the volume in the primary region if it isn't there yet.
+    flyctl volumes list --app statedge-api --json \
+      | jq -e '.[] | select(.name=="statedge_data" and .state!="destroyed")' >/dev/null \
+      || flyctl volumes create statedge_data --app statedge-api --region dfw --size 1 --yes
+    # Destroy any machine that has no mount so the deploy recreates it WITH the
+    # volume. Idempotent — once machines are mounted, nothing is destroyed.
+    for id in $(flyctl machines list --app statedge-api --json \
+                | jq -r '.[] | select((.config.mounts // []) | length == 0) | .id'); do
+      flyctl machine destroy "$id" --force || true
+    done
 ```
 
-After that first interactive deploy, every subsequent CI push keeps the volume
-attached and the record persists. Predictions snapshot themselves whenever a
-slate loads and grade themselves as games go final, so the ledger fills in on
-its own once the volume is mounted.
+The **first** deploy after this lands has a brief blip while the machine is
+recreated on the volume; every deploy after that is a normal in-place update and
+the record persists. Predictions snapshot themselves whenever a slate loads and
+grade themselves as games go final, so the ledger fills in on its own.
 
 ## docker compose — self-hosted
 

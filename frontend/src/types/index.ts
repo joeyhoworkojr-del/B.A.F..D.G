@@ -230,6 +230,12 @@ export interface TodayModelOut {
   home_cover_prob: number
   total_line?: number | null
   conditions: AdjustmentOut[]
+  live?: boolean
+  live_home_win?: number
+  live_away_win?: number
+  live_proj_home?: number
+  live_proj_away?: number
+  time_remaining_pct?: number
 }
 
 export interface PolymarketOut {
