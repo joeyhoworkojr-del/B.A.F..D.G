@@ -1,10 +1,10 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { Suspense, lazy } from 'react'
-import { NavBar } from './components/NavBar'
-import { TickerTape } from './components/TickerTape'
+import { TopBar } from './components/TopBar'
+import { BottomNav } from './components/BottomNav'
 import { Dashboard } from './pages/Dashboard'
 
-// Route-level code splitting: only the scores slate ships in the initial
+// Route-level code splitting: only the Game Center ships in the initial
 // bundle; every other page loads on demand.
 const lazyPage = <T extends string>(load: () => Promise<Record<T, React.ComponentType>>, name: T) =>
   lazy(() => load().then(m => ({ default: m[name] })))
@@ -19,7 +19,7 @@ function PageFallback() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-6 space-y-4">
       <div className="skeleton h-8 w-56 rounded" />
-      <div className="skeleton h-64 w-full rounded-xl" />
+      <div className="skeleton h-64 w-full rounded-2xl" />
     </div>
   )
 }
@@ -28,9 +28,8 @@ export default function App() {
   return (
     <BrowserRouter>
       <div className="min-h-screen text-zinc-100">
-        <NavBar />
-        <TickerTape />
-        <main>
+        <TopBar />
+        <main className="pb-20">
           <Suspense fallback={<PageFallback />}>
             <Routes>
               <Route path="/" element={<Dashboard />} />
@@ -42,6 +41,7 @@ export default function App() {
             </Routes>
           </Suspense>
         </main>
+        <BottomNav />
       </div>
     </BrowserRouter>
   )

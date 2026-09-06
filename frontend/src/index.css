@@ -86,6 +86,10 @@
     transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
+  /* Hide scrollbar on horizontal strips (scores ticker) while keeping scroll */
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+
   /* Scrolling scores tape — slow, calm drift so it's easy to read */
   .ticker-track {
     display: flex;
