@@ -10,7 +10,9 @@ from src.api.schemas import (
     AdjustmentOut,
     BestBetOut,
     BestBetsResponse,
+    BestParlayResponse,
     EdgeOut,
+    ParlayLeg,
     NFLPredictRequest,
     NFLPredictResponse,
     PlayerPropOut,
@@ -834,6 +836,100 @@ async def best_bets() -> BestBetsResponse:
     return BestBetsResponse(
         generated_with="Live NFL + NCAA football slates, model de-biased and anchored to the market line",
         bets=bets[:24],
+    )
+
+
+# ─── Best parlay builder ──────────────────────────────────────────────────────
+
+def _american_from_decimal(dec: float) -> int:
+    """Decimal odds → American odds (rounded)."""
+    if dec >= 2.0:
+        return round((dec - 1.0) * 100.0)
+    return round(-100.0 / (dec - 1.0))
+
+
+async def _scan_parlay_legs() -> list[ParlayLeg]:
+    """One strongest qualifying leg per upcoming football game.
+
+    A parlay only makes sense out of plays the model both *likes to win* and
+    sees *value* on, so a leg must clear the A/B edge bar (de-biased vs the
+    market) AND be a better-than-even pick. One leg per game keeps outcomes
+    independent-ish.
+    """
+    legs: list[ParlayLeg] = []
+    for lg in FOCUS_LEAGUES:
+        board, poly = await asyncio.gather(
+            fetch_scoreboard(lg),
+            fetch_league_markets(lg),
+        )
+        ledger.grade_board(lg, board.games)
+        for g in board.games:
+            if g.state != "pre" or not is_current(g):
+                continue
+            entry = await _slate_entry(lg, g, poly)
+            if not entry["mapped"]:
+                continue
+            best = None
+            for e in entry["edges"]:
+                if e["rating"] not in ("A", "B"):
+                    continue
+                if e["model_prob"] < 0.50:          # parlay legs should be favourites
+                    continue
+                if e["decimal_odds"] <= 1.0:
+                    continue
+                if best is None or e["edge_pp"] > best["edge_pp"]:
+                    best = e
+            if best is not None:
+                legs.append(ParlayLeg(
+                    fixture_id=f"{lg}:{g.event_id}", league=lg, kickoff=g.kickoff,
+                    home=g.home, away=g.away,
+                    market=f"{lg.upper()} · {best['market']}", selection=best["selection"],
+                    model_prob=best["model_prob"], market_prob=best["market_prob"],
+                    decimal_odds=best["decimal_odds"], edge_pp=best["edge_pp"],
+                    rating=best["rating"],
+                ))
+    legs.sort(key=lambda leg: -leg.edge_pp)
+    return legs
+
+
+@router.get("/best-parlay", response_model=BestParlayResponse, tags=["Predictions"])
+async def best_parlay(max_legs: int = 3) -> BestParlayResponse:
+    """
+    Build the model's best-value parlay from today's NFL + NCAA football slate:
+    the strongest de-biased edges the model both favours to win and sees value
+    on, combined into one ticket with honest combined odds and expected value.
+    """
+    max_legs = max(2, min(max_legs, 5))
+    pool = await _scan_parlay_legs()
+    featured = pool[:max_legs]
+
+    if not featured:
+        return BestParlayResponse(
+            generated_with="No qualifying value legs on the board right now — the model only parlays plays it both favours and prices as value.",
+            legs=[], leg_count=0, model_prob=0.0, decimal_odds=1.0, american_odds=0,
+            implied_prob=0.0, edge_pp=0.0, ev_per_unit=0.0, payout_per_unit=0.0, pool=pool,
+        )
+
+    dec = 1.0
+    mp = 1.0
+    for leg in featured:
+        dec *= leg.decimal_odds
+        mp *= leg.model_prob
+    implied = 1.0 / dec
+    ev = mp * (dec - 1.0) - (1.0 - mp)
+
+    return BestParlayResponse(
+        generated_with="Model's best-value parlay — de-biased edges the model favours to win, priced at the live line",
+        legs=featured,
+        leg_count=len(featured),
+        model_prob=round(mp, 4),
+        decimal_odds=round(dec, 2),
+        american_odds=_american_from_decimal(dec),
+        implied_prob=round(implied, 4),
+        edge_pp=round((mp - implied) * 100, 1),
+        ev_per_unit=round(ev, 3),
+        payout_per_unit=round(dec - 1.0, 2),
+        pool=pool[:8],
     )
 
 

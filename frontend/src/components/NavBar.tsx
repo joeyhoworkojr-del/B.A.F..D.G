@@ -4,6 +4,7 @@ import { NavLink } from 'react-router-dom'
 const links = [
   { to: '/', label: 'Scores', live: true },
   { to: '/best-bets', label: 'Best Bets' },
+  { to: '/parlay', label: 'Parlay' },
   { to: '/track', label: 'Model P/L' },
   { to: '/about', label: 'About' },
 ]

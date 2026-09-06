@@ -150,3 +150,45 @@ def test_fetch_playbyplay_bad_league() -> None:
     import asyncio
     feed = asyncio.get_event_loop().run_until_complete(fetch_playbyplay("nhl", "1"))
     assert feed.ok is False
+
+
+def _pre_event(eid: str, home_abbr: str, away_abbr: str, spread: float, ou: float) -> dict:
+    return {
+        "id": eid, "date": "2025-09-06T23:30Z",
+        "status": {"type": {"state": "pre", "shortDetail": "Sat 7:30 PM"}},
+        "competitions": [{
+            "competitors": [
+                {"homeAway": "home", "score": None,
+                 "team": {"id": "1", "displayName": home_abbr, "abbreviation": home_abbr}},
+                {"homeAway": "away", "score": None,
+                 "team": {"id": "2", "displayName": away_abbr, "abbreviation": away_abbr}},
+            ],
+            "odds": [{"provider": {"name": "ESPN BET"}, "spread": spread, "overUnder": ou,
+                      "homeTeamOdds": {"moneyLine": -110}, "awayTeamOdds": {"moneyLine": -110}}],
+        }],
+    }
+
+
+def test_best_parlay_combines_multiple_legs() -> None:
+    # Two strong home favourites with totals → each yields a value leg.
+    games = [
+        _parse_event("ncaaf", _pre_event("g1", "OSU", "HAW", -38.5, 59.5)),
+        _parse_event("ncaaf", _pre_event("g2", "GA", "UNM", -35.0, 55.5)),
+    ]
+    board = Scoreboard(league="ncaaf", games=games, fetched_at="x")
+
+    async def one_board(league):
+        return board if league == "ncaaf" else Scoreboard(league=league, games=[], fetched_at="x")
+
+    with patch("src.api.routes.predictions.fetch_scoreboard", side_effect=one_board), \
+         patch("src.api.routes.predictions.fetch_league_markets", return_value=[]):
+        d = client.get("/api/v1/best-parlay?max_legs=3").json()
+
+    assert d["leg_count"] >= 2
+    # Combined odds/prob are the product of the legs — longer than any single leg.
+    assert d["decimal_odds"] > 1.0
+    assert 0 < d["model_prob"] < 1
+    assert d["american_odds"] != 0
+    assert len(d["legs"]) == d["leg_count"]
+    # Each leg is a favourite the model likes (>=50%).
+    assert all(leg["model_prob"] >= 0.5 for leg in d["legs"])

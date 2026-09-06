@@ -25,13 +25,12 @@ function StateBadge({ g }: { g: TodayGameOut['game'] }) {
   }
   if (g.state === 'post')
     return <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Final</span>
-  // pre — show kickoff time
+  // pre — show kickoff time (fall back to ESPN's own label if unparseable)
   let t = g.detail
-  try {
-    t = new Date(g.kickoff).toLocaleString(undefined, {
-      weekday: 'short', hour: 'numeric', minute: '2-digit',
-    })
-  } catch { /* keep detail */ }
+  const d = new Date(g.kickoff)
+  if (!isNaN(d.getTime())) {
+    t = d.toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })
+  }
   return <span className="text-[11px] font-medium text-zinc-400">{t}</span>
 }
 
@@ -106,8 +105,8 @@ function GameCard({ entry, league }: { entry: TodayGameOut; league: FootballLeag
         {/* Odds columns */}
         <div className="flex shrink-0 gap-1.5">
           <OddsCol
-            top={ou != null && spread != null ? fmtSpread(-spread) : '—'}
-            bottom={fmtSpread(spread)}
+            top={spread != null ? fmtSpread(-spread) : '—'}
+            bottom={spread != null ? fmtSpread(spread) : '—'}
           />
           <OddsCol
             top={ou != null ? `O ${ou}` : '—'}

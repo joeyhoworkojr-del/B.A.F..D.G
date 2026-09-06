@@ -325,6 +325,35 @@ class BestBetsResponse(BaseModel):
     bets: list[BestBetOut]
 
 
+class ParlayLeg(BaseModel):
+    fixture_id: str
+    league: str
+    kickoff: str
+    home: str
+    away: str
+    market: str
+    selection: str
+    model_prob: float
+    market_prob: float          # no-vig fair probability
+    decimal_odds: float         # price this leg pays
+    edge_pp: float
+    rating: str
+
+
+class BestParlayResponse(BaseModel):
+    generated_with: str
+    legs: list[ParlayLeg]                 # the featured parlay's legs
+    leg_count: int
+    model_prob: float                     # combined model probability (independent)
+    decimal_odds: float                   # combined price
+    american_odds: int                    # combined price, American
+    implied_prob: float                   # break-even prob at the combined price
+    edge_pp: float                        # model prob − implied prob, in points
+    ev_per_unit: float                    # expected value on a 1-unit stake
+    payout_per_unit: float                # profit on a 1-unit win
+    pool: list[ParlayLeg] = []            # all qualifying legs to build your own
+
+
 # ─── Rankings ─────────────────────────────────────────────────────────────────
 
 class RankedTeam(BaseModel):
