@@ -152,6 +152,67 @@ def elo_win_probability(elo_a: float, elo_b: float, *, home_field: bool = True) 
     return 1 / (1 + 10 ** (-diff / NFL_K))
 
 
+# ─── Live in-game projection ──────────────────────────────────────────────────
+
+GAME_SECONDS = 3600.0    # 4 × 15:00 regulation (NFL and NCAA)
+QUARTER_SECONDS = 900.0
+
+
+def time_remaining_fraction(period: Optional[int], clock_seconds: float) -> float:
+    """Fraction of regulation left, from the period and seconds left in it."""
+    if period is None or period <= 0:
+        return 1.0
+    if period > 4:
+        return 0.02   # overtime — essentially no clock left; the margin decides
+    elapsed = (period - 1) * QUARTER_SECONDS + (QUARTER_SECONDS - max(0.0, clock_seconds))
+    return max(0.0, min(1.0, (GAME_SECONDS - elapsed) / GAME_SECONDS))
+
+
+def live_projection(
+    *,
+    league: str,
+    home_score: int,
+    away_score: int,
+    period: Optional[int],
+    clock_seconds: float,
+    pregame_margin: float,     # model's pre-game expected home margin (home − away)
+    total_estimate: float,     # model's pre-game total points
+    home_share: float,         # pre-game share of scoring that is the home team's
+    possession_home: Optional[bool] = None,
+) -> dict:
+    """
+    Update the win probability and projected final score *during* a game from
+    the live state. As the clock runs down the current score margin dominates
+    and the pre-game lean fades out; a late, close game gets a small nudge to
+    whoever has the ball.
+    """
+    m_sigma = LEAGUE_PARAMS[league]["margin_sigma"]
+    frac = time_remaining_fraction(period, clock_seconds)
+    cur_margin = float(home_score - away_score)
+
+    # Expected final margin = current margin + the pre-game edge, scaled by the
+    # share of the game still to play.
+    exp_margin = cur_margin + pregame_margin * frac
+    if possession_home is not None and frac < 0.25 and abs(cur_margin) <= 8:
+        exp_margin += 1.6 if possession_home else -1.6
+
+    # Remaining-outcome uncertainty shrinks toward zero as the clock empties.
+    sigma = max(1.0, m_sigma * math.sqrt(max(frac, 1e-4)))
+    hw = win_probability(exp_margin, sigma)
+
+    rem_points = max(0.0, total_estimate) * frac
+    proj_home = home_score + rem_points * home_share
+    proj_away = away_score + rem_points * (1.0 - home_share)
+
+    return {
+        "home_win": hw,
+        "away_win": 1.0 - hw,
+        "proj_home": round(proj_home, 1),
+        "proj_away": round(proj_away, 1),
+        "time_remaining_pct": round(frac * 100, 1),
+    }
+
+
 # ─── Main entry point ─────────────────────────────────────────────────────────
 
 def predict_nfl_game(

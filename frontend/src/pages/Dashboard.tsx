@@ -94,12 +94,16 @@ function GameCard({ entry, league }: { entry: TodayGameOut; league: FootballLeag
   const ou = g.market_over_under
   const homeFav = spread != null ? spread < 0 : (m ? (m.calibrated_home_win ?? m.home_win_prob) >= 0.5 : false)
 
-  // Model overlay: projected score + confidence + best edge (A/B only)
-  const projHome = m?.proj_home_score
-  const projAway = m?.proj_away_score
-  const winPct = m ? Math.round(100 * (m.calibrated_home_win ?? m.home_win_prob)) : null
-  const pick = m ? (homeFav ? g.home_abbr || g.home : g.away_abbr || g.away) : null
-  const pickPct = winPct == null ? null : homeFav ? winPct : 100 - winPct
+  // Model overlay: during a live game the win prob + projection update from the
+  // score/clock; before kickoff they're the pre-game numbers.
+  const isLive = !!m?.live
+  const homeWin = m ? (isLive && m.live_home_win != null ? m.live_home_win : (m.calibrated_home_win ?? m.home_win_prob)) : null
+  const projHome = isLive ? m?.live_proj_home : m?.proj_home_score
+  const projAway = isLive ? m?.live_proj_away : m?.proj_away_score
+  const winPct = homeWin == null ? null : Math.round(100 * homeWin)
+  const leanHome = homeWin == null ? homeFav : homeWin >= 0.5
+  const pick = m ? (leanHome ? g.home_abbr || g.home : g.away_abbr || g.away) : null
+  const pickPct = winPct == null ? null : leanHome ? winPct : 100 - winPct
   const topEdge = entry.edges.find(e => e.rating === 'A' || e.rating === 'B')
 
   return (
@@ -155,18 +159,23 @@ function GameCard({ entry, league }: { entry: TodayGameOut; league: FootballLeag
       {/* Model overlay strip */}
       {m && (
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-terminal-border/70 pt-2 text-[11px]">
-          <span className="font-bold uppercase tracking-widest text-signal-green">Model</span>
+          <span className={`font-bold uppercase tracking-widest ${isLive ? 'text-signal-red' : 'text-signal-green'}`}>
+            {isLive ? '● Live model' : 'Model'}
+          </span>
           {projAway != null && projHome != null && (
             <span className="font-mono text-zinc-300 tabular-nums">
-              proj {g.away_abbr} {projAway} – {projHome} {g.home_abbr}
+              {isLive ? 'final' : 'proj'} {g.away_abbr} {projAway} – {projHome} {g.home_abbr}
             </span>
           )}
           {pick && pickPct != null && (
             <span className="text-zinc-400">
-              lean <span className="font-semibold text-zinc-100">{pick} {pickPct}%</span>
+              {isLive ? 'win' : 'lean'} <span className="font-semibold text-zinc-100">{pick} {pickPct}%</span>
             </span>
           )}
-          {topEdge && (
+          {isLive && m.time_remaining_pct != null && (
+            <span className="text-zinc-500">{Math.round(m.time_remaining_pct)}% left</span>
+          )}
+          {!isLive && topEdge && (
             <span className="ml-auto rounded-full bg-signal-amber-dim px-2 py-0.5 font-bold text-signal-amber">
               EDGE {topEdge.rating} · {topEdge.selection}
             </span>

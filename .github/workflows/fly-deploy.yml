@@ -47,6 +47,32 @@ jobs:
           fi
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN || secrets.ORG || secrets.FLY_ORG || secrets.ORG_TOKEN || secrets.FLY_ORG_TOKEN }}
+      # Durable track record: provision the ledger volume and migrate the
+      # machine onto it. Fly can't attach a volume to an already-running
+      # machine in place, so a volume-less machine is destroyed and the deploy
+      # below recreates it WITH the mount (brief blip on that one deploy only).
+      # Idempotent: once the machine already has the mount, nothing is destroyed.
+      - name: Ensure ledger volume + migrate machine
+        run: |
+          set -e
+          if ! flyctl volumes list --app statedge-api --json | jq -e '.[] | select(.name=="statedge_data" and .state!="destroyed")' >/dev/null 2>&1; then
+            echo "Creating statedge_data volume in dfw..."
+            flyctl volumes create statedge_data --app statedge-api --region dfw --size 1 --yes
+          else
+            echo "Volume statedge_data already present."
+          fi
+          volumeless=$(flyctl machines list --app statedge-api --json | jq '[.[] | select((.config.mounts // []) | length == 0)] | length')
+          if [ "${volumeless:-0}" -gt 0 ]; then
+            echo "Migrating ${volumeless} volume-less machine(s) onto the volume..."
+            for id in $(flyctl machines list --app statedge-api --json | jq -r '.[] | select((.config.mounts // []) | length == 0) | .id'); do
+              echo "  destroying machine ${id}"
+              flyctl machine destroy "$id" --force || true
+            done
+          else
+            echo "All machines already mounted; no migration needed."
+          fi
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN || secrets.ORG || secrets.FLY_ORG || secrets.ORG_TOKEN || secrets.FLY_ORG_TOKEN }}
       - name: Deploy combined app
         run: flyctl deploy --remote-only --ha=false
         env:

@@ -182,22 +182,33 @@ export function GameDetail() {
             </div>
           )}
 
-          {tab === 'model' && (
+          {tab === 'model' && (() => {
+            const mLive = !!m?.live
+            const projA = mLive ? m?.live_proj_away : m?.proj_away_score
+            const projH = mLive ? m?.live_proj_home : m?.proj_home_score
+            const winH = mLive && m?.live_home_win != null ? m.live_home_win : (m?.calibrated_home_win ?? m?.home_win_prob)
+            return (
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-xl border border-terminal-border bg-terminal-surface p-4">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Projected score</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+                    {mLive ? 'Projected final' : 'Projected score'}
+                  </p>
                   <p className="mt-1 font-mono text-2xl font-black text-zinc-100 tabular-nums">
-                    {m?.proj_away_score ?? '—'} – {m?.proj_home_score ?? '—'}
+                    {projA ?? '—'} – {projH ?? '—'}
                   </p>
                   <p className="mt-0.5 text-[11px] text-zinc-500">{g.away_abbr} @ {g.home_abbr}</p>
                 </div>
                 <div className="rounded-xl border border-terminal-border bg-terminal-surface p-4">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Win probability</p>
-                  <p className="mt-1 font-mono text-2xl font-black text-signal-green tabular-nums">
-                    {pct(m?.calibrated_home_win ?? m?.home_win_prob)}
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+                    {mLive ? '● Live win probability' : 'Win probability'}
                   </p>
-                  <p className="mt-0.5 text-[11px] text-zinc-500">{g.home_abbr} (home){m?.market_anchored ? ' · market-anchored' : ''}</p>
+                  <p className={`mt-1 font-mono text-2xl font-black tabular-nums ${mLive ? 'text-signal-red' : 'text-signal-green'}`}>
+                    {pct(winH)}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-zinc-500">
+                    {g.home_abbr} (home){mLive && m?.time_remaining_pct != null ? ` · ${Math.round(m.time_remaining_pct)}% left` : m?.market_anchored ? ' · market-anchored' : ''}
+                  </p>
                 </div>
               </div>
 
@@ -222,10 +233,13 @@ export function GameDetail() {
                 </div>
               )}
               <p className="text-center text-[10px] text-zinc-600">
-                Projected score blends the model with the market spread + total. Win prob is anchored to the live line.
+                {mLive
+                  ? 'Live win probability updates from the score, clock and possession as the game unfolds.'
+                  : 'Projected score blends the model with the market spread + total. Win prob is anchored to the live line.'}
               </p>
             </div>
-          )}
+            )
+          })()}
         </>
       )}
     </div>

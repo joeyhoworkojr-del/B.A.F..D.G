@@ -146,6 +146,46 @@ def test_play_by_play_endpoint() -> None:
     assert d["plays"][0]["home_score"] == 24
 
 
+def test_live_projection_converges_with_the_clock() -> None:
+    from src.predict.gridiron import live_projection
+
+    # Home up 24-10 in Q3 with time left → strong but not certain.
+    mid = live_projection(
+        league="ncaaf", home_score=24, away_score=10, period=3, clock_seconds=312,
+        pregame_margin=3.0, total_estimate=55.0, home_share=0.55,
+    )
+    assert 0.80 < mid["home_win"] < 0.99
+    assert mid["proj_home"] > mid["proj_away"]
+    assert 0 < mid["time_remaining_pct"] < 50
+
+    # Same lead with seconds left → essentially decided.
+    late = live_projection(
+        league="ncaaf", home_score=24, away_score=10, period=4, clock_seconds=20,
+        pregame_margin=3.0, total_estimate=55.0, home_share=0.55,
+    )
+    assert late["home_win"] > mid["home_win"]
+    assert late["home_win"] > 0.98
+
+    # Trailing team's live win prob is below its pre-game prior.
+    behind = live_projection(
+        league="nfl", home_score=7, away_score=21, period=3, clock_seconds=200,
+        pregame_margin=2.0, total_estimate=45.0, home_share=0.5,
+    )
+    assert behind["home_win"] < 0.35
+
+
+def test_today_surfaces_live_win_probability() -> None:
+    board = Scoreboard(league="ncaaf", games=[_parse_event("ncaaf", CFB_EVENT)], fetched_at="x")
+    with patch("src.api.routes.predictions.fetch_scoreboard", return_value=board), _patch_poly():
+        data = client.get("/api/v1/today/ncaaf").json()
+    m = data["games"][0]["model"]
+    assert m["live"] is True                       # CFB_EVENT is in-progress
+    # OSU (home) lead 24-10 in Q3 → live prob well ahead of a coin flip.
+    assert m["live_home_win"] > 0.80
+    assert m["live_proj_home"] >= 24 and m["live_proj_away"] >= 10
+    assert 0 < m["time_remaining_pct"] < 60
+
+
 def test_fetch_playbyplay_bad_league() -> None:
     import asyncio
     feed = asyncio.get_event_loop().run_until_complete(fetch_playbyplay("nhl", "1"))
