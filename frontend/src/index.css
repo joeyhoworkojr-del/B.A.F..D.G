@@ -86,11 +86,11 @@
     transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
-  /* Scrolling ticker tape (stock-market strip) — slow, calm drift */
+  /* Scrolling scores tape — slow, calm drift so it's easy to read */
   .ticker-track {
     display: flex;
     width: max-content;
-    animation: ticker 110s linear infinite;
+    animation: ticker 240s linear infinite;
     will-change: transform;
   }
   .ticker-track:hover {
