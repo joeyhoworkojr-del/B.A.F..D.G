@@ -160,14 +160,14 @@ def test_today_includes_polymarket_crowd() -> None:
 
 
 def test_live_scores_endpoint_shape() -> None:
-    async def fake_all():
-        return {"nfl": _mock_board("nfl"), "wc": _mock_board("wc"),
-                "cfl": _mock_board("cfl"), "mlb": _mock_board("mlb")}
-    with patch("src.api.routes.live.fetch_all_scoreboards", side_effect=fake_all):
+    async def fake_board(league: str):
+        return _mock_board(league)
+    with patch("src.api.routes.live.fetch_scoreboard", side_effect=fake_board):
         resp = client.get("/api/v1/live/scores")
     assert resp.status_code == 200
     data = resp.json()
-    assert set(data["boards"]) >= {"nfl", "wc", "cfl", "mlb"}
+    # Product is focused on American football only.
+    assert set(data["boards"]) == {"nfl", "ncaaf"}
     assert data["boards"]["nfl"]["games"][0]["home_abbr"] == "KC"
     assert data["fetched_at"]
 

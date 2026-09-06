@@ -138,12 +138,38 @@ export interface LiveGameOut {
   state: 'pre' | 'in' | 'post'
   detail: string
   kickoff: string
+  period?: number | null
+  clock?: string
+  down_distance?: string
+  possession_abbr?: string
+  is_red_zone?: boolean
+  last_play?: string
+  home_logo?: string
+  away_logo?: string
   market_spread?: number | null
   market_over_under?: number | null
   market_home_ml?: number | null
   market_away_ml?: number | null
   market_details: string
   market_provider: string
+}
+
+export interface PlayOut {
+  period?: number | null
+  clock?: string
+  text: string
+  team_abbr?: string
+  scoring?: boolean
+  home_score?: number | null
+  away_score?: number | null
+}
+
+export interface PlayByPlayOut {
+  league: string
+  event_id: string
+  ok: boolean
+  plays: PlayOut[]
+  fetched_at: string
 }
 
 export interface ScoreboardOut {
@@ -167,6 +193,8 @@ export interface TodayModelOut {
   market_anchored?: boolean
   home_expected: number
   away_expected: number
+  proj_home_score?: number
+  proj_away_score?: number
   total_estimate: number
   over_prob: number
   under_prob: number
@@ -200,6 +228,7 @@ export interface TodayResponse {
 }
 
 export type GridironLeague = 'nfl' | 'cfl' | 'mlb'
+export type FootballLeague = 'nfl' | 'ncaaf'
 
 // ─── World Cup spotlight ──────────────────────────────────────────────────────
 

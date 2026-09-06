@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from src.data.cfl import get_cfl_ratings
+from src.data.ncaaf import get_ncaaf_ratings
 from src.data.nfl import get_nfl_ratings
 
 MARGIN_SIGMA = 13.45   # std-dev of final margin vs expectation
@@ -44,6 +45,15 @@ LEAGUE_PARAMS: dict[str, dict] = {
         "total_sigma": 14.5,
         "team_sigma": 10.5,
         "hfa": 2.5,
+    },
+    # College football: bigger talent gaps, more scoring, and blowouts are
+    # common, so both the margin and total distributions are wider than the NFL.
+    "ncaaf": {
+        "ratings": get_ncaaf_ratings,
+        "margin_sigma": 16.5,
+        "total_sigma": 17.5,
+        "team_sigma": 12.5,
+        "hfa": 2.6,
     },
 }
 

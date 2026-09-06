@@ -13,6 +13,7 @@ import type {
   GridironLeague,
   AccuracyResponse,
   SoccerUpcomingResponse,
+  PlayByPlayOut,
 } from '../types'
 
 // Strip trailing slashes so VITE_API_BASE="/" (same-origin via nginx proxy)
@@ -103,7 +104,9 @@ export const api = {
   // Live data
   liveScores: () => get<AllScoreboardsOut>('/api/v1/live/scores'),
   leagueScores: (league: string) => get<ScoreboardOut>(`/api/v1/live/scores/${league}`),
-  today: (league: GridironLeague) => get<TodayResponse>(`/api/v1/today/${league}`),
+  today: (league: GridironLeague | 'ncaaf') => get<TodayResponse>(`/api/v1/today/${league}`),
+  playByPlay: (league: string, eventId: string) =>
+    get<PlayByPlayOut>(`/api/v1/live/pbp/${league}/${encodeURIComponent(eventId)}`),
 
   // Live lineups
   lineup: (sport: 'soccer' | 'nfl' | 'cfl' | 'mlb', team: string) =>

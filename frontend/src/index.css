@@ -4,17 +4,17 @@
 
 @layer base {
   html {
-    background-color: #f6f8fb;
-    color: #0f172a;
+    background-color: #0a0e12;
+    color: #f3f6f9;
     font-family: 'Inter', sans-serif;
     scroll-behavior: smooth;
   }
 
   body {
     background:
-      radial-gradient(1100px 420px at 85% -10%, rgba(37, 99, 235, 0.06), transparent 60%),
-      radial-gradient(800px 380px at 0% 0%, rgba(37, 99, 235, 0.04), transparent 55%),
-      #f6f8fb;
+      radial-gradient(1200px 480px at 85% -12%, rgba(47, 208, 122, 0.10), transparent 60%),
+      radial-gradient(900px 420px at 0% -6%, rgba(47, 208, 122, 0.05), transparent 55%),
+      #0a0e12;
     min-height: 100vh;
   }
 
@@ -23,7 +23,7 @@
   }
 
   ::selection {
-    background: rgba(37, 99, 235, 0.18);
+    background: rgba(47, 208, 122, 0.28);
   }
 
   ::-webkit-scrollbar {
@@ -31,14 +31,14 @@
     height: 8px;
   }
   ::-webkit-scrollbar-track {
-    background: #f1f5f9;
+    background: #0e141a;
   }
   ::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
+    background: #2b343e;
     border-radius: 4px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
+    background: #3a434e;
   }
 
   button, a, input, select {
@@ -48,7 +48,7 @@
   }
 
   button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
-    outline: 2px solid rgba(37, 99, 235, 0.55);
+    outline: 2px solid rgba(47, 208, 122, 0.6);
     outline-offset: 2px;
   }
 }
@@ -60,14 +60,14 @@
   }
   .card-lift:hover {
     transform: translateY(-1px);
-    border-color: rgba(37, 99, 235, 0.45);
-    box-shadow: 0 10px 28px -14px rgba(37, 99, 235, 0.35);
+    border-color: rgba(47, 208, 122, 0.45);
+    box-shadow: 0 10px 28px -14px rgba(47, 208, 122, 0.35);
   }
 
   .skeleton {
     position: relative;
     overflow: hidden;
-    background: #e9eef5;
+    background: #1b232b;
     border-radius: 0.5rem;
   }
   .skeleton::after {
@@ -75,7 +75,7 @@
     position: absolute;
     inset: 0;
     transform: translateX(-100%);
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
     animation: shimmer 1.4s infinite;
   }
   @keyframes shimmer {
