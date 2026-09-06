@@ -10,12 +10,19 @@ from src.api.schemas import (
     AllScoreboardsOut,
     KeyPlayerOut,
     LiveGameOut,
+    PlayByPlayOut,
+    PlayOut,
     ScoreboardOut,
     SetPlayerStatusRequest,
 )
 from src.data import lineups
-from src.ingest.espn import LEAGUE_PATHS, fetch_all_scoreboards, fetch_scoreboard
+from src.ingest.espn import (
+    LEAGUE_PATHS,
+    fetch_playbyplay,
+    fetch_scoreboard,
+)
 from src.track import ledger
+import asyncio
 from src.ingest.weather import (
     CFL_INDOOR_TEAMS,
     CFL_STADIUM_COORDS,
@@ -32,6 +39,9 @@ from src.ingest.weather import (
 router = APIRouter()
 
 VALID_SPORTS = ("soccer", "nfl", "cfl", "mlb")
+
+# The product is focused on American football.
+FOOTBALL_LEAGUES = ("nfl", "ncaaf")
 
 
 class WeatherOut(BaseModel):
@@ -117,21 +127,21 @@ async def get_all_venue_weather() -> dict:
 @router.get("/live/scores", response_model=AllScoreboardsOut, tags=["Live"])
 async def get_live_scores() -> AllScoreboardsOut:
     """
-    Live and scheduled games for all covered leagues (World Cup, NFL, CFL).
-    Keyless ESPN source, cached 60s — genuinely live, no API key required.
+    Live and scheduled NFL + NCAA football games. Keyless ESPN source,
+    cached 60s — genuinely live, no API key required.
     """
-    boards = await fetch_all_scoreboards()
-    for lg, b in boards.items():
-        ledger.grade_board(lg, b.games)   # finals settle pending picks live
+    boards = await asyncio.gather(*(fetch_scoreboard(lg) for lg in FOOTBALL_LEAGUES))
+    for b in boards:
+        ledger.grade_board(b.league, b.games)   # finals settle pending picks live
     return AllScoreboardsOut(
-        boards={lg: _board_out(b) for lg, b in boards.items()},
+        boards={b.league: _board_out(b) for b in boards},
         fetched_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
     )
 
 
 @router.get("/live/scores/{league}", response_model=ScoreboardOut, tags=["Live"])
 async def get_league_scores(league: str) -> ScoreboardOut:
-    """Live scoreboard for one league: wc | nfl | cfl."""
+    """Live scoreboard for one league: nfl | ncaaf."""
     if league.lower() not in LEAGUE_PATHS:
         raise HTTPException(
             status_code=404,
@@ -140,6 +150,22 @@ async def get_league_scores(league: str) -> ScoreboardOut:
     board = await fetch_scoreboard(league)
     ledger.grade_board(league.lower(), board.games)
     return _board_out(board)
+
+
+@router.get("/live/pbp/{league}/{event_id}", response_model=PlayByPlayOut, tags=["Live"])
+async def get_play_by_play(league: str, event_id: str) -> PlayByPlayOut:
+    """Recent play-by-play for one game (keyless ESPN summary, cached ~20s)."""
+    if league.lower() not in LEAGUE_PATHS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown league {league!r}; expected one of {sorted(LEAGUE_PATHS)}",
+        )
+    feed = await fetch_playbyplay(league, event_id)
+    return PlayByPlayOut(
+        league=feed.league, event_id=feed.event_id, ok=feed.ok,
+        plays=[PlayOut(**p.__dict__) for p in feed.plays],
+        fetched_at=feed.fetched_at,
+    )
 
 
 @router.get("/venues", tags=["Live"])

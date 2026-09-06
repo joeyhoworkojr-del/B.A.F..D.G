@@ -6,9 +6,11 @@ without an API key — this source needs no credentials, so live scores work
 out of the box in production. Responses are cached for 60 seconds.
 
 Leagues:
-  wc  → soccer/fifa.world   (2026 World Cup)
-  nfl → football/nfl
-  cfl → football/cfl
+  nfl   → football/nfl
+  ncaaf → football/college-football   (FBS, group 80)
+  cfl   → football/cfl
+  mlb   → baseball/mlb
+  wc    → soccer/fifa.world   (2026 World Cup)
 """
 from __future__ import annotations
 
@@ -31,10 +33,18 @@ ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports"
 _ET = ZoneInfo("America/New_York")
 
 LEAGUE_PATHS: dict[str, str] = {
-    "wc": "soccer/fifa.world",
     "nfl": "football/nfl",
+    "ncaaf": "football/college-football",
     "cfl": "football/cfl",
     "mlb": "baseball/mlb",
+    "wc": "soccer/fifa.world",
+}
+
+# Extra scoreboard query params per league. College football's board otherwise
+# returns every FBS+FCS game (hundreds); group 80 = FBS, and the wide limit
+# keeps a full Saturday slate.
+LEAGUE_PARAMS: dict[str, dict[str, str]] = {
+    "ncaaf": {"groups": "80", "limit": "200"},
 }
 
 CACHE_TTL_SECONDS = 60.0
@@ -54,6 +64,15 @@ class LiveGame:
     state: str             # "pre" | "in" | "post"
     detail: str            # e.g. "45' +2", "Q3 5:21", "Sat 8:00 PM", "Final"
     kickoff: str = ""      # ISO timestamp
+    # Live game clock / situation — drives the sportsbook-style live card
+    period: Optional[int] = None               # quarter/period number
+    clock: str = ""                            # "04:52"
+    down_distance: str = ""                    # "1st & 10 at HAW 42"
+    possession_abbr: str = ""                  # team abbr with the ball
+    is_red_zone: bool = False
+    last_play: str = ""                        # most recent play text
+    home_logo: str = ""                        # team logo URL
+    away_logo: str = ""
     # Live market (sportsbook odds embedded in the ESPN feed) — what the
     # public's money is doing right now
     market_spread: Optional[float] = None      # home-based, e.g. -3.5
@@ -114,6 +133,20 @@ def _parse_event(league: str, ev: dict) -> Optional[LiveGame]:
             if spread is not None or over_under is not None or home_ml is not None:
                 break   # first usable book wins
 
+        # Live situation: down/distance, possession, last play (football, in-game)
+        sit = comp.get("situation", {}) or {}
+        poss_id = sit.get("possession")
+        poss_abbr = ""
+        if poss_id is not None:
+            for c in (home, away):
+                if str(c.get("team", {}).get("id", "")) == str(poss_id):
+                    poss_abbr = c.get("team", {}).get("abbreviation", "")
+        down_distance = sit.get("downDistanceText", "") or ""
+        possession_txt = sit.get("possessionText", "")
+        if down_distance and possession_txt:
+            down_distance = f"{down_distance} at {possession_txt}"
+        last_play = (sit.get("lastPlay") or {}).get("text", "") or ""
+
         return LiveGame(
             league=league,
             event_id=str(ev.get("id", "")),
@@ -126,6 +159,14 @@ def _parse_event(league: str, ev: dict) -> Optional[LiveGame]:
             state=stype.get("state", "pre"),
             detail=stype.get("shortDetail", stype.get("detail", "")),
             kickoff=ev.get("date", ""),
+            period=status.get("period"),
+            clock=status.get("displayClock", "") or "",
+            down_distance=down_distance,
+            possession_abbr=poss_abbr,
+            is_red_zone=bool(sit.get("isRedZone", False)),
+            last_play=last_play,
+            home_logo=home.get("team", {}).get("logo", "") or "",
+            away_logo=away.get("team", {}).get("logo", "") or "",
             market_spread=spread,
             market_over_under=over_under,
             market_home_ml=home_ml,
@@ -180,7 +221,7 @@ async def fetch_scoreboard(league: str) -> Scoreboard:
         async with httpx.AsyncClient(timeout=8.0) as client:
             resp = await client.get(
                 f"{ESPN_BASE}/{path}/scoreboard",
-                params={"dates": _dates_window()},
+                params={"dates": _dates_window(), **LEAGUE_PARAMS.get(league, {})},
             )
             resp.raise_for_status()
             data = resp.json()
@@ -197,3 +238,81 @@ async def fetch_all_scoreboards() -> dict[str, Scoreboard]:
     leagues = list(LEAGUE_PATHS)
     boards = await asyncio.gather(*(fetch_scoreboard(lg) for lg in leagues))
     return dict(zip(leagues, boards))
+
+
+# ─── Play-by-play (game summary) ──────────────────────────────────────────────
+
+@dataclass
+class PlayItem:
+    period: Optional[int]
+    clock: str
+    text: str
+    team_abbr: str = ""       # team that ran the play (drive team)
+    scoring: bool = False
+    home_score: Optional[int] = None
+    away_score: Optional[int] = None
+
+
+@dataclass
+class GameFeed:
+    league: str
+    event_id: str
+    ok: bool = True
+    plays: list[PlayItem] = field(default_factory=list)   # newest first
+    fetched_at: str = ""
+
+
+_feed_cache: dict[str, tuple[float, list[PlayItem]]] = {}
+_FEED_TTL = 20.0   # live drives move fast; refresh often
+
+
+def _parse_plays(data: dict) -> list[PlayItem]:
+    """Flatten the summary's drives into a newest-first play list."""
+    drives = data.get("drives", {}) or {}
+    raw_drives: list[dict] = list(drives.get("previous", []) or [])
+    if drives.get("current"):
+        raw_drives.append(drives["current"])
+
+    items: list[PlayItem] = []
+    for dr in raw_drives:
+        team_abbr = (dr.get("team") or {}).get("abbreviation", "") or ""
+        for p in dr.get("plays", []) or []:
+            items.append(PlayItem(
+                period=(p.get("period") or {}).get("number"),
+                clock=(p.get("clock") or {}).get("displayValue", "") or "",
+                text=p.get("text", "") or "",
+                team_abbr=team_abbr,
+                scoring=bool(p.get("scoringPlay", False)),
+                home_score=p.get("homeScore"),
+                away_score=p.get("awayScore"),
+            ))
+    items.reverse()   # newest first
+    return items
+
+
+async def fetch_playbyplay(league: str, event_id: str, limit: int = 40) -> GameFeed:
+    """Recent play-by-play for one game via ESPN's keyless summary endpoint."""
+    league = league.lower()
+    path = LEAGUE_PATHS.get(league)
+    now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    if path is None:
+        return GameFeed(league=league, event_id=event_id, ok=False, fetched_at=now_iso)
+
+    key = f"{league}:{event_id}"
+    cached = _feed_cache.get(key)
+    if cached and time.monotonic() - cached[0] < _FEED_TTL:
+        return GameFeed(league=league, event_id=event_id,
+                        plays=cached[1][:limit], fetched_at=now_iso)
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(
+                f"{ESPN_BASE}/{path}/summary", params={"event": event_id},
+            )
+            resp.raise_for_status()
+            plays = _parse_plays(resp.json())
+        _feed_cache[key] = (time.monotonic(), plays)
+        return GameFeed(league=league, event_id=event_id,
+                        plays=plays[:limit], fetched_at=now_iso)
+    except Exception as exc:
+        log.error("ESPN summary fetch failed for %s %s: %s", league, event_id, exc)
+        return GameFeed(league=league, event_id=event_id, ok=False, fetched_at=now_iso)

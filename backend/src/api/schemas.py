@@ -236,6 +236,40 @@ class LiveGameOut(BaseModel):
     state: str          # "pre" | "in" | "post"
     detail: str = ""    # "45' +2", "Q3 5:21", "Final", kickoff time…
     kickoff: str = ""
+    # Live situation (football, in-game)
+    period: Optional[int] = None
+    clock: str = ""
+    down_distance: str = ""
+    possession_abbr: str = ""
+    is_red_zone: bool = False
+    last_play: str = ""
+    home_logo: str = ""
+    away_logo: str = ""
+    # Live market
+    market_spread: Optional[float] = None
+    market_over_under: Optional[float] = None
+    market_home_ml: Optional[float] = None
+    market_away_ml: Optional[float] = None
+    market_details: str = ""
+    market_provider: str = ""
+
+
+class PlayOut(BaseModel):
+    period: Optional[int] = None
+    clock: str = ""
+    text: str = ""
+    team_abbr: str = ""
+    scoring: bool = False
+    home_score: Optional[int] = None
+    away_score: Optional[int] = None
+
+
+class PlayByPlayOut(BaseModel):
+    league: str
+    event_id: str
+    ok: bool = True
+    plays: list[PlayOut] = Field(default_factory=list)
+    fetched_at: str = ""
 
 
 class ScoreboardOut(BaseModel):

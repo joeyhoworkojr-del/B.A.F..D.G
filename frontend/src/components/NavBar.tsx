@@ -2,15 +2,10 @@ import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 
 const links = [
-  { to: '/', label: 'Home' },
-  { to: '/today', label: 'Markets', live: true },
-  { to: '/nfl', label: 'NFL' },
-  { to: '/cfl', label: 'CFL' },
-  { to: '/mlb', label: 'MLB' },
-  { to: '/soccer', label: 'Soccer' },
+  { to: '/', label: 'Scores', live: true },
   { to: '/best-bets', label: 'Best Bets' },
-  { to: '/rankings', label: 'Rankings' },
-  { to: '/track', label: 'Track Record' },
+  { to: '/track', label: 'Model P/L' },
+  { to: '/about', label: 'About' },
 ]
 
 function Links({ onNavigate }: { onNavigate?: () => void }) {
@@ -23,9 +18,9 @@ function Links({ onNavigate }: { onNavigate?: () => void }) {
           end={l.to === '/'}
           onClick={onNavigate}
           className={({ isActive }) =>
-            `text-sm font-display font-medium whitespace-nowrap ${
+            `text-sm font-display font-semibold whitespace-nowrap ${
               isActive
-                ? 'text-signal-amber border-b-2 border-signal-amber pb-0.5'
+                ? 'text-signal-green border-b-2 border-signal-green pb-0.5'
                 : 'text-zinc-400 hover:text-zinc-100'
             }`
           }
@@ -44,13 +39,14 @@ export function NavBar() {
   const [open, setOpen] = useState(false)
 
   return (
-    <nav className="sticky top-0 z-50 border-b border-terminal-border bg-white/95 shadow-[0_1px_3px_rgba(15,23,42,0.05)] backdrop-blur">
+    <nav className="sticky top-0 z-50 border-b border-terminal-border bg-terminal-surface/95 shadow-[0_1px_0_rgba(0,0,0,0.4)] backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center gap-x-5 px-4 py-3">
-        {/* Brand: STAT EDGE — better data, sharper edge */}
-        <NavLink to="/" onClick={() => setOpen(false)} className="flex items-center gap-1.5 mr-auto md:mr-4">
-          <span className="grid h-7 w-7 place-items-center rounded-lg bg-signal-amber text-white text-sm font-bold">⚡</span>
-          <span className="font-display text-lg font-bold tracking-tight text-zinc-100">STAT</span>
-          <span className="font-display text-lg font-bold tracking-tight text-signal-amber">EDGE</span>
+        {/* Brand */}
+        <NavLink to="/" onClick={() => setOpen(false)} className="flex items-center gap-1.5 mr-auto md:mr-6">
+          <span className="grid h-7 w-7 place-items-center rounded-lg bg-signal-green text-terminal-bg text-sm font-black">SE</span>
+          <span className="font-display text-lg font-black tracking-tight text-zinc-100">Stat</span>
+          <span className="font-display text-lg font-black tracking-tight text-signal-green">Edge</span>
+          <span className="ml-1 rounded bg-terminal-muted px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-zinc-400">Gridiron</span>
         </NavLink>
 
         {/* Desktop links */}
@@ -72,7 +68,7 @@ export function NavBar() {
 
       {/* Mobile dropdown */}
       {open && (
-        <div className="md:hidden border-t border-terminal-border bg-white/95">
+        <div className="md:hidden border-t border-terminal-border bg-terminal-surface/98">
           <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4">
             <Links onNavigate={() => setOpen(false)} />
           </div>

@@ -5,37 +5,37 @@ export default {
   theme: {
     extend: {
       colors: {
-        // "Trading desk" palette — clean light surfaces, electric blue accent.
-        // Token names are kept from the original dark theme so every
-        // component re-skins at once: terminal.* = surfaces, signal.amber =
-        // the primary accent (now blue).
+        // Sportsbook palette — deep near-black surfaces, sportsbook green, and
+        // gold "odds" highlights. Token names are shared so every component
+        // re-skins at once: terminal.* = surfaces, signal.amber = the gold
+        // odds/active accent, signal.green = live/positive/brand green.
         terminal: {
-          bg: '#f6f8fb',
-          surface: '#ffffff',
-          border: '#e2e8f0',
-          muted: '#eef2f7',
+          bg: '#0a0e12',
+          surface: '#141a20',
+          border: '#28313b',
+          muted: '#1b232b',
         },
         signal: {
-          amber: '#2563eb',       // primary accent (electric blue)
-          'amber-dim': '#dbeafe',
-          green: '#16a34a',
-          red: '#dc2626',
-          blue: '#2563eb',
-          purple: '#7c3aed',
+          amber: '#f5c518',       // odds gold / active highlight
+          'amber-dim': '#3a3418',
+          green: '#2fd07a',       // live / positive / brand green
+          red: '#f2555a',
+          blue: '#4f9cf5',
+          purple: '#a855f7',
         },
-        // Inverted zinc scale: the app uses zinc-100 for primary text and
-        // zinc-600 for faint text — remapped for light backgrounds.
+        // Standard dark zinc scale: zinc-100 = primary near-white text,
+        // descending to muted greys and dark surfaces.
         zinc: {
-          50: '#f8fafc',
-          100: '#0f172a',
-          200: '#1e293b',
-          300: '#334155',
-          400: '#475569',
-          500: '#64748b',
-          600: '#94a3b8',
-          700: '#cbd5e1',
-          800: '#e2e8f0',
-          900: '#f1f5f9',
+          50: '#0a0e12',
+          100: '#f3f6f9',
+          200: '#dbe2ea',
+          300: '#b7c1cc',
+          400: '#8b97a5',
+          500: '#6d7885',
+          600: '#525c68',
+          700: '#3a434e',
+          800: '#28313b',
+          900: '#141a20',
         },
       },
       fontFamily: {

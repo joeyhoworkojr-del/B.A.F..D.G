@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -28,6 +27,7 @@ from src.api.schemas import (
 )
 from src.data.cfl import all_cfl_teams_sorted, get_cfl_team
 from src.data.mlb import all_mlb_teams_sorted, get_mlb_team
+from src.data.ncaaf import all_ncaaf_teams_sorted, get_ncaaf_team
 from src.data.nfl import all_nfl_teams_sorted, get_nfl_team
 from src.data.world_cup import (
     R16_FIXTURES,
@@ -49,7 +49,8 @@ from src.predict.adjustments import (
     soccer_weather_adjustments,
 )
 from src.predict.baseball import predict_mlb_game
-from src.predict.gridiron import predict_nfl_game
+from src.predict.gridiron import LEAGUE_PARAMS as GRIDIRON_PARAMS
+from src.predict.gridiron import predict_nfl_game, win_probability
 from src.predict.soccer import predict_match
 from src.track import ledger, ratings
 from src.value.edge import american_to_decimal
@@ -282,7 +283,10 @@ def list_nfl_teams() -> list[TeamInfo]:
     ]
 
 
-_TEAM_GETTERS = {"nfl": get_nfl_team, "cfl": get_cfl_team, "mlb": get_mlb_team}
+_TEAM_GETTERS = {
+    "nfl": get_nfl_team, "ncaaf": get_ncaaf_team,
+    "cfl": get_cfl_team, "mlb": get_mlb_team,
+}
 
 
 async def _predict_gridiron(req: NFLPredictRequest, league: str) -> NFLPredictResponse:
@@ -301,15 +305,18 @@ async def _predict_gridiron(req: NFLPredictRequest, league: str) -> NFLPredictRe
     away_elo = ratings.adjust(league, away_code, away_t.elo)
 
     # ── Live conditions ──
+    # College football has no per-team stadium/roster data here, so it runs
+    # purely off ratings + the market line (its most accurate signal anyway).
+    has_live_conditions = league in ("nfl", "cfl", "mlb")
     adjustments = []
     weather: Optional[WeatherReport] = None
-    if req.apply_weather and not req.neutral_site:
+    if req.apply_weather and not req.neutral_site and has_live_conditions:
         weather = await fetch_gridiron_weather(league, home_code)
         adjustments.extend(
             mlb_weather_adjustments(weather) if league == "mlb"
             else nfl_weather_adjustments(weather)
         )
-    if req.apply_lineups:
+    if req.apply_lineups and has_live_conditions:
         if league == "mlb":
             adjustments.extend(mlb_lineup_adjustments(
                 home_code, away_code, req.missing_home, req.missing_away,
@@ -371,16 +378,22 @@ async def _predict_gridiron(req: NFLPredictRequest, league: str) -> NFLPredictRe
         )
         edges.sort(key=lambda e: -e.edge_pp)
 
+    def _full_name(t) -> str:
+        city = getattr(t, "city", "")
+        return f"{city} {t.name}".strip() if city else t.name
+
     return NFLPredictResponse(
         home_team=TeamInfo(
-            code=home_t.code, name=f"{home_t.city} {home_t.name}",
+            code=home_t.code, name=_full_name(home_t),
             flag=home_t.flag, elo=home_t.elo,
-            conference=getattr(home_t, "conference", None), division=home_t.division,
+            conference=getattr(home_t, "conference", None),
+            division=getattr(home_t, "division", None),
         ),
         away_team=TeamInfo(
-            code=away_t.code, name=f"{away_t.city} {away_t.name}",
+            code=away_t.code, name=_full_name(away_t),
             flag=away_t.flag, elo=away_t.elo,
-            conference=getattr(away_t, "conference", None), division=away_t.division,
+            conference=getattr(away_t, "conference", None),
+            division=getattr(away_t, "division", None),
         ),
         home_win_prob=result.home_win_prob,
         away_win_prob=result.away_win_prob,
@@ -409,6 +422,44 @@ async def _predict_gridiron(req: NFLPredictRequest, league: str) -> NFLPredictRe
 @router.post("/predict/nfl", response_model=NFLPredictResponse, tags=["Predictions"])
 async def predict_nfl(req: NFLPredictRequest) -> NFLPredictResponse:
     return await _predict_gridiron(req, "nfl")
+
+
+@router.post("/predict/ncaaf", response_model=NFLPredictResponse, tags=["Predictions"])
+async def predict_ncaaf(req: NFLPredictRequest) -> NFLPredictResponse:
+    """NCAA FBS football — same engine, college scoring environment. Unknown
+    teams fall back to a neutral baseline and lean on the market line."""
+    return await _predict_gridiron(req, "ncaaf")
+
+
+@router.get("/teams/ncaaf", response_model=list[TeamInfo], tags=["Teams"])
+def list_ncaaf_teams() -> list[TeamInfo]:
+    # De-dupe alt abbreviations that share a name (e.g. UGA/GA, BSU/BOIS).
+    seen: set[str] = set()
+    out: list[TeamInfo] = []
+    for t in all_ncaaf_teams_sorted():
+        if t.name in seen:
+            continue
+        seen.add(t.name)
+        out.append(TeamInfo(
+            code=t.code, name=t.name, flag=t.flag,
+            elo=t.elo, conference=t.conference,
+        ))
+    return out
+
+
+@router.get("/rankings/ncaaf", response_model=RankingsResponse, tags=["Rankings"])
+def ncaaf_rankings() -> RankingsResponse:
+    seen: set[str] = set()
+    teams: list[RankedTeam] = []
+    for t in all_ncaaf_teams_sorted():
+        if t.name in seen:
+            continue
+        seen.add(t.name)
+        teams.append(RankedTeam(
+            rank=len(teams) + 1, code=t.code, name=t.name,
+            flag=t.flag, elo=t.elo, conference=t.conference,
+        ))
+    return RankingsResponse(sport="ncaaf", teams=teams)
 
 
 @router.post("/predict/cfl", response_model=NFLPredictResponse, tags=["Predictions"])
@@ -504,6 +555,35 @@ def _map_code(league: str, abbr: str) -> Optional[str]:
 # track record, so this never manufactures or erases an edge.
 MARKET_ANCHOR_WEIGHT = 0.50
 
+# College football has ~135 teams and weak per-team priors, so the market line
+# is a far sharper estimate than our ratings — anchor harder to it. NFL priors
+# are strong, so we trust the model more there.
+_MARKET_ANCHOR_BY_LEAGUE = {"ncaaf": 0.72}
+
+# How far the projected *score* is pulled toward the market-implied score
+# (derived from the spread + total). The market total is the sharpest public
+# estimate of the scoring environment, so we lean on it — most for college.
+_SCORE_ANCHOR_BY_LEAGUE = {"ncaaf": 0.65, "nfl": 0.45, "cfl": 0.45, "mlb": 0.40}
+
+
+def _spread_to_home_prob(spread: float, league: str) -> float:
+    """Home win probability implied by a market spread (home-based, e.g. -6.5).
+
+    Expected home margin is −spread; run it through the league's margin
+    distribution. Lets us anchor to the line even when no moneyline is quoted.
+    """
+    sigma = GRIDIRON_PARAMS.get(league, GRIDIRON_PARAMS["nfl"])["margin_sigma"]
+    return win_probability(-spread, sigma)
+
+
+def _market_implied_score(g: LiveGame) -> Optional[tuple[float, float]]:
+    """(home_pts, away_pts) implied by the market spread + total, or None."""
+    if g.market_spread is None or g.market_over_under is None:
+        return None
+    margin = -g.market_spread            # home favored by −spread
+    total = g.market_over_under
+    return (total + margin) / 2.0, (total - margin) / 2.0
+
 # Raw rating models are systematically over-confident, so hunting for edges
 # straight off the raw probability makes the model disagree with the market on
 # *every* game — it "always fades the crowd." Before comparing to a market
@@ -556,22 +636,38 @@ async def _slate_entry(league: str, g: LiveGame, poly_markets) -> dict:
         entry["mapped"] = True
 
         # Market-anchored calibration: shrink the headline win prob toward the
-        # no-vig line. Falls back to the raw model when no market is available.
+        # sharpest public estimate. Prefer the no-vig moneyline; fall back to the
+        # win prob implied by the spread; fall back to the raw model.
         book_home = _no_vig_home_prob(g)
-        if book_home is not None:
-            w = MARKET_ANCHOR_WEIGHT
-            cal_home = w * book_home + (1 - w) * pred.home_win_prob
+        anchor_home = book_home
+        if anchor_home is None and g.market_spread is not None:
+            anchor_home = _spread_to_home_prob(g.market_spread, league)
+        if anchor_home is not None:
+            w = _MARKET_ANCHOR_BY_LEAGUE.get(league, MARKET_ANCHOR_WEIGHT)
+            cal_home = w * anchor_home + (1 - w) * pred.home_win_prob
         else:
             cal_home = pred.home_win_prob
+
+        # Projected score: blend the model's expected points toward the score
+        # implied by the market spread + total (the sharpest scoring estimate).
+        implied = _market_implied_score(g)
+        if implied is not None:
+            sw = _SCORE_ANCHOR_BY_LEAGUE.get(league, 0.5)
+            proj_home = sw * implied[0] + (1 - sw) * pred.home_expected_pts
+            proj_away = sw * implied[1] + (1 - sw) * pred.away_expected_pts
+        else:
+            proj_home, proj_away = pred.home_expected_pts, pred.away_expected_pts
 
         entry["model"] = {
             "home_win_prob": pred.home_win_prob,
             "away_win_prob": pred.away_win_prob,
             "calibrated_home_win": cal_home,
             "calibrated_away_win": 1.0 - cal_home,
-            "market_anchored": book_home is not None,
+            "market_anchored": anchor_home is not None,
             "home_expected": pred.home_expected_pts,
             "away_expected": pred.away_expected_pts,
+            "proj_home_score": round(proj_home, 1),
+            "proj_away_score": round(proj_away, 1),
             "total_estimate": pred.total_points_estimate,
             "over_prob": pred.over_prob,
             "under_prob": pred.under_prob,
@@ -690,33 +786,29 @@ async def today(league: str) -> dict:
 
 # ─── Best bets scanner ────────────────────────────────────────────────────────
 
-_LEAGUE_FLAGS = {"mlb": "⚾", "nfl": "🏈", "cfl": "🍁"}
+_LEAGUE_FLAGS = {"nfl": "🏈", "ncaaf": "🏈"}
 
-
-def _kickoff_upcoming(kickoff: str, now: datetime) -> bool:
-    try:
-        return datetime.fromisoformat(kickoff) > now
-    except ValueError:
-        return True   # unparseable — keep rather than silently hide
+# The product is focused on American football: the NFL and NCAA FBS.
+FOCUS_LEAGUES = ("nfl", "ncaaf")
 
 
 @router.get("/best-bets", response_model=BestBetsResponse, tags=["Predictions"])
 async def best_bets() -> BestBetsResponse:
     """
-    Scan today's live slates (MLB/NFL/CFL) and upcoming soccer fixtures with
-    live weather + lineups applied, and rank the biggest disagreements between
-    our model and the live market prices. Games already played never appear.
+    Scan today's live NFL and NCAA football slates, comparing our (de-biased)
+    model to the live sportsbook prices, and rank the strongest disagreements.
+    Games already played never appear.
     """
     bets: list[BestBetOut] = []
 
-    # ── Live league slates: model vs the live sportsbook/crowd prices ──
-    for lg in ("mlb", "nfl", "cfl"):
+    for lg in FOCUS_LEAGUES:
         board, poly = await asyncio.gather(
             fetch_scoreboard(lg),
             fetch_league_markets(lg),
         )
         ledger.grade_board(lg, board.games)
         flag = _LEAGUE_FLAGS[lg]
+        label = lg.upper()
         for g in board.games:
             if g.state != "pre" or not is_current(g):
                 continue
@@ -731,44 +823,16 @@ async def best_bets() -> BestBetsResponse:
                     kickoff=g.kickoff, venue="",
                     home=g.home, away=g.away,
                     home_flag=flag, away_flag=flag,
-                    market=f"{lg.upper()} · {e['market']}",
+                    market=f"{label} · {e['market']}",
                     selection=e["selection"],
                     model_prob=e["model_prob"], market_prob=e["market_prob"],
                     edge_pp=e["edge_pp"], rating=e["rating"],
                     note=f"Model vs live {g.market_provider or 'market'} price",
                 ))
 
-    # ── Soccer: only real, scheduled World Cup games from the live feed ──
-    for wc in await _wc_model_games():
-        if wc["state"] != "pre":
-            continue   # conviction plays are for games that haven't kicked off
-        h, a = wc["home"], wc["away"]
-        common = dict(
-            fixture_id=f"wc:{wc['id']}", kickoff=wc["kickoff"], venue="",
-            home=h["name"], away=a["name"], home_flag=h["flag"], away_flag=a["flag"],
-        )
-        # Strong-favourite conviction (no live soccer price to compare against)
-        fav_p, fav = (wc["home_win"], h) if wc["home_win"] >= wc["away_win"] else (wc["away_win"], a)
-        if fav_p >= 0.55:
-            bets.append(BestBetOut(
-                **common, market="1X2", selection=f"{fav['name']} win",
-                model_prob=fav_p, market_prob=None, edge_pp=None,
-                rating="B" if fav_p >= 0.6 else "C",
-                note="Model conviction — compare to your book's price",
-            ))
-        over = wc["over_2_5"]
-        if over >= 0.60 or over <= 0.40:
-            sel, p = ("Over 2.5", over) if over >= 0.60 else ("Under 2.5", 1 - over)
-            bets.append(BestBetOut(
-                **common, market="Total 2.5", selection=sel,
-                model_prob=p, market_prob=None, edge_pp=None,
-                rating="B" if p >= 0.66 else "C",
-                note="Model total conviction — compare to your book's price",
-            ))
-
     bets.sort(key=lambda b: (b.edge_pp is None, -(b.edge_pp or 0), -b.model_prob))
     return BestBetsResponse(
-        generated_with="Live slates (MLB/NFL/CFL) + Dixon-Coles soccer, with live weather + lineups",
+        generated_with="Live NFL + NCAA football slates, model de-biased and anchored to the market line",
         bets=bets[:24],
     )
 
