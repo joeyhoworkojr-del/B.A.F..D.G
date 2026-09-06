@@ -50,22 +50,40 @@ function TeamLine({
   )
 }
 
-/** One market column (Spread / Total / Money) with a home + away cell. */
-function OddsCol({ top, bottom }: { top: string; bottom: string }) {
-  const Cell = ({ v }: { v: string }) =>
-    v === '—' ? (
-      <div className="grid h-8 place-items-center text-zinc-600">🔒</div>
-    ) : (
-      <div className="grid h-8 place-items-center rounded-md border border-terminal-border bg-terminal-muted/60 text-[12px] font-semibold text-signal-amber tabular-nums">
+type Verdict = 'pick' | 'fade' | 'none'
+
+/** One market column (Spread / Total / Money) with an away + home cell.
+ *  Since this is a prediction site, the model's pick is greened and the side
+ *  it fades is reddened; with no model the cell shows the neutral line. */
+function OddsCol({ top, bottom, topV, bottomV }: {
+  top: string; bottom: string; topV: Verdict; bottomV: Verdict
+}) {
+  const Cell = ({ v, verdict }: { v: string; verdict: Verdict }) => {
+    if (v === '—') return <div className="grid h-8 place-items-center text-zinc-600">🔒</div>
+    const cls =
+      verdict === 'pick' ? 'border-signal-green/60 bg-signal-green/15 text-signal-green'
+      : verdict === 'fade' ? 'border-signal-red/40 bg-signal-red/10 text-signal-red/80'
+      : 'border-terminal-border bg-terminal-muted/60 text-signal-amber'
+    return (
+      <div className={`grid h-8 place-items-center rounded-md border text-[12px] font-semibold tabular-nums ${cls}`}>
         {v}
       </div>
     )
+  }
   return (
     <div className="flex w-[52px] shrink-0 flex-col gap-1.5 sm:w-[64px]">
-      <Cell v={top} />
-      <Cell v={bottom} />
+      <Cell v={top} verdict={topV} />
+      <Cell v={bottom} verdict={bottomV} />
     </div>
   )
+}
+
+/** Verdicts for a column's [top, bottom] cells from a single side probability.
+ *  `topIsHigh` = the top cell is the outcome that happens when p ≥ 0.5. */
+function pair(p: number | null | undefined, topIsHigh: boolean): [Verdict, Verdict] {
+  if (p == null) return ['none', 'none']
+  const topPicked = topIsHigh ? p >= 0.5 : p < 0.5
+  return [topPicked ? 'pick' : 'fade', topPicked ? 'fade' : 'pick']
 }
 
 function GameCard({ entry, league }: { entry: TodayGameOut; league: FootballLeague }) {
@@ -102,20 +120,35 @@ function GameCard({ entry, league }: { entry: TodayGameOut; league: FootballLeag
           </div>
         </div>
 
-        {/* Odds columns */}
+        {/* Odds columns — the model's pick is greened, the fade reddened */}
         <div className="flex shrink-0 gap-1.5">
-          <OddsCol
-            top={spread != null ? fmtSpread(-spread) : '—'}
-            bottom={spread != null ? fmtSpread(spread) : '—'}
-          />
-          <OddsCol
-            top={ou != null ? `O ${ou}` : '—'}
-            bottom={ou != null ? `U ${ou}` : '—'}
-          />
-          <OddsCol
-            top={fmtML(g.market_away_ml)}
-            bottom={fmtML(g.market_home_ml)}
-          />
+          {(() => {
+            // Spread: bottom cell is home; home covers when home_cover_prob ≥ .5
+            const [sprTop, sprBot] = pair(m?.home_cover_prob, false)
+            // Total: top cell is Over; over when over_prob ≥ .5
+            const [ouTop, ouBot] = pair(m?.over_prob, true)
+            // Money: bottom cell is home; home wins when calibrated_home_win ≥ .5
+            const [mlTop, mlBot] = pair(m ? (m.calibrated_home_win ?? m.home_win_prob) : null, false)
+            return (
+              <>
+                <OddsCol
+                  top={spread != null ? fmtSpread(-spread) : '—'}
+                  bottom={spread != null ? fmtSpread(spread) : '—'}
+                  topV={sprTop} bottomV={sprBot}
+                />
+                <OddsCol
+                  top={ou != null ? `O ${ou}` : '—'}
+                  bottom={ou != null ? `U ${ou}` : '—'}
+                  topV={ouTop} bottomV={ouBot}
+                />
+                <OddsCol
+                  top={fmtML(g.market_away_ml)}
+                  bottom={fmtML(g.market_home_ml)}
+                  topV={mlTop} bottomV={mlBot}
+                />
+              </>
+            )
+          })()}
         </div>
       </div>
 
@@ -191,6 +224,13 @@ export function Dashboard() {
             {liveCount} live
           </span>
         )}
+      </div>
+
+      {/* Pick legend — this is a prediction site, so the model's call is coloured */}
+      <div className="mb-2 flex items-center gap-3 px-3 text-[10px] font-semibold text-zinc-500">
+        <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-signal-green/70" /> Model’s pick</span>
+        <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-signal-red/60" /> Fade</span>
+        <span className="inline-flex items-center gap-1"><span className="text-zinc-600">🔒</span> No line</span>
       </div>
 
       {/* Column headers */}
