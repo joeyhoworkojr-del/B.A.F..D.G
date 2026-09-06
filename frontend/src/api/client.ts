@@ -7,6 +7,7 @@ import type {
   SoccerMarketOdds,
   NFLMarketOdds,
   BestBetsResponse,
+  BestParlayResponse,
   AllScoreboardsOut,
   ScoreboardOut,
   TodayResponse,
@@ -118,6 +119,7 @@ export const api = {
 
   // Value
   bestBets: () => get<BestBetsResponse>('/api/v1/best-bets'),
+  bestParlay: (maxLegs = 3) => get<BestParlayResponse>(`/api/v1/best-parlay?max_legs=${maxLegs}`),
 
   // Track record
   accuracy: () => get<AccuracyResponse>('/api/v1/accuracy'),

@@ -45,10 +45,13 @@ export function TickerTape() {
 
   if (games.length === 0) return null
   const doubled = [...games, ...games]   // seamless loop
+  // Keep a calm, readable pace no matter how many games are on the board:
+  // ~7s of travel per game, so a big Saturday slate doesn't whip past.
+  const duration = Math.min(600, Math.max(90, games.length * 7))
 
   return (
     <div className="ticker-mask overflow-hidden border-b border-terminal-border bg-terminal-surface/70">
-      <div className="ticker-track">
+      <div className="ticker-track" style={{ animationDuration: `${duration}s` }}>
         {doubled.map((g, i) => <Item key={`${g.league}-${g.event_id}-${i}`} g={g} />)}
       </div>
     </div>

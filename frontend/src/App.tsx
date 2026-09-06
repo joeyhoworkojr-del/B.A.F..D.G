@@ -11,6 +11,7 @@ const lazyPage = <T extends string>(load: () => Promise<Record<T, React.Componen
 
 const GameDetail = lazyPage(() => import('./pages/GameDetail'), 'GameDetail')
 const BestBets = lazyPage(() => import('./pages/BestBets'), 'BestBets')
+const Parlay = lazyPage(() => import('./pages/Parlay'), 'Parlay')
 const TrackRecord = lazyPage(() => import('./pages/TrackRecord'), 'TrackRecord')
 const About = lazyPage(() => import('./pages/About'), 'About')
 
@@ -35,6 +36,7 @@ export default function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/game/:league/:eventId" element={<GameDetail />} />
               <Route path="/best-bets" element={<BestBets />} />
+              <Route path="/parlay" element={<Parlay />} />
               <Route path="/track" element={<TrackRecord />} />
               <Route path="/about" element={<About />} />
             </Routes>

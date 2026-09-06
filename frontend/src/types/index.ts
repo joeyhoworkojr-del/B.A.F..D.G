@@ -119,6 +119,35 @@ export interface BestBetOut {
   note: string
 }
 
+export interface ParlayLeg {
+  fixture_id: string
+  league: string
+  kickoff: string
+  home: string
+  away: string
+  market: string
+  selection: string
+  model_prob: number
+  market_prob: number
+  decimal_odds: number
+  edge_pp: number
+  rating: string
+}
+
+export interface BestParlayResponse {
+  generated_with: string
+  legs: ParlayLeg[]
+  leg_count: number
+  model_prob: number
+  decimal_odds: number
+  american_odds: number
+  implied_prob: number
+  edge_pp: number
+  ev_per_unit: number
+  payout_per_unit: number
+  pool: ParlayLeg[]
+}
+
 export interface BestBetsResponse {
   generated_with: string
   bets: BestBetOut[]
