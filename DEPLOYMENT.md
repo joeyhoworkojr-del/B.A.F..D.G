@@ -49,24 +49,37 @@ GitHub once set up) and **docker compose** (any VPS or local machine).
    `FLY_API_TOKEN`. From then on, `.github/workflows/fly-deploy.yml` tests
    and ships the app on every push to `main`.
 
-## Persisting the track record (optional but recommended)
+## Persisting the track record (automatic on Fly)
 
-The verified track record lives in a SQLite file. By default it is written to
-`ledger.db` in the working directory, which is **wiped on every deploy**. To
-keep the record across deploys, attach a Fly volume and point `LEDGER_PATH` at
-it:
-
-```bash
-fly volumes create statedge_data --size 1 --app statedge-api
-fly secrets set LEDGER_PATH=/data/ledger.db --app statedge-api
-```
-
-Then mount the volume in `fly.toml`:
+The verified track record + self-correcting ratings live in a SQLite file. This
+is now **durable on Fly**: `fly.toml` mounts a volume named `statedge_data` at
+`/data` and sets `LEDGER_PATH=/data/ledger.db`, and the deploy workflow creates
+that volume in the primary region (`dfw`) on the first run if it's missing — so
+the record survives every deploy with no manual step.
 
 ```toml
+# fly.toml
+[env]
+  LEDGER_PATH = "/data/ledger.db"
+
 [[mounts]]
   source = "statedge_data"
   destination = "/data"
+```
+
+```yaml
+# .github/workflows/fly-deploy.yml (deploy job, before `flyctl deploy`)
+- name: Ensure ledger data volume
+  run: |
+    flyctl volumes list --app statedge-api | grep -q statedge_data \
+      || flyctl volumes create statedge_data --app statedge-api --region dfw --size 1 --yes
+```
+
+To do it by hand instead (e.g. a different app name/region), create the volume
+once and it will attach on the next deploy:
+
+```bash
+fly volumes create statedge_data --size 1 --region dfw --app statedge-api
 ```
 
 Predictions snapshot themselves whenever a slate loads and grade themselves as
