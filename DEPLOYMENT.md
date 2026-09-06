@@ -49,41 +49,35 @@ GitHub once set up) and **docker compose** (any VPS or local machine).
    `FLY_API_TOKEN`. From then on, `.github/workflows/fly-deploy.yml` tests
    and ships the app on every push to `main`.
 
-## Persisting the track record (automatic on Fly)
+## Persisting the track record (one-time manual step on Fly)
 
-The verified track record + self-correcting ratings live in a SQLite file. This
-is now **durable on Fly**: `fly.toml` mounts a volume named `statedge_data` at
-`/data` and sets `LEDGER_PATH=/data/ledger.db`, and the deploy workflow creates
-that volume in the primary region (`dfw`) on the first run if it's missing — so
-the record survives every deploy with no manual step.
-
-```toml
-# fly.toml
-[env]
-  LEDGER_PATH = "/data/ledger.db"
-
-[[mounts]]
-  source = "statedge_data"
-  destination = "/data"
-```
-
-```yaml
-# .github/workflows/fly-deploy.yml (deploy job, before `flyctl deploy`)
-- name: Ensure ledger data volume
-  run: |
-    flyctl volumes list --app statedge-api | grep -q statedge_data \
-      || flyctl volumes create statedge_data --app statedge-api --region dfw --size 1 --yes
-```
-
-To do it by hand instead (e.g. a different app name/region), create the volume
-once and it will attach on the next deploy:
+The verified track record + self-correcting ratings live in a SQLite file. By
+default it's written to `ledger.db` in the container, which is **wiped on every
+deploy**. Making it durable needs a Fly volume — but Fly **cannot attach a
+volume to an already-running machine from CI** (the deploy errors with
+`needs volumes with name 'statedge_data' ... dfw=1`), so this one migration
+can't be automated. It's a one-time step from a machine with Fly access:
 
 ```bash
+# 1. Create the volume once in the primary region (skip if it already exists;
+#    `fly volumes list --app statedge-api` shows what's there).
 fly volumes create statedge_data --size 1 --region dfw --app statedge-api
+
+# 2. In fly.toml, uncomment the LEDGER_PATH env line and the [[mounts]] block:
+#      [env]  LEDGER_PATH = "/data/ledger.db"
+#      [[mounts]]
+#        source = "statedge_data"
+#        destination = "/data"
+
+# 3. Deploy interactively — this recreates the machine WITH the volume, which
+#    the non-interactive CI deploy refuses to do:
+fly deploy --ha=false
 ```
 
-Predictions snapshot themselves whenever a slate loads and grade themselves as
-games go final, so the ledger fills in on its own once the volume is attached.
+After that first interactive deploy, every subsequent CI push keeps the volume
+attached and the record persists. Predictions snapshot themselves whenever a
+slate loads and grade themselves as games go final, so the ledger fills in on
+its own once the volume is mounted.
 
 ## docker compose — self-hosted
 

@@ -18,16 +18,16 @@ primary_region = "dfw"   # Dallas — closest to the World Cup action
   ELO_Q = "1200"
   ELO_HOST_EDGE = "150"
   SR_BLEND_WEIGHT = "0.60"
-  # Durable track record: the ledger + self-correcting ratings live on the
-  # attached volume (mounted at /data), so results survive every deploy. The
-  # deploy workflow ensures the `statedge_data` volume exists before deploying.
-  LEDGER_PATH = "/data/ledger.db"
+  # Durable track record (persistent ledger): to enable, attach the volume
+  # ONCE from a machine with Fly access, then uncomment the [[mounts]] +
+  # LEDGER_PATH below and deploy. Fly can't attach a volume to an already
+  # running machine from CI, so this one migration can't be automated — see
+  # DEPLOYMENT.md for the exact steps.
+  # LEDGER_PATH = "/data/ledger.db"
 
-# Persistent storage for the prediction ledger / ratings (see [env].LEDGER_PATH).
-# The deploy workflow creates this volume in the primary region if it's missing.
-[[mounts]]
-  source = "statedge_data"
-  destination = "/data"
+# [[mounts]]
+#   source = "statedge_data"
+#   destination = "/data"
 
 # Secrets (set via: fly secrets set KEY=value --app statedge-api)
 # Optional: DATABASE_URL, REDIS_URL, FOOTBALL_DATA_API_KEY, SPORTRADAR_API_KEY
