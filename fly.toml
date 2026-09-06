@@ -18,14 +18,17 @@ primary_region = "dfw"   # Dallas — closest to the World Cup action
   ELO_Q = "1200"
   ELO_HOST_EDGE = "150"
   SR_BLEND_WEIGHT = "0.60"
-  # Durable track record: the ledger + self-correcting ratings live on the
-  # mounted volume, so results survive every deploy. The deploy workflow
-  # provisions the volume and migrates the machine onto it automatically.
-  LEDGER_PATH = "/data/ledger.db"
+  # Durable track record (persistent ledger) is TEMPORARILY OFF: the dfw host
+  # holding the `statedge_data` volume ran out of capacity to launch a machine
+  # ("insufficient resources to create new machine with existing volume"),
+  # which took the app down mid-migration. Mount reverted to restore service.
+  # To retry: create a FRESH empty volume in a region with capacity, then
+  # re-enable the LEDGER_PATH + [[mounts]] below. See DEPLOYMENT.md.
+  # LEDGER_PATH = "/data/ledger.db"
 
-[[mounts]]
-  source = "statedge_data"
-  destination = "/data"
+# [[mounts]]
+#   source = "statedge_data"
+#   destination = "/data"
 
 # Secrets (set via: fly secrets set KEY=value --app statedge-api)
 # Optional: DATABASE_URL, REDIS_URL, FOOTBALL_DATA_API_KEY, SPORTRADAR_API_KEY
