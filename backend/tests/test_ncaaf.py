@@ -128,6 +128,21 @@ def test_parse_plays_newest_first() -> None:
     assert any(p.scoring for p in plays)
 
 
+def test_parse_plays_falls_back_to_flat_array() -> None:
+    # Some live college summaries only populate a flat top-level `plays` list.
+    summary = {
+        "drives": {},
+        "plays": [
+            {"period": {"number": 2}, "clock": {"displayValue": "08:20"}, "text": "Run for 4"},
+            {"period": {"number": 2}, "clock": {"displayValue": "07:55"}, "text": "TD run",
+             "scoringPlay": True, "homeScore": 14, "awayScore": 7},
+        ],
+    }
+    plays = _parse_plays(summary)
+    assert plays[0].text == "TD run" and plays[0].scoring is True   # newest first
+    assert len(plays) == 2
+
+
 def test_play_by_play_endpoint() -> None:
     feed = GameFeed(league="ncaaf", event_id="401752", ok=True,
                     plays=_parse_plays({"drives": {"previous": [

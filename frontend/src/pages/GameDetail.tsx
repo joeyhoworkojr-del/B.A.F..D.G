@@ -84,23 +84,25 @@ export function GameDetail() {
   const [tab, setTab] = useState<'model' | 'plays'>('plays')
   const [error, setError] = useState('')
 
-  const load = useCallback(() => {
+  const loadGame = useCallback(() => {
     if (!eventId) return
     api.today(lg)
-      .then(d => {
-        const found = d.games.find(x => x.game.event_id === eventId) ?? null
-        setEntry(found)
-        setError('')
-      })
+      .then(d => { setEntry(d.games.find(x => x.game.event_id === eventId) ?? null); setError('') })
       .catch(e => setError(e.message))
+  }, [lg, eventId])
+
+  const loadPbp = useCallback(() => {
+    if (!eventId) return
     api.playByPlay(lg, eventId).then(setPbp).catch(() => {})
   }, [lg, eventId])
 
   useEffect(() => {
-    load()
-    const iv = setInterval(load, 20_000)
-    return () => clearInterval(iv)
-  }, [load])
+    loadGame(); loadPbp()
+    // Score/clock refresh every 20s; play-by-play polls faster so it stays live.
+    const g1 = setInterval(loadGame, 20_000)
+    const g2 = setInterval(loadPbp, 10_000)
+    return () => { clearInterval(g1); clearInterval(g2) }
+  }, [loadGame, loadPbp])
 
   const g = entry?.game
   const m = entry?.model
@@ -170,17 +172,33 @@ export function GameDetail() {
             ))}
           </div>
 
-          {tab === 'plays' && (
-            <div className="rounded-xl border border-terminal-border bg-terminal-surface px-3">
-              {pbp && pbp.plays.length > 0 ? (
-                pbp.plays.map((p, i) => <PlayRow key={i} p={p} />)
-              ) : (
-                <p className="py-8 text-center text-sm text-zinc-500">
-                  {g.state === 'pre' ? 'Play-by-play appears once the game kicks off.' : 'No plays available yet.'}
-                </p>
-              )}
-            </div>
-          )}
+          {tab === 'plays' && (() => {
+            // Always lead with the live last play from the scoreboard (updates
+            // fastest), so the feed is live even if the summary lags a beat.
+            const feed = pbp?.plays ?? []
+            const synthetic: PlayOut[] = (live && g.last_play && (feed.length === 0 || feed[0].text !== g.last_play))
+              ? [{ period: g.period, clock: g.clock, text: g.last_play, team_abbr: g.possession_abbr, scoring: false, home_score: g.home_score, away_score: g.away_score }]
+              : []
+            const plays = [...synthetic, ...feed]
+            return (
+              <div>
+                {live && (
+                  <div className="mb-2 flex items-center gap-1.5 px-1 text-[11px] font-bold text-signal-green">
+                    <span className="h-1.5 w-1.5 rounded-full bg-signal-green animate-pulse" /> LIVE · updates every 10s
+                  </div>
+                )}
+                <div className="rounded-xl border border-terminal-border bg-terminal-surface px-3">
+                  {plays.length > 0 ? (
+                    plays.map((p, i) => <PlayRow key={i} p={p} />)
+                  ) : (
+                    <p className="py-8 text-center text-sm text-zinc-500">
+                      {g.state === 'pre' ? 'Play-by-play appears once the game kicks off.' : 'Waiting for the next play…'}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )
+          })()}
 
           {tab === 'model' && (() => {
             const mLive = !!m?.live
