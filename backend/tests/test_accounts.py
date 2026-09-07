@@ -313,3 +313,59 @@ def test_the_diagnostic_never_exposes_a_cookie_value(client):
     token = client.cookies.get("statedge_session")
     assert token
     assert token not in body      # names only, never values
+
+
+def test_the_cookie_policy_can_be_widened_for_a_cross_site_api(monkeypatch):
+    """
+    A Lax cookie is not sent when the browser calls the API host directly,
+    which looks exactly like being signed out right after signing in.
+    """
+    import importlib
+    from src.accounts import sessions as sess
+    monkeypatch.setenv("SESSION_SAMESITE", "none")
+    importlib.reload(sess)
+    kwargs = sess.cookie_kwargs("2026-10-01T00:00:00+00:00")
+    assert kwargs["samesite"] == "none"
+    # Browsers reject SameSite=None without Secure, so it is forced on.
+    assert kwargs["secure"] is True
+    monkeypatch.delenv("SESSION_SAMESITE")
+    importlib.reload(sess)
+
+
+def test_an_unrecognised_samesite_value_falls_back_to_lax(monkeypatch):
+    import importlib
+    from src.accounts import sessions as sess
+    monkeypatch.setenv("SESSION_SAMESITE", "banana")
+    importlib.reload(sess)
+    assert sess.SAMESITE == "lax"
+    monkeypatch.delenv("SESSION_SAMESITE")
+    importlib.reload(sess)
+
+
+def test_the_production_site_is_an_allowed_origin():
+    from src.config import settings
+    assert "https://statedge.ca" in settings.cors_origins
+
+
+def test_the_cookie_can_be_scoped_to_a_parent_domain(monkeypatch):
+    """
+    api.statedge.ca and statedge.ca share a registrable domain, so a cookie
+    scoped to ".statedge.ca" is first-party for both — which is what survives
+    Safari's third-party cookie blocking.
+    """
+    import importlib
+    from src.accounts import sessions as sess
+    monkeypatch.setenv("SESSION_COOKIE_DOMAIN", ".statedge.ca")
+    importlib.reload(sess)
+    assert sess.cookie_kwargs("2026-10-01T00:00:00+00:00")["domain"] == ".statedge.ca"
+    monkeypatch.delenv("SESSION_COOKIE_DOMAIN")
+    importlib.reload(sess)
+
+
+def test_no_domain_is_set_by_default(monkeypatch):
+    """Host-only is correct when the API and site are the same host."""
+    import importlib
+    from src.accounts import sessions as sess
+    monkeypatch.delenv("SESSION_COOKIE_DOMAIN", raising=False)
+    importlib.reload(sess)
+    assert "domain" not in sess.cookie_kwargs("2026-10-01T00:00:00+00:00")

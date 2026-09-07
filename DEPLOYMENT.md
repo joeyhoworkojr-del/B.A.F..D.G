@@ -237,6 +237,40 @@ Project settings that matter:
 Changing the API host means editing the two rewrite destinations in
 `frontend/vercel.json`.
 
+### Sign-in requires a same-site API host
+
+**Confirmed:** Vercel's rewrite to an external host does not forward the
+`Cookie` header. `GET /api/v1/auth/me` on statedge.ca reports
+`cookies_received: []` — no cookies reach the API at all — so the session can
+never be read. Registering appears to succeed and the visitor is then treated
+as a guest, which also leaves Make Your Pick on "Create free account".
+
+Do **not** fix this by pointing the browser straight at
+`statedge-api.fly.dev`. That makes the session a third-party cookie: Safari
+blocks those by default and Chrome is phasing them out, so it would work for
+some visitors and silently fail for others.
+
+Pick one of these instead.
+
+**A. API on a subdomain of the site (recommended, keeps Vercel).**
+
+1. DNS: `CNAME api.statedge.ca → statedge-api.fly.dev`
+2. `fly certs add api.statedge.ca --app statedge-api`
+3. Vercel env: `VITE_API_BASE=https://api.statedge.ca`
+4. Fly secret: `SESSION_COOKIE_DOMAIN=.statedge.ca`
+
+Both hosts share a registrable domain, so the cookie is first-party for each
+and `SameSite=Lax` keeps working. Vercel still serves the SPA from its CDN.
+
+**B. Serve everything from Fly (simplest).**
+
+Point `statedge.ca` at the Fly app. The API image already contains the SPA, so
+there is no proxy, no CORS and no cookie question at all. You lose Vercel's CDN
+for static assets.
+
+`SESSION_SAMESITE=none` exists for a genuinely cross-site setup, but it depends
+on third-party cookies and should be a last resort.
+
 ### What does *not* move
 
 The API cannot go serverless as-is without replacing two things first:

@@ -29,7 +29,13 @@ class Settings(BaseSettings):
     # frontend is pointed at the absolute API URL instead. Vercel preview
     # deployments get a fresh subdomain each time, hence the regex.
     cors_origins: list[str] = Field(
-        default=["http://localhost:5173", "http://localhost:4173"],
+        default=[
+            "http://localhost:5173", "http://localhost:4173",
+            # The production site. Needed only if the frontend calls the API
+            # host directly instead of through the same-origin proxy, but its
+            # absence makes that fallback impossible to even try.
+            "https://statedge.ca", "https://www.statedge.ca",
+        ],
         alias="CORS_ORIGINS",
     )
     cors_origin_regex: str = Field(
