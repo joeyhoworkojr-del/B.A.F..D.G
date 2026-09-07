@@ -15,6 +15,7 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -78,6 +79,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Compress anything worth compressing. JSON payloads and the JS bundle are
+# highly compressible, and nothing upstream was doing this.
+app.add_middleware(GZipMiddleware, minimum_size=500)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -88,6 +93,56 @@ app.add_middleware(
 
 app.include_router(pred_router, prefix="/api/v1")
 app.include_router(live_router, prefix="/api/v1")
+
+
+# ─── Caching ──────────────────────────────────────────────────────────────────
+# Every endpoint here is public, read-only data, so a shared cache (the browser
+# or a CDN) may serve it. Live paths get a short max-age plus
+# stale-while-revalidate: a poll landing between updates is answered instantly
+# instead of re-running the model, while the client still refreshes in the
+# background. TTLs stay at or below the upstream cache windows so a response is
+# never fresher-looking than the data behind it.
+_CACHE_RULES: tuple[tuple[str, str], ...] = (
+    ("/api/v1/live/pbp/", "public, max-age=8, stale-while-revalidate=30"),
+    ("/api/v1/live/scores", "public, max-age=15, stale-while-revalidate=45"),
+    ("/api/v1/game/", "public, max-age=10, stale-while-revalidate=30"),
+    ("/api/v1/today/", "public, max-age=15, stale-while-revalidate=45"),
+    ("/api/v1/best-bets", "public, max-age=30, stale-while-revalidate=90"),
+    ("/api/v1/best-parlay", "public, max-age=30, stale-while-revalidate=90"),
+    ("/api/v1/accuracy", "public, max-age=60, stale-while-revalidate=300"),
+    ("/api/v1/teams/", "public, max-age=300"),
+    ("/api/v1/rankings/", "public, max-age=300"),
+)
+
+# Vite emits content-hashed asset filenames, so a given URL's bytes never change.
+_IMMUTABLE = "public, max-age=31536000, immutable"
+
+
+@app.middleware("http")
+async def cache_control(request, call_next):
+    """Attach a cache policy to safe, successful GETs."""
+    response = await call_next(request)
+
+    if request.method != "GET" or response.status_code >= 400:
+        return response
+    if "cache-control" in response.headers:      # an endpoint set its own policy
+        return response
+
+    path = request.url.path
+    if path.startswith("/assets/"):
+        response.headers["Cache-Control"] = _IMMUTABLE
+        return response
+
+    for prefix, policy in _CACHE_RULES:
+        if path.startswith(prefix):
+            response.headers["Cache-Control"] = policy
+            return response
+
+    if not path.startswith("/api/"):
+        # The SPA shell (and any unhashed file) must revalidate, or a deploy
+        # leaves people on an old bundle pointed at new asset URLs.
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 @app.get("/health", response_model=HealthResponse, tags=["Health"])
