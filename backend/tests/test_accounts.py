@@ -288,3 +288,28 @@ def test_verification_of_a_corrupt_hash_returns_false_rather_than_raising():
 def test_invalid_usernames_are_refused(bad):
     with pytest.raises(InvalidUsername):
         normalise_username(bad)
+
+
+# ─── Cross-origin diagnostics ────────────────────────────────────────────────
+
+def test_me_reports_whether_a_session_cookie_arrived(client):
+    """
+    statedge.ca proxies /api to Fly, so a cookie can be dropped in transit.
+    "Signed in but seen as a guest" and "never signed in" are indistinguishable
+    from the browser without this.
+    """
+    anon = TestClient(app).get("/api/v1/auth/me").json()
+    assert anon["debug"]["session_cookie_present"] is False
+
+    _register(client)
+    signed_in = client.get("/api/v1/auth/me").json()
+    assert signed_in["debug"]["session_cookie_present"] is True
+    assert "statedge_session" in signed_in["debug"]["cookies_received"]
+
+
+def test_the_diagnostic_never_exposes_a_cookie_value(client):
+    _register(client)
+    body = client.get("/api/v1/auth/me").text
+    token = client.cookies.get("statedge_session")
+    assert token
+    assert token not in body      # names only, never values
