@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom'
 
 /**
- * News and Results don't fit in the five-slot bottom bar, so they get an
- * explicit row on mobile rather than being unreachable.
+ * News, Results, Parlay and FAQ don't fit in the five-slot bottom bar, so below
+ * `lg` they get an explicit row rather than being unreachable.
  */
 export function MobileMoreLinks() {
   const links = [
@@ -14,7 +14,8 @@ export function MobileMoreLinks() {
   return (
     <nav
       aria-label="More sections"
-      className="border-b border-terminal-border bg-terminal-muted/50 md:hidden"
+      data-nav="more"
+      className="border-b border-terminal-border bg-terminal-muted/50 lg:hidden"
     >
       <ul className="mx-auto flex max-w-app gap-1 overflow-x-auto px-4 py-1.5 no-scrollbar">
         {links.map(l => (

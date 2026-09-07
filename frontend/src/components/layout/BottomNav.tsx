@@ -35,15 +35,18 @@ const items = [
 ]
 
 /**
- * Mobile-only primary navigation. Hidden from `md` up, where the top bar takes
- * over — the page reserves matching bottom padding so it never covers content.
- * News and Results live in the header's More menu at this width.
+ * Primary navigation below `lg`. The full header nav needs more room than a
+ * 768px tablet has — squeezing it in there pushed the page 8px wide — so the
+ * bottom bar covers everything up to that width and the top bar takes over
+ * above it. The page reserves matching bottom padding so it never covers
+ * content. News, Results, Parlay and FAQ sit in the row under the header.
  */
 export function BottomNav() {
   return (
     <nav
       aria-label="Primary"
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-terminal-border bg-terminal-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+      data-nav="bottom"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-terminal-border bg-terminal-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
     >
       <ul className="mx-auto flex max-w-3xl items-stretch">
         {items.map(({ to, label, Icon, end }) => (

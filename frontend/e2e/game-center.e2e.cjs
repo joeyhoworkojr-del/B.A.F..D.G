@@ -148,9 +148,13 @@ async function main() {
       check(`[${name}] market tabs respond to arrow keys`,
         await page.getByRole('tab', { name: 'Total' }).getAttribute('aria-selected') === 'true')
 
-      // 7. Nav: bottom bar on mobile only, and it must not cover content.
-      const bottomVisible = await page.locator('nav.md\\:hidden').isVisible()
-      check(`[${name}] bottom nav shown only on mobile`, name === 'mobile' ? bottomVisible : !bottomVisible)
+      // 7. Nav: the bottom bar covers everything below `lg`, and the desktop
+      // header nav takes over at and above it. Exactly one is ever visible.
+      const bottomVisible = await page.locator('[data-nav="bottom"]').isVisible()
+      const topVisible = await page.locator('[data-nav="top"]').isVisible()
+      check(`[${name}] exactly one primary nav is visible`, bottomVisible !== topVisible)
+      check(`[${name}] correct nav for this width`,
+        name === 'desktop' ? topVisible : bottomVisible)
 
       // 8. No horizontal overflow at any width.
       const overflow = await page.evaluate(() =>

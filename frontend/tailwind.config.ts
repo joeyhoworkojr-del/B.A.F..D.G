@@ -17,7 +17,8 @@ export default {
         },
         signal: {
           amber: '#b45309',        // watch / medium confidence (AA on white)
-          'amber-dim': '#fef3c7',
+          // Light enough that #b45309 text on it clears 4.5:1 (amber-100 does not).
+          'amber-dim': '#fffbeb',
           green: '#059669',        // brand + genuine positive value
           'green-dim': '#ecfdf5',
           red: '#dc2626',          // negative / stale / error

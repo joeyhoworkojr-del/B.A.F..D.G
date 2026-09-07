@@ -37,7 +37,7 @@ export default function App() {
       <div className="flex min-h-screen flex-col text-zinc-100">
         <TopBar />
         <MobileMoreLinks />
-        <main className="flex-1 pb-24 md:pb-10">
+        <main className="flex-1 pb-24 lg:pb-10">
           <Suspense fallback={<PageFallback />}>
             <Routes>
               <Route path="/" element={<Dashboard />} />

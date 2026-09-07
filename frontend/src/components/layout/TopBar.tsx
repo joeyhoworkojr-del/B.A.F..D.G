@@ -125,8 +125,9 @@ export function TopBar() {
           <span className="text-brand"> Edge</span>
         </Link>
 
-        {/* Desktop navigation — the bottom bar takes over below `md`. */}
-        <nav aria-label="Primary" className="hidden md:block">
+        {/* Desktop navigation. Below `lg` the bottom bar takes over: six links
+            plus a More menu do not fit beside the logo on a 768px tablet. */}
+        <nav aria-label="Primary" data-nav="top" className="hidden lg:block">
           <ul className="flex items-center gap-0.5">
             {NAV_ITEMS.map(item => (
               <li key={item.to}>
