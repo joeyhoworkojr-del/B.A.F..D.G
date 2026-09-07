@@ -339,6 +339,10 @@ export interface AccuracyResponse {
   live_record_available?: boolean
   live_note?: string
   model_versions?: string[]
+  /** "sqlite" or "postgres". */
+  storage_backend?: string
+  /** False when the record does not survive a deploy. */
+  storage_durable?: boolean
   performance: PerformanceOut
   recent: GradedRow[]
 }

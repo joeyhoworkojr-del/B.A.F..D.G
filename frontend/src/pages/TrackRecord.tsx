@@ -86,6 +86,14 @@ export function TrackRecord() {
               ? `${performance.total_picks} graded pick${performance.total_picks === 1 ? '' : 's'} settled against the final score. This is the record on this page.`
               : 'Nothing has graded yet. The numbers below fill in as games finish.'}
           </p>
+          {data.storage_durable === false && (
+            <p className="mt-3 rounded-lg border border-signal-amber/40 bg-signal-amber-dim px-3 py-2 text-xs leading-relaxed text-signal-amber">
+              <span className="font-bold">This record is not yet permanent.</span> It is
+              stored on the server’s own disk, which is replaced when the site is
+              redeployed, so the history below can reset. Attaching a database makes it
+              durable.
+            </p>
+          )}
           {versions.length > 0 && (
             <p className="mt-2 text-xs text-zinc-500">
               Model version{versions.length === 1 ? '' : 's'} in this record:{' '}

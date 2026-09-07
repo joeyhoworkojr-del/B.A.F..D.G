@@ -10,17 +10,19 @@ When the game goes final, the snapshot is graded automatically:
 Because all three signals are captured together, the scorecard is a fair
 head-to-head: model vs the book vs the crowd on identical games.
 
-SQLite-backed (stdlib). Path via LEDGER_PATH (default ./ledger.db).
-On Fly, attach a volume and set LEDGER_PATH=/data/ledger.db to make the
-record durable across deploys.
+Storage is SQLite by default and Postgres when DATABASE_URL is set — see
+src/track/db.py. This matters: on Fly the container disk is replaced on every
+deploy, so a SQLite ledger silently restarts each release. Pointing
+DATABASE_URL at a managed Postgres is what makes the record durable.
 """
 from __future__ import annotations
 
 import os
-import sqlite3
 import threading
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
+
+from . import db
 
 _LOCK = threading.Lock()
 
@@ -77,34 +79,29 @@ _MIGRATIONS = [
 
 
 def _db_path() -> str:
-    """
-    Resolve the ledger path, guaranteeing it is writable. If the configured
-    path's directory can't be created or written (e.g. the Fly volume didn't
-    mount), fall back to a local file so the API never 500s over storage.
-    """
-    path = os.getenv("LEDGER_PATH", "ledger.db")
-    parent = os.path.dirname(path)
-    try:
-        if parent:
-            os.makedirs(parent, exist_ok=True)
-        # cheap writability probe on the directory
-        if not os.access(parent or ".", os.W_OK):
-            raise OSError(f"{parent!r} not writable")
-        return path
-    except OSError:
-        return "ledger.db"   # ephemeral fallback — better than a hard failure
+    """Kept for callers that report where a SQLite ledger lives."""
+    return db.sqlite_path()
 
 
-def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(_db_path())
-    conn.row_factory = sqlite3.Row
-    conn.execute(_SCHEMA)
-    # Backfill columns for DBs created before they existed.
-    existing = {r["name"] for r in conn.execute("PRAGMA table_info(predictions)")}
-    for col, decl in _MIGRATIONS:
-        if col not in existing:
-            conn.execute(f"ALTER TABLE predictions ADD COLUMN {col} {decl}")
-    return conn
+def _connect():
+    """A ready connection on whichever backend is configured."""
+    return db.connect(_SCHEMA, _MIGRATIONS, "predictions")
+
+
+def storage_backend() -> str:
+    """"sqlite" or "postgres" — surfaced so the record can state its durability."""
+    return db.backend_name()
+
+
+def storage_durable() -> bool:
+    """
+    Whether the record survives a deploy.
+
+    A SQLite ledger on a container's own disk does not: the disk is replaced
+    each release. The UI must not present a graded record as permanent when the
+    storage behind it is not.
+    """
+    return db.is_postgres() or bool(os.getenv("LEDGER_DURABLE"))
 
 
 def _now() -> str:
@@ -217,7 +214,7 @@ def grade_board(league: str, games) -> int:
     return graded
 
 
-def _brier(rows: list[sqlite3.Row], col: str) -> Optional[dict]:
+def _brier(rows: list[Any], col: str) -> Optional[dict]:
     vals = [(r[col], r["home_won"]) for r in rows if r[col] is not None]
     if not vals:
         return None
@@ -240,11 +237,11 @@ def accuracy_summary() -> dict:
             "SELECT COUNT(*) AS n FROM predictions WHERE graded = 0",
         ).fetchone()["n"]
 
-    leagues: dict[str, list[sqlite3.Row]] = {}
+    leagues: dict[str, list[Any]] = {}
     for r in rows:
         leagues.setdefault(r["league"], []).append(r)
 
-    def summarize(subset: list[sqlite3.Row]) -> dict:
+    def summarize(subset: list[Any]) -> dict:
         return {
             "games_graded": len(subset),
             "model": _brier(subset, "model_home_prob"),
@@ -270,6 +267,11 @@ def accuracy_summary() -> dict:
             "so they are not part of the record above."
         ),
         "model_versions": versions,
+        # Storage honesty: a SQLite ledger lives on the container's own disk,
+        # which is replaced on every deploy. Saying so is the difference
+        # between a verifiable record and one that quietly resets.
+        "storage_backend": storage_backend(),
+        "storage_durable": storage_durable(),
     }
 
 

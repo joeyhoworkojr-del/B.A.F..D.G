@@ -109,14 +109,22 @@ the payload — nothing is hidden with CSS.
 
 ### 1. Durable storage (blocks accounts, alerts, watchlists)
 
-The prediction ledger is SQLite at `STATEDGE_DB` (default: a path on the
-machine's local disk). On Fly that disk is **ephemeral** — every deploy
-replaces the machine and the graded record starts over.
+**The code is ready; the database is not provisioned.** The ledger now runs on
+either backend: SQLite by default, Postgres as soon as `DATABASE_URL` is set.
+Nothing else needs changing — set the variable and the record becomes durable.
 
-Required:
+Until then the record is SQLite on the container's own disk, which Fly replaces
+on every deploy, so it silently restarts each release. The Results page says so
+in an amber notice, and `/api/v1/accuracy` reports `storage_durable: false`.
 
-- A Fly volume mounted at the ledger's directory, or an external Postgres
-  reachable at `DATABASE_URL`.
+To make it durable, either:
+
+- **Managed Postgres (recommended).** Create one (Neon, Supabase, or
+  `fly postgres create`) and set `DATABASE_URL` to its connection string:
+  `fly secrets set DATABASE_URL='postgresql://...' --app statedge-api`.
+  The schema is created on first connect; no migration step to run.
+- **A Fly volume.** Mount one, set `LEDGER_PATH=/data/ledger.db`, and set
+  `LEDGER_DURABLE=1` so the UI stops warning. Note the history below.
 - Two previous attempts to attach a volume to this app failed
   (`insufficient resources to create new machine with existing volume` in
   `dfw`), and the automated migration took the app down because it destroyed
