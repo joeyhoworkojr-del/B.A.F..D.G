@@ -237,30 +237,39 @@ Project settings that matter:
 Changing the API host means editing the two rewrite destinations in
 `frontend/vercel.json`.
 
-### If sign-in doesn't persist on statedge.ca
+### Sign-in requires a same-site API host
 
-The session is an httpOnly cookie set by the API on Fly. The SPA is served from
-Vercel and `/api` is rewritten to Fly, so the browser sees one origin and a
-`SameSite=Lax` cookie is correct.
+**Confirmed:** Vercel's rewrite to an external host does not forward the
+`Cookie` header. `GET /api/v1/auth/me` on statedge.ca reports
+`cookies_received: []` — no cookies reach the API at all — so the session can
+never be read. Registering appears to succeed and the visitor is then treated
+as a guest, which also leaves Make Your Pick on "Create free account".
 
-If that rewrite ever stops forwarding cookies, sign-in appears to succeed and
-then the user is treated as a guest — which also makes Make Your Pick sit on
-"Create free account" forever, because the two symptoms share one cause.
+Do **not** fix this by pointing the browser straight at
+`statedge-api.fly.dev`. That makes the session a third-party cookie: Safari
+blocks those by default and Chrome is phasing them out, so it would work for
+some visitors and silently fail for others.
 
-`GET /api/v1/auth/me` reports which cookie names reached the process, so
-"the proxy dropped it" and "the browser never stored it" can be told apart.
+Pick one of these instead.
 
-Two ways out:
+**A. API on a subdomain of the site (recommended, keeps Vercel).**
 
-- **Point the frontend straight at the API.** Set `VITE_API_BASE` to
-  `https://statedge-api.fly.dev` in Vercel, and on Fly set
-  `SESSION_SAMESITE=none`. That combination is genuinely cross-site, so a Lax
-  cookie would never be sent; `none` forces Secure on and CORS already allows
-  statedge.ca with credentials. It weakens CSRF protection, which is why it is
-  not the default.
-- **Serve everything from Fly.** The API image already contains the SPA, so
-  pointing statedge.ca at the Fly app removes the hop entirely and keeps the
-  stricter cookie.
+1. DNS: `CNAME api.statedge.ca → statedge-api.fly.dev`
+2. `fly certs add api.statedge.ca --app statedge-api`
+3. Vercel env: `VITE_API_BASE=https://api.statedge.ca`
+4. Fly secret: `SESSION_COOKIE_DOMAIN=.statedge.ca`
+
+Both hosts share a registrable domain, so the cookie is first-party for each
+and `SameSite=Lax` keeps working. Vercel still serves the SPA from its CDN.
+
+**B. Serve everything from Fly (simplest).**
+
+Point `statedge.ca` at the Fly app. The API image already contains the SPA, so
+there is no proxy, no CORS and no cookie question at all. You lose Vercel's CDN
+for static assets.
+
+`SESSION_SAMESITE=none` exists for a genuinely cross-site setup, but it depends
+on third-party cookies and should be a last resort.
 
 ### What does *not* move
 

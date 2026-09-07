@@ -41,6 +41,14 @@ SECURE_COOKIES = os.getenv("ENV", "development").lower() == "production"
 _SAMESITE = os.getenv("SESSION_SAMESITE", "lax").strip().lower()
 SAMESITE = _SAMESITE if _SAMESITE in ("lax", "strict", "none") else "lax"
 
+# Set to ".statedge.ca" when the API is served from a subdomain of the site —
+# api.statedge.ca alongside statedge.ca. The cookie is then first-party for
+# both, which keeps SameSite=Lax working and, more importantly, survives
+# Safari's third-party cookie blocking and Chrome's phase-out. A session that
+# depends on third-party cookies works for some visitors and silently fails for
+# others, which is worse than not working at all.
+COOKIE_DOMAIN = (os.getenv("SESSION_COOKIE_DOMAIN") or "").strip()
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
@@ -111,4 +119,5 @@ def cookie_kwargs(expires_iso: str) -> dict:
         "secure": SECURE_COOKIES or SAMESITE == "none",
         "path": "/",
         "max_age": SESSION_DAYS * 24 * 3600,
+        **({"domain": COOKIE_DOMAIN} if COOKIE_DOMAIN else {}),
     }

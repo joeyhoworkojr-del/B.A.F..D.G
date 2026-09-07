@@ -345,3 +345,27 @@ def test_an_unrecognised_samesite_value_falls_back_to_lax(monkeypatch):
 def test_the_production_site_is_an_allowed_origin():
     from src.config import settings
     assert "https://statedge.ca" in settings.cors_origins
+
+
+def test_the_cookie_can_be_scoped_to_a_parent_domain(monkeypatch):
+    """
+    api.statedge.ca and statedge.ca share a registrable domain, so a cookie
+    scoped to ".statedge.ca" is first-party for both — which is what survives
+    Safari's third-party cookie blocking.
+    """
+    import importlib
+    from src.accounts import sessions as sess
+    monkeypatch.setenv("SESSION_COOKIE_DOMAIN", ".statedge.ca")
+    importlib.reload(sess)
+    assert sess.cookie_kwargs("2026-10-01T00:00:00+00:00")["domain"] == ".statedge.ca"
+    monkeypatch.delenv("SESSION_COOKIE_DOMAIN")
+    importlib.reload(sess)
+
+
+def test_no_domain_is_set_by_default(monkeypatch):
+    """Host-only is correct when the API and site are the same host."""
+    import importlib
+    from src.accounts import sessions as sess
+    monkeypatch.delenv("SESSION_COOKIE_DOMAIN", raising=False)
+    importlib.reload(sess)
+    assert "domain" not in sess.cookie_kwargs("2026-10-01T00:00:00+00:00")

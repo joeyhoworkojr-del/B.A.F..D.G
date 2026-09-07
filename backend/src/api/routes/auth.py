@@ -128,7 +128,12 @@ async def login(body: LoginRequest, request: Request, response: Response) -> dic
 @router.post("/auth/logout", tags=["Auth"])
 async def logout(request: Request, response: Response) -> dict:
     sessions.destroy(request.cookies.get(sessions.SESSION_COOKIE))
-    response.delete_cookie(sessions.SESSION_COOKIE, path="/")
+    # A cookie is only cleared by a matching path and domain; omitting the
+    # domain here would leave the browser holding a dead session cookie.
+    response.delete_cookie(
+        sessions.SESSION_COOKIE, path="/",
+        **({"domain": sessions.COOKIE_DOMAIN} if sessions.COOKIE_DOMAIN else {}),
+    )
     return {"ok": True}
 
 
