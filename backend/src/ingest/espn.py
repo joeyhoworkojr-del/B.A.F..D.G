@@ -263,11 +263,28 @@ class GameFeed:
 
 
 _feed_cache: dict[str, tuple[float, list[PlayItem]]] = {}
-_FEED_TTL = 20.0   # live drives move fast; refresh often
+_FEED_TTL = 8.0   # live drives move fast — keep the feed genuinely live
+
+
+def _play_item(p: dict, team_abbr: str = "") -> PlayItem:
+    return PlayItem(
+        period=(p.get("period") or {}).get("number"),
+        clock=(p.get("clock") or {}).get("displayValue", "") or "",
+        text=p.get("text", "") or "",
+        team_abbr=team_abbr,
+        scoring=bool(p.get("scoringPlay", False)),
+        home_score=p.get("homeScore"),
+        away_score=p.get("awayScore"),
+    )
 
 
 def _parse_plays(data: dict) -> list[PlayItem]:
-    """Flatten the summary's drives into a newest-first play list."""
+    """Newest-first play list from an ESPN summary.
+
+    Prefer the per-drive plays (they carry the offense's team abbreviation),
+    and fall back to the summary's flat ``plays`` array when drives are empty —
+    some live college games only populate one or the other.
+    """
     drives = data.get("drives", {}) or {}
     raw_drives: list[dict] = list(drives.get("previous", []) or [])
     if drives.get("current"):
@@ -277,15 +294,13 @@ def _parse_plays(data: dict) -> list[PlayItem]:
     for dr in raw_drives:
         team_abbr = (dr.get("team") or {}).get("abbreviation", "") or ""
         for p in dr.get("plays", []) or []:
-            items.append(PlayItem(
-                period=(p.get("period") or {}).get("number"),
-                clock=(p.get("clock") or {}).get("displayValue", "") or "",
-                text=p.get("text", "") or "",
-                team_abbr=team_abbr,
-                scoring=bool(p.get("scoringPlay", False)),
-                home_score=p.get("homeScore"),
-                away_score=p.get("awayScore"),
-            ))
+            items.append(_play_item(p, team_abbr))
+
+    # Fallback: a flat top-level plays array (chronological) if drives were empty.
+    if not items:
+        for p in data.get("plays", []) or []:
+            items.append(_play_item(p))
+
     items.reverse()   # newest first
     return items
 

@@ -247,11 +247,10 @@ export function Dashboard() {
 
   const games = data?.games ?? []
   const liveGames = games.filter(x => x.game.state === 'in')
-  const liveFeatured = liveGames.find(x => x.mapped && x.model) ?? liveGames[0]
   const edgeGames = games
-    .filter(x => x.mapped && x.model && bestEdge(x.edges))
+    .filter(x => x.game.state === 'pre' && x.mapped && x.model && bestEdge(x.edges))
     .sort((a, b) => (bestEdge(b.edges)!.edge_pp) - (bestEdge(a.edges)!.edge_pp))
-    .slice(0, 8)
+    .slice(0, 12)
 
   return (
     <div className="pb-4">
@@ -287,7 +286,12 @@ export function Dashboard() {
         {error && <div className="rounded-2xl border border-signal-red/40 bg-terminal-surface p-4 text-sm text-signal-red">Couldn’t load games: {error}</div>}
         {loading && !data && <div className="space-y-4"><div className="skeleton h-40 rounded-2xl" /><div className="skeleton h-44 rounded-2xl" /></div>}
 
-        {liveFeatured && <LiveCard league={league} entry={liveFeatured} />}
+        {liveGames.length > 0 && (
+          <div className="space-y-3">
+            <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Live now</h2>
+            {liveGames.map(entry => <LiveCard key={entry.game.event_id} league={league} entry={entry} />)}
+          </div>
+        )}
 
         {edgeGames.length > 0 && (
           <div className="space-y-3">
@@ -296,7 +300,7 @@ export function Dashboard() {
           </div>
         )}
 
-        {!loading && !liveFeatured && edgeGames.length === 0 && !error && (
+        {!loading && liveGames.length === 0 && edgeGames.length === 0 && !error && (
           <div className="rounded-2xl border border-dashed border-terminal-border bg-terminal-surface p-10 text-center">
             <p className="font-display text-lg font-bold text-zinc-100">No edges on the board</p>
             <p className="mx-auto mt-1 max-w-sm text-sm text-zinc-500">
