@@ -30,9 +30,24 @@ _PG_LOCK = threading.Lock()
 _pg_conn = None
 
 
+def clean_url(raw: str) -> str:
+    """
+    Trim a pasted connection string.
+
+    A value copied out of a shell command arrives wrapped in the quotes that
+    were shell syntax, not part of the URL. Stripping them turns a silent
+    connection failure into a working config.
+    """
+    url = (raw or "").strip()
+    for q in ("'", '"'):
+        if len(url) >= 2 and url.startswith(q) and url.endswith(q):
+            url = url[1:-1].strip()
+    return url
+
+
 def database_url() -> str:
     """The configured Postgres URL, or "" when running on SQLite."""
-    url = (os.getenv("DATABASE_URL") or "").strip()
+    url = clean_url(os.getenv("DATABASE_URL"))
     # A URL pointing at a host that isn't provisioned is worse than no URL at
     # all: it would fail every write. Only schemes we can actually open count.
     if url.startswith(("postgres://", "postgresql://")):

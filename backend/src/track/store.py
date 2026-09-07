@@ -51,7 +51,7 @@ FIELDS = (
 def redis_url() -> str:
     """The configured Redis URL, or "" when not using a KV backend."""
     for var in ("REDIS_URL", "UPSTASH_REDIS_URL", "KV_URL"):
-        url = (os.getenv(var) or "").strip()
+        url = db.clean_url(os.getenv(var) or "")
         if url.startswith(("redis://", "rediss://")):
             return url
     return ""
@@ -291,7 +291,7 @@ def config_report() -> dict:
     """
     present, usable, wrong_scheme = [], [], []
     for var in _CONFIG_VARS:
-        raw = (os.getenv(var) or "").strip()
+        raw = db.clean_url(os.getenv(var) or "")
         if not raw:
             continue
         present.append(var)
