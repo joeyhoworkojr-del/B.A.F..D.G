@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { NotificationCentre } from './NotificationCentre'
+import { useSession } from '../../session/SessionProvider'
 
 /** Primary destinations, in the order they appear on desktop. */
 export const NAV_ITEMS = [
@@ -116,6 +117,55 @@ function MoreMenu() {
   )
 }
 
+function AccountArea() {
+  const { user, ready } = useSession()
+
+  // Nothing is rendered until the session resolves, so the header never flashes
+  // "Sign in" at someone who is already signed in.
+  if (!ready) return <span className="h-9 w-24" aria-hidden="true" />
+
+  if (!user) {
+    return (
+      <div className="flex items-center gap-1">
+        <Link
+          to="/login"
+          className="tap hidden items-center rounded-lg px-3 text-sm font-semibold text-zinc-400 hover:bg-terminal-muted hover:text-zinc-100 sm:inline-flex"
+        >
+          Log in
+        </Link>
+        <Link
+          to="/register"
+          className="tap inline-flex items-center whitespace-nowrap rounded-lg bg-brand px-3 text-sm font-semibold text-white hover:bg-brand-strong"
+        >
+          Create account
+        </Link>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <NavLink
+        to="/my-edge"
+        className={({ isActive }) =>
+          `tap hidden items-center rounded-lg px-3 text-sm font-semibold transition lg:inline-flex ${
+            isActive ? 'bg-brand-soft text-brand' : 'text-zinc-400 hover:bg-terminal-muted hover:text-zinc-100'
+          }`
+        }
+      >
+        My Edge
+      </NavLink>
+      <NavLink
+        to={`/@${user.username}`}
+        aria-label={`Your profile, @${user.username}`}
+        className="tap grid place-items-center rounded-full border border-terminal-border px-2 text-xs font-bold text-zinc-400 transition hover:text-zinc-100"
+      >
+        {(user.display_name || user.username).slice(0, 2).toUpperCase()}
+      </NavLink>
+    </div>
+  )
+}
+
 export function TopBar() {
   return (
     <header className="sticky top-0 z-40 border-b border-terminal-border bg-terminal-bg/95 backdrop-blur">
@@ -141,20 +191,7 @@ export function TopBar() {
         <div className="ml-auto flex items-center gap-1">
           <SearchBox className="hidden w-56 lg:block" />
           <NotificationCentre />
-          <NavLink
-            to="/account"
-            aria-label="Account"
-            className={({ isActive }) =>
-              `tap grid place-items-center rounded-full border px-2 transition ${
-                isActive ? 'border-brand text-brand' : 'border-terminal-border text-zinc-400 hover:text-zinc-100'
-              }`
-            }
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-              <circle cx="12" cy="7" r="4" />
-            </svg>
-          </NavLink>
+          <AccountArea />
         </div>
       </div>
 

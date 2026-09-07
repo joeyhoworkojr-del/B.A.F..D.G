@@ -632,3 +632,135 @@ export interface GamePropsOut {
   projections: PropProjectionOut[]
   note: string
 }
+
+// ─── Accounts ─────────────────────────────────────────────────────────────────
+
+export type AccountLevel = 'guest' | 'beta' | 'free' | 'pro' | 'admin'
+
+export interface PublicProfile {
+  id: string
+  username: string
+  display_name: string
+  bio: string
+  avatar_url: string
+  favourite_sports: string[]
+  favourite_teams: string[]
+  badges: string[]
+  created_at: string
+}
+
+export interface PrivateProfile extends PublicProfile {
+  email: string
+  email_verified: boolean
+  level: AccountLevel
+  interests: string[]
+  onboarded: boolean
+  profile_public: boolean
+  auth_provider: string
+}
+
+export interface AccountEntitlements {
+  level: AccountLevel
+  authenticated: boolean
+  beta_open: boolean
+  features: Record<string, boolean>
+  unavailable_reason: Record<string, string>
+  billing_enabled: boolean
+  note: string
+}
+
+export interface SessionOut {
+  user: PrivateProfile | null
+  entitlements: AccountEntitlements
+}
+
+// ─── Picks ────────────────────────────────────────────────────────────────────
+
+export type PickMarket = 'moneyline' | 'spread' | 'total'
+export type PickSide = 'home' | 'away' | 'over' | 'under'
+export type PickResult = 'pending' | 'live' | 'win' | 'loss' | 'push' | 'void'
+
+export interface PickOut {
+  id: string
+  user_id: string
+  username: string
+  game_id: string
+  league: string
+  event_id: string
+  home: string
+  away: string
+  market: PickMarket
+  side: PickSide
+  selection: string
+  line?: number | null
+  price_american?: number | null
+  odds_source: string
+  confidence: number
+  reasoning: string
+  kickoff: string
+  created_at: string
+  updated_at: string
+  result: PickResult
+  units: number
+  graded_at: string
+  final_home?: number | null
+  final_away?: number | null
+  locked: boolean
+  graded: boolean
+}
+
+export interface PickRecord {
+  picks: number
+  pending: number
+  graded: number
+  wins: number
+  losses: number
+  pushes: number
+  win_rate?: number | null
+  units: number
+  roi_pct?: number | null
+  avg_confidence?: number | null
+}
+
+export interface MyPicksOut {
+  record: PickRecord
+  picks: PickOut[]
+}
+
+export interface GameCommunityOut {
+  game_id: string
+  total_picks: number
+  moneyline_split: Record<string, number>
+  recent_analysis: {
+    username: string
+    selection: string
+    confidence: number
+    reasoning: string
+    market: string
+    created_at: string
+    result: PickResult
+  }[]
+  your_picks: PickOut[]
+}
+
+export interface AnalystOut {
+  profile: PublicProfile
+  record: PickRecord
+  picks: PickOut[]
+}
+
+export interface SubmitPickBody {
+  league: string
+  event_id: string
+  home: string
+  away: string
+  kickoff: string
+  market: PickMarket
+  side: PickSide
+  selection: string
+  line?: number | null
+  price_american?: number | null
+  odds_source?: string
+  confidence: number
+  reasoning?: string
+}
