@@ -38,7 +38,7 @@ export function EdgeReadout({ probability, label, sublabel, size = 'md', color =
         </div>
         <div className="flex justify-between mt-0.5">
           {tickPositions.map(t => (
-            <span key={t} className="font-mono text-[9px] text-zinc-600">{t}</span>
+            <span key={t} className="font-mono text-xs text-zinc-500">{t}</span>
           ))}
         </div>
       </div>

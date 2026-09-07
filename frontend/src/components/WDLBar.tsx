@@ -22,7 +22,7 @@ export function WDLBar({ homeWin, draw, homeLabel, awayLabel }: Omit<Props, 'awa
           {hw >= 10 ? `${hw}%` : ''}
         </div>
         <div
-          className="flex items-center justify-center bg-zinc-600 text-white text-xs font-mono transition-all duration-700"
+          className="flex items-center justify-center bg-zinc-500 text-white text-xs font-mono transition-all duration-700"
           style={{ width: `${dr}%` }}
         >
           {dr >= 8 ? `${dr}%` : ''}

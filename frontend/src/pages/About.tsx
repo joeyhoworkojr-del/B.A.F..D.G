@@ -95,7 +95,7 @@ export function About() {
         </ul>
       </section>
 
-      <p className="text-xs text-zinc-600 italic border-t border-terminal-border pt-4">
+      <p className="text-xs text-zinc-500 italic border-t border-terminal-border pt-4">
         StatEdge · Analytics for information and entertainment only. Not betting advice. If you gamble, set limits and stick to them.
       </p>
     </div>

@@ -12,21 +12,21 @@ function SignalCard({ label, score, best, accent }: { label: string; score?: Sig
   return (
     <div className={`rounded-xl border bg-terminal-surface p-4 ${best ? 'border-signal-amber shadow-sm' : 'border-terminal-border'}`}>
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-body font-semibold uppercase tracking-widest" style={{ color: accent }}>{label}</span>
-        {best && <span className="rounded-full bg-signal-amber-dim px-2 py-0.5 text-[10px] font-body font-semibold text-signal-amber">Most accurate</span>}
+        <span className="text-xs font-body font-semibold uppercase tracking-widest" style={{ color: accent }}>{label}</span>
+        {best && <span className="rounded-full bg-signal-amber-dim px-2 py-0.5 text-xs font-body font-semibold text-signal-amber">Most accurate</span>}
       </div>
       {score ? (
         <div className="mt-3 space-y-1.5">
           <div className="flex items-baseline justify-between">
-            <span className="text-[11px] font-body text-zinc-500">Brier score</span>
+            <span className="text-xs font-body text-zinc-500">Brier score</span>
             <span className="font-mono text-xl font-bold text-zinc-100">{num(score.brier, 4)}</span>
           </div>
           <div className="flex items-baseline justify-between">
-            <span className="text-[11px] font-body text-zinc-500">Winner hit rate</span>
+            <span className="text-xs font-body text-zinc-500">Winner hit rate</span>
             <span className="font-mono text-sm text-zinc-200">{pct(score.winner_hit_rate)}</span>
           </div>
           <div className="flex items-baseline justify-between">
-            <span className="text-[11px] font-body text-zinc-500">Games scored</span>
+            <span className="text-xs font-body text-zinc-500">Games scored</span>
             <span className="font-mono text-sm text-zinc-300">{score.n}</span>
           </div>
         </div>
@@ -81,7 +81,7 @@ export function TrackRecord() {
         <div className="rounded-xl border border-terminal-border bg-terminal-surface p-5 card-lift">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
-              <p className="text-[11px] font-body font-semibold uppercase tracking-widest text-zinc-500">Model P/L — 1 unit per pick at fair book odds</p>
+              <p className="text-xs font-body font-semibold uppercase tracking-widest text-zinc-500">Model P/L — 1 unit per pick at fair book odds</p>
               <p className={`mt-1 font-mono text-3xl font-bold ${profit >= 0 ? 'text-signal-green' : 'text-signal-red'}`}>
                 {profit >= 0 ? '+' : ''}{num(profit)}u
               </p>
@@ -94,7 +94,7 @@ export function TrackRecord() {
                 ['ROI', performance.roi_pct == null ? '—' : `${performance.roi_pct >= 0 ? '+' : ''}${performance.roi_pct.toFixed(1)}%`],
               ].map(([l, v]) => (
                 <div key={l}>
-                  <p className="text-[10px] font-body uppercase tracking-wider text-zinc-500">{l}</p>
+                  <p className="text-xs font-body uppercase tracking-wider text-zinc-500">{l}</p>
                   <p className="font-mono text-sm font-semibold text-zinc-100">{v}</p>
                 </div>
               ))}
@@ -147,7 +147,7 @@ export function TrackRecord() {
           <div className="overflow-x-auto rounded-xl border border-terminal-border bg-terminal-surface">
             <table className="w-full text-left font-mono text-xs">
               <thead>
-                <tr className="border-b border-terminal-border text-[10px] font-body uppercase tracking-wider text-zinc-500">
+                <tr className="border-b border-terminal-border text-xs font-body uppercase tracking-wider text-zinc-500">
                   <th className="px-4 py-2.5">League</th>
                   <th className="px-4 py-2.5 text-right">Graded</th>
                   <th className="px-4 py-2.5 text-right">Model Brier</th>
@@ -185,7 +185,7 @@ export function TrackRecord() {
           <div className="overflow-x-auto rounded-xl border border-terminal-border bg-terminal-surface">
             <table className="w-full text-left font-mono text-xs">
               <thead>
-                <tr className="border-b border-terminal-border text-[10px] font-body uppercase tracking-wider text-zinc-500">
+                <tr className="border-b border-terminal-border text-xs font-body uppercase tracking-wider text-zinc-500">
                   <th className="px-4 py-2.5">Game</th>
                   <th className="px-4 py-2.5">League</th>
                   <th className="px-4 py-2.5 text-right">Final</th>
@@ -206,7 +206,7 @@ export function TrackRecord() {
                       <td className="px-4 py-2.5 text-right text-signal-blue">{pct(g.model_home_prob)}</td>
                       <td className="px-4 py-2.5 text-right text-zinc-400">{pct(g.book_home_prob)}</td>
                       <td className="px-4 py-2.5 text-center">
-                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-body font-semibold ${correct ? 'bg-green-100 text-signal-green' : 'bg-red-100 text-signal-red'}`}>
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-body font-semibold ${correct ? 'bg-green-100 text-signal-green' : 'bg-red-100 text-signal-red'}`}>
                           {correct ? 'HIT' : 'MISS'}
                         </span>
                       </td>

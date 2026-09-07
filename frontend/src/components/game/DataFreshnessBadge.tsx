@@ -63,7 +63,7 @@ export function DataFreshnessBadge({
         }`}
       />
       {source ? <span className="font-semibold text-zinc-300">{source}</span> : null}
-      {source ? <span aria-hidden="true" className="text-zinc-600">·</span> : null}
+      {source ? <span aria-hidden="true" className="text-zinc-500">·</span> : null}
       <span>{label}</span>
     </span>
   )

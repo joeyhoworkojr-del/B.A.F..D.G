@@ -39,7 +39,7 @@ const pillCls = (v: Verdict) =>
 function TeamLogo({ url, abbr }: { url?: string; abbr: string }) {
   return url
     ? <img src={url} alt="" className="h-7 w-7 object-contain" loading="lazy" />
-    : <span className="grid h-7 w-7 place-items-center rounded bg-terminal-muted text-[10px] font-bold text-zinc-400">{abbr.slice(0, 3)}</span>
+    : <span className="grid h-7 w-7 place-items-center rounded bg-terminal-muted text-xs font-bold text-zinc-400">{abbr.slice(0, 3)}</span>
 }
 
 // ─── Header scores strip ──────────────────────────────────────────────────────
@@ -48,7 +48,7 @@ function ScoresStrip({ league, games }: { league: FootballLeague; games: TodayGa
   return (
     <div className="flex items-stretch gap-0 overflow-x-auto border-b border-terminal-border/60 text-sm no-scrollbar">
       <div className="flex shrink-0 items-center gap-1 px-3 font-bold text-zinc-300">
-        {league.toUpperCase()} <span className="text-zinc-600">›</span>
+        {league.toUpperCase()} <span className="text-zinc-500">›</span>
       </div>
       {ordered.slice(0, 12).map(({ game: g }) => {
         const live = g.state === 'in'
@@ -58,10 +58,10 @@ function ScoresStrip({ league, games }: { league: FootballLeague; games: TodayGa
             <span className="flex items-center gap-1.5 whitespace-nowrap font-semibold text-zinc-100">
               {live && <span className="h-1.5 w-1.5 rounded-full bg-signal-green" />}
               {g.away_abbr} {live || g.state === 'post' ? g.away_score ?? 0 : ''}
-              <span className="text-zinc-600">{live || g.state === 'post' ? '–' : '@'}</span>
+              <span className="text-zinc-500">{live || g.state === 'post' ? '–' : '@'}</span>
               {live || g.state === 'post' ? `${g.home_score ?? 0} ` : ''}{g.home_abbr}
             </span>
-            <span className={`whitespace-nowrap text-[11px] ${live ? 'text-signal-green' : 'text-zinc-500'}`}>
+            <span className={`whitespace-nowrap text-xs ${live ? 'text-signal-green' : 'text-zinc-500'}`}>
               {live ? `${g.period ? `Q${g.period} ` : ''}${g.clock || g.detail}` : g.detail}
             </span>
           </Link>
@@ -90,7 +90,7 @@ function StatBar({ acc }: { acc: AccuracyResponse | null }) {
     <div className="grid grid-cols-3 overflow-hidden rounded-2xl border border-terminal-border bg-terminal-surface">
       {cells.map(([l, v, c], i) => (
         <div key={l} className={`px-4 py-4 text-center ${i > 0 ? 'border-l border-terminal-border' : ''}`}>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">{l}</p>
+          <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">{l}</p>
           <p className={`mt-1 font-mono text-2xl font-black tabular-nums ${c}`}>{v}</p>
         </div>
       ))}
@@ -113,11 +113,11 @@ function LiveCard({ league, entry }: { league: FootballLeague; entry: TodayGameO
     <div className="relative overflow-hidden rounded-2xl border border-signal-green/40 bg-terminal-surface">
       <div className="absolute inset-x-0 top-0 h-0.5 bg-signal-green/70" />
       <div className="flex items-center justify-between px-4 pt-3">
-        <span className="inline-flex items-center gap-2 rounded-full bg-signal-green/15 px-2.5 py-1 text-[11px] font-bold text-signal-green">
+        <span className="inline-flex items-center gap-2 rounded-full bg-signal-green/15 px-2.5 py-1 text-xs font-bold text-signal-green">
           <span className="h-1.5 w-1.5 rounded-full bg-signal-green animate-pulse" /> LIVE
           <span className="text-signal-green/90">{g.period ? `Q${g.period} ` : ''}{g.clock || g.detail}</span>
         </span>
-        <span className="text-[11px] text-zinc-500">{LEAGUE_SPORT[league]}</span>
+        <span className="text-xs text-zinc-500">{LEAGUE_SPORT[league]}</span>
       </div>
       <div className="flex items-stretch gap-3 p-4">
         <Link to={`/game/${league}/${g.event_id}`} state={{ game: g }} className="min-w-0 flex-1 space-y-3">
@@ -141,7 +141,7 @@ function LiveCard({ league, entry }: { league: FootballLeague; entry: TodayGameO
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-terminal-muted">
               <div className="h-full rounded-full bg-signal-green" style={{ width: `${Math.round(modelP * 100)}%` }} />
             </div>
-            <p className="mt-2 text-right text-[10px] text-zinc-500">
+            <p className="mt-2 text-right text-xs text-zinc-500">
               {m.time_remaining_pct != null ? `${Math.round(m.time_remaining_pct)}% left` : 'Updated live'}
             </p>
           </div>
@@ -153,7 +153,7 @@ function LiveCard({ league, entry }: { league: FootballLeague; entry: TodayGameO
 function Row({ label, value, valueCls }: { label: string; value: string; valueCls: string }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">{label}</span>
+      <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">{label}</span>
       <span className={`font-mono tabular-nums ${valueCls}`}>{value}</span>
     </div>
   )
@@ -179,7 +179,7 @@ function EdgeCard({ league, entry }: { league: FootballLeague; entry: TodayGameO
   )
   return (
     <div className="rounded-2xl border border-terminal-border bg-terminal-surface p-4">
-      <div className="mb-3 flex items-center justify-between text-[11px] text-zinc-500">
+      <div className="mb-3 flex items-center justify-between text-xs text-zinc-500">
         <span>{fmtKick(g.kickoff)}</span>
         <span>{LEAGUE_SPORT[league]}</span>
       </div>
@@ -190,12 +190,12 @@ function EdgeCard({ league, entry }: { league: FootballLeague; entry: TodayGameO
         </div>
         <div className="flex shrink-0 gap-4">
           <div className="space-y-2">
-            <p className="text-center text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Spread</p>
+            <p className="text-center text-xs font-semibold uppercase tracking-wide text-zinc-500">Spread</p>
             <Pill v={spread != null ? fmtSpread(-spread) : '—'} verdict={sprTop} />
             <Pill v={spread != null ? fmtSpread(spread) : '—'} verdict={sprBot} />
           </div>
           <div className="space-y-2">
-            <p className="text-center text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Total</p>
+            <p className="text-center text-xs font-semibold uppercase tracking-wide text-zinc-500">Total</p>
             <Pill v={ou != null ? `O ${ou}` : '—'} verdict={ouTop} />
             <Pill v={ou != null ? `U ${ou}` : '—'} verdict={ouBot} />
           </div>
@@ -220,7 +220,7 @@ function EdgeCard({ league, entry }: { league: FootballLeague; entry: TodayGameO
 function Stat({ label, value, green }: { label: string; value: string; green?: boolean }) {
   return (
     <div>
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">{label}</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">{label}</p>
       <p className={`font-mono text-sm font-bold tabular-nums ${green ? 'text-signal-green' : 'text-zinc-100'}`}>{value}</p>
     </div>
   )
@@ -270,7 +270,9 @@ export function Dashboard() {
             {LEAGUES.map(l => (
               <button key={l.id} onClick={() => setLeague(l.id)}
                 className={`rounded-full px-5 py-1.5 text-sm font-bold transition ${
-                  league === l.id ? 'bg-zinc-100 text-terminal-bg' : 'bg-terminal-surface text-zinc-400 hover:text-zinc-100'
+                  league === l.id
+                    ? 'bg-brand text-white shadow-card'
+                    : 'bg-terminal-muted text-zinc-400 hover:text-zinc-100'
                 }`}>
                 {l.label}
               </button>
@@ -313,7 +315,7 @@ export function Dashboard() {
           </div>
         )}
 
-        <p className="pt-1 text-center text-[11px] text-zinc-600">
+        <p className="pt-1 text-center text-xs text-zinc-500">
           Lines via {data?.market_source || 'ESPN'} • Model refreshes every 30 sec
         </p>
       </div>

@@ -53,18 +53,18 @@ export function LineExplorer({ overByLine, unit, title, initialLine }: Props) {
 
       <div className="grid grid-cols-2 gap-3">
         <div className={`rounded-lg border p-3 text-center ${over >= 0.55 ? 'border-signal-green/40 bg-signal-green/5' : 'border-terminal-border bg-terminal-surface'}`}>
-          <p className="text-[10px] font-display uppercase tracking-widest text-zinc-500">Over {line.toFixed(1)}</p>
+          <p className="text-xs font-display uppercase tracking-widest text-zinc-500">Over {line.toFixed(1)}</p>
           <p className={`font-mono text-2xl mt-1 ${over >= 0.55 ? 'text-signal-green' : 'text-zinc-300'}`}>
             {(over * 100).toFixed(1)}%
           </p>
-          <p className="font-mono text-[10px] text-zinc-600">fair {over > 0.001 ? (1 / over).toFixed(2) : '—'}</p>
+          <p className="font-mono text-xs text-zinc-500">fair {over > 0.001 ? (1 / over).toFixed(2) : '—'}</p>
         </div>
         <div className={`rounded-lg border p-3 text-center ${under >= 0.55 ? 'border-signal-green/40 bg-signal-green/5' : 'border-terminal-border bg-terminal-surface'}`}>
-          <p className="text-[10px] font-display uppercase tracking-widest text-zinc-500">Under {line.toFixed(1)}</p>
+          <p className="text-xs font-display uppercase tracking-widest text-zinc-500">Under {line.toFixed(1)}</p>
           <p className={`font-mono text-2xl mt-1 ${under >= 0.55 ? 'text-signal-green' : 'text-zinc-300'}`}>
             {(under * 100).toFixed(1)}%
           </p>
-          <p className="font-mono text-[10px] text-zinc-600">fair {under > 0.001 ? (1 / under).toFixed(2) : '—'}</p>
+          <p className="font-mono text-xs text-zinc-500">fair {under > 0.001 ? (1 / under).toFixed(2) : '—'}</p>
         </div>
       </div>
 
@@ -84,7 +84,7 @@ export function LineExplorer({ overByLine, unit, title, initialLine }: Props) {
             )
           })}
         </div>
-        <div className="flex justify-between font-mono text-[9px] text-zinc-600 mt-0.5">
+        <div className="flex justify-between font-mono text-xs text-zinc-500 mt-0.5">
           <span>{lines[0].toFixed(1)}</span>
           <span>P(over) by line</span>
           <span>{lines[lines.length - 1].toFixed(1)}</span>

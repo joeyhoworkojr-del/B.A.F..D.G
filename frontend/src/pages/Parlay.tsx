@@ -9,16 +9,16 @@ const pct = (v: number) => `${Math.round(v * 100)}%`
 function LegRow({ leg, i }: { leg: ParlayLeg; i: number }) {
   return (
     <div className="flex items-start gap-3 border-b border-terminal-border/60 py-3 last:border-0">
-      <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-terminal-muted text-[11px] font-bold text-signal-green">{i + 1}</span>
+      <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-terminal-muted text-xs font-bold text-signal-green">{i + 1}</span>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-bold text-zinc-100">{leg.selection}</p>
-        <p className="text-[11px] text-zinc-500">
+        <p className="text-xs text-zinc-500">
           {LEAGUE_LABEL[leg.league] ?? leg.league} · {leg.away} @ {leg.home}
         </p>
       </div>
       <div className="shrink-0 text-right">
         <p className="font-mono text-sm font-bold text-signal-amber tabular-nums">{fmtAm(americanFromDecimal(leg.decimal_odds))}</p>
-        <p className="text-[10px] text-zinc-500">model {pct(leg.model_prob)} · <span className="text-signal-green">+{leg.edge_pp.toFixed(1)}pp</span></p>
+        <p className="text-xs text-zinc-500">model {pct(leg.model_prob)} · <span className="text-signal-green">+{leg.edge_pp.toFixed(1)}pp</span></p>
       </div>
     </div>
   )
@@ -65,7 +65,9 @@ export function Parlay() {
             key={n}
             onClick={() => setMaxLegs(n)}
             className={`h-8 w-9 rounded-lg text-sm font-bold ${
-              maxLegs === n ? 'bg-zinc-100 text-terminal-bg' : 'bg-terminal-surface text-zinc-400'
+              maxLegs === n
+                ? 'bg-brand text-white shadow-card'
+                : 'bg-terminal-muted text-zinc-400 hover:text-zinc-100'
             }`}
           >
             {n}
@@ -92,11 +94,11 @@ export function Parlay() {
           <div className="border-b border-terminal-border bg-terminal-muted/40 px-4 py-3">
             <div className="flex items-end justify-between">
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">{data.leg_count}-leg parlay</p>
+                <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">{data.leg_count}-leg parlay</p>
                 <p className="mt-0.5 font-mono text-3xl font-black text-signal-amber tabular-nums">{fmtAm(data.american_odds)}</p>
               </div>
               <div className="text-right">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">$10 pays</p>
+                <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">$10 pays</p>
                 <p className="mt-0.5 font-mono text-xl font-bold text-zinc-100 tabular-nums">${payoutOn10}</p>
               </div>
             </div>
@@ -115,7 +117,7 @@ export function Parlay() {
               ['Edge', `+${data.edge_pp.toFixed(1)}pp`, data.edge_pp >= 0 ? 'text-signal-green' : 'text-signal-red'],
             ].map(([l, v, c]) => (
               <div key={l} className="bg-terminal-surface px-3 py-3 text-center">
-                <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-500">{l}</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-zinc-500">{l}</p>
                 <p className={`mt-1 font-mono text-sm font-bold tabular-nums ${c}`}>{v}</p>
               </div>
             ))}
@@ -135,14 +137,14 @@ export function Parlay() {
       {/* Alternative legs pool */}
       {data && data.pool.length > (data.legs.length) && (
         <div className="mt-5">
-          <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-zinc-500">Build your own — other value legs</p>
+          <p className="mb-2 text-xs font-bold uppercase tracking-widest text-zinc-500">Build your own — other value legs</p>
           <div className="rounded-xl border border-terminal-border bg-terminal-surface px-4">
             {data.pool.slice(data.legs.length).map((leg, i) => <LegRow key={leg.fixture_id} leg={leg} i={i} />)}
           </div>
         </div>
       )}
 
-      <p className="mt-4 text-center text-[10px] text-zinc-600">
+      <p className="mt-4 text-center text-xs text-zinc-500">
         Combined odds multiply each leg’s price; model win % multiplies each leg’s probability (assumes independence).
         Parlays are high-variance — the single legs on Best Bets are steadier. Bet responsibly.
       </p>

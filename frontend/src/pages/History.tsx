@@ -87,17 +87,17 @@ export function History() {
       {n > 0 && (
         <div className="grid grid-cols-3 gap-3">
           <div className="rounded-xl border border-terminal-border bg-terminal-surface p-4 text-center">
-            <p className="text-[10px] font-display uppercase tracking-widest text-zinc-500">Games logged</p>
+            <p className="text-xs font-display uppercase tracking-widest text-zinc-500">Games logged</p>
             <p className="font-mono text-2xl text-signal-amber mt-1">{n}</p>
           </div>
           <div className="rounded-xl border border-terminal-border bg-terminal-surface p-4 text-center">
-            <p className="text-[10px] font-display uppercase tracking-widest text-zinc-500">Hit rate</p>
+            <p className="text-xs font-display uppercase tracking-widest text-zinc-500">Hit rate</p>
             <p className="font-mono text-2xl text-signal-green mt-1">
               {hitRate != null ? `${Math.round(hitRate * 100)}%` : '—'}
             </p>
           </div>
           <div className="rounded-xl border border-terminal-border bg-terminal-surface p-4 text-center">
-            <p className="text-[10px] font-display uppercase tracking-widest text-zinc-500">Avg Brier</p>
+            <p className="text-xs font-display uppercase tracking-widest text-zinc-500">Avg Brier</p>
             <p className={`font-mono text-2xl mt-1 ${avgBrier != null && avgBrier < 0.25 ? 'text-signal-green' : 'text-signal-red'}`}>
               {avgBrier != null ? avgBrier.toFixed(3) : '—'}
             </p>
@@ -111,7 +111,7 @@ export function History() {
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-[10px] font-display uppercase tracking-widest text-zinc-500">Home team</label>
+            <label className="text-xs font-display uppercase tracking-widest text-zinc-500">Home team</label>
             <input
               className="mt-1 w-full rounded-lg border border-terminal-border bg-terminal-bg px-3 py-2 text-sm font-body text-zinc-100 focus:border-signal-amber focus:outline-none"
               placeholder="e.g. ARG"
@@ -120,7 +120,7 @@ export function History() {
             />
           </div>
           <div>
-            <label className="text-[10px] font-display uppercase tracking-widest text-zinc-500">Away team</label>
+            <label className="text-xs font-display uppercase tracking-widest text-zinc-500">Away team</label>
             <input
               className="mt-1 w-full rounded-lg border border-terminal-border bg-terminal-bg px-3 py-2 text-sm font-body text-zinc-100 focus:border-signal-amber focus:outline-none"
               placeholder="e.g. CPV"
@@ -132,7 +132,7 @@ export function History() {
 
         <div className="grid grid-cols-3 gap-3">
           <div>
-            <label className="text-[10px] font-display uppercase tracking-widest text-zinc-500">My home-win prob.</label>
+            <label className="text-xs font-display uppercase tracking-widest text-zinc-500">My home-win prob.</label>
             <input
               type="number" min={0} max={1} step={0.01}
               className="mt-1 w-full rounded-lg border border-terminal-border bg-terminal-bg px-3 py-2 text-sm font-mono text-zinc-100 focus:border-signal-amber focus:outline-none"
@@ -142,7 +142,7 @@ export function History() {
             />
           </div>
           <div>
-            <label className="text-[10px] font-display uppercase tracking-widest text-zinc-500">Home goals</label>
+            <label className="text-xs font-display uppercase tracking-widest text-zinc-500">Home goals</label>
             <input
               type="number" min={0}
               className="mt-1 w-full rounded-lg border border-terminal-border bg-terminal-bg px-3 py-2 text-sm font-mono text-zinc-100 focus:border-signal-amber focus:outline-none"
@@ -152,7 +152,7 @@ export function History() {
             />
           </div>
           <div>
-            <label className="text-[10px] font-display uppercase tracking-widest text-zinc-500">Away goals</label>
+            <label className="text-xs font-display uppercase tracking-widest text-zinc-500">Away goals</label>
             <input
               type="number" min={0}
               className="mt-1 w-full rounded-lg border border-terminal-border bg-terminal-bg px-3 py-2 text-sm font-mono text-zinc-100 focus:border-signal-amber focus:outline-none"
@@ -164,7 +164,7 @@ export function History() {
         </div>
 
         <div>
-          <label className="text-[10px] font-display uppercase tracking-widest text-zinc-500">Actual outcome</label>
+          <label className="text-xs font-display uppercase tracking-widest text-zinc-500">Actual outcome</label>
           <div className="flex gap-3 mt-2">
             {(['home', 'draw', 'away'] as const).map(o => (
               <label key={o} className="flex items-center gap-1.5 cursor-pointer">
@@ -184,7 +184,7 @@ export function History() {
 
         <button
           onClick={addEntry}
-          className="w-full rounded-lg bg-signal-amber px-4 py-2 font-display font-semibold text-terminal-bg hover:bg-blue-700 transition-colors"
+          className="w-full rounded-lg bg-brand px-4 py-2 font-display font-semibold text-white hover:bg-brand-strong transition-colors"
         >
           Log Result
         </button>
@@ -211,7 +211,7 @@ export function History() {
                 </span>
                 <button
                   onClick={() => removeEntry(e.id)}
-                  className="text-zinc-600 hover:text-signal-red text-xs transition-colors ml-1"
+                  className="text-zinc-500 hover:text-signal-red text-xs transition-colors ml-1"
                 >
                   ✕
                 </button>
@@ -221,7 +221,7 @@ export function History() {
         </div>
       )}
 
-      <p className="text-[10px] text-zinc-600 italic">
+      <p className="text-xs text-zinc-500 italic">
         History stored locally in your browser. Brier score: 0 = perfect, 1 = worst. A calibrated model scores ~0.20–0.25 on soccer.
       </p>
     </div>

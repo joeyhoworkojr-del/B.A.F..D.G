@@ -12,10 +12,10 @@ function Side({
         {code}
       </div>
       <div className="mt-2 max-w-full truncate font-display text-sm font-bold text-zinc-100">{name}</div>
-      <div className="font-mono text-[11px] text-zinc-500">Elo {Math.round(elo)}</div>
+      <div className="font-mono text-xs text-zinc-500">Elo {Math.round(elo)}</div>
       <div className="mt-1 flex items-baseline gap-1.5">
         <span className="font-mono text-2xl font-bold text-signal-blue">{pct(win)}%</span>
-        <span className="font-mono text-[11px] text-zinc-500">{pts.toFixed(1)} {unit}</span>
+        <span className="font-mono text-xs text-zinc-500">{pts.toFixed(1)} {unit}</span>
       </div>
     </div>
   )
@@ -32,7 +32,7 @@ export function GridironMatchup({ result, league, unit }: { result: NFLPredictRe
           <Side code={h.code} name={h.name} elo={h.elo} pts={result.home_expected_pts} win={result.home_win_prob} unit={unit} align="left" />
           <div className="flex shrink-0 flex-col items-center justify-center px-1">
             <SportGlyph sport={league as Sport} className="h-9 w-9 text-signal-blue" />
-            <span className="mt-1 font-display text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-500">@</span>
+            <span className="mt-1 font-display text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">@</span>
           </div>
           <Side code={a.code} name={a.name} elo={a.elo} pts={result.away_expected_pts} win={result.away_win_prob} unit={unit} align="right" />
         </div>
@@ -42,7 +42,7 @@ export function GridironMatchup({ result, league, unit }: { result: NFLPredictRe
           <div style={{ width: `${pct(result.home_win_prob)}%` }} className="bg-signal-blue" />
           <div style={{ width: `${pct(result.away_win_prob)}%` }} className="bg-signal-red" />
         </div>
-        <div className="mt-1.5 flex justify-between font-mono text-[11px]">
+        <div className="mt-1.5 flex justify-between font-mono text-xs">
           <span className="text-signal-blue">{h.code} {pct(result.home_win_prob)}%</span>
           <span className="text-signal-red">{pct(result.away_win_prob)}% {a.code}</span>
         </div>
@@ -50,7 +50,7 @@ export function GridironMatchup({ result, league, unit }: { result: NFLPredictRe
         {/* projected total */}
         <div className="mt-4 flex items-center justify-center gap-2 border-t border-terminal-border pt-3 font-mono text-sm">
           <span className="font-semibold text-zinc-200">{result.total_points_estimate.toFixed(1)}</span>
-          <span className="text-[10px] uppercase tracking-widest text-zinc-500">projected total {unit}</span>
+          <span className="text-xs uppercase tracking-widest text-zinc-500">projected total {unit}</span>
         </div>
       </div>
     </div>

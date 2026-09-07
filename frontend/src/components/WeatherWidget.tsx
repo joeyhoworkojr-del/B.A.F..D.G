@@ -65,7 +65,7 @@ export function WeatherWidget({ venue, refreshIntervalMs = 3_600_000 }: Props) {
 
   if (loading && !data) {
     return (
-      <div className="flex items-center gap-2 text-xs text-zinc-600 font-body animate-pulse">
+      <div className="flex items-center gap-2 text-xs text-zinc-500 font-body animate-pulse">
         <span>🌡️</span> Loading weather…
       </div>
     )
@@ -110,14 +110,14 @@ export function WeatherWidget({ venue, refreshIntervalMs = 3_600_000 }: Props) {
         </span>
       )}
 
-      <span className="ml-auto text-zinc-600">
+      <span className="ml-auto text-zinc-500">
         {lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString()}` : ''} · Open-Meteo
       </span>
 
       <button
         onClick={fetchWeather}
         disabled={loading}
-        className="text-zinc-600 hover:text-zinc-300 transition-colors"
+        className="text-zinc-500 hover:text-zinc-300 transition-colors"
         title="Refresh weather"
       >
         🔄

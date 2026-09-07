@@ -75,23 +75,23 @@ export function BestBets() {
             <p className="text-xs text-zinc-500 font-body truncate">
               {b.home_flag} {b.home} vs {b.away_flag} {b.away} · {b.venue}
             </p>
-            <p className="text-[10px] text-zinc-600 font-body mt-0.5">{b.note}</p>
+            <p className="text-xs text-zinc-500 font-body mt-0.5">{b.note}</p>
           </div>
           <div className="text-right shrink-0">
             <p className="font-mono text-lg text-signal-amber">{Math.round(b.model_prob * 100)}%</p>
             {b.market_prob != null && b.edge_pp != null ? (
-              <p className="font-mono text-[10px] text-zinc-500">
+              <p className="font-mono text-xs text-zinc-500">
                 mkt {Math.round(b.market_prob * 100)}% · <span className="text-signal-green">+{b.edge_pp.toFixed(1)}pp</span>
               </p>
             ) : (
-              <p className="font-mono text-[10px] text-zinc-600">model conviction</p>
+              <p className="font-mono text-xs text-zinc-500">model conviction</p>
             )}
           </div>
         </div>
       ))}
 
       {!loading && data && (
-        <p className="text-[10px] text-zinc-600 italic">
+        <p className="text-xs text-zinc-500 italic">
           {data.generated_with}. Probabilities, not promises — bet responsibly.
         </p>
       )}
