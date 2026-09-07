@@ -222,4 +222,24 @@ const props = {
   ],
 }
 
-module.exports = { iso, inHours, mkGame, mkModel, mkEdge, today, accuracy, bestBets, bestParlay, plays, news, entitlements, props }
+const session = {
+  user: null,
+  entitlements: {
+    level: 'guest', authenticated: false, beta_open: true,
+    features: { make_pick: false, player_props: false },
+    unavailable_reason: { make_pick: 'Create an account to publish picks.' },
+    billing_enabled: false, note: 'Full access is free during the Stat Edge beta.',
+  },
+}
+
+const community = {
+  game_id: 'ncaaf:401752', total_picks: 0, moneyline_split: {},
+  recent_analysis: [], your_picks: [],
+}
+
+const leaderboard = {
+  league: 'all', min_graded: 10, count: 0, standings: [],
+  note: 'Edge Rating is profit per graded pick, shrunk toward neutral by sample size.',
+}
+
+module.exports = { iso, inHours, mkGame, mkModel, mkEdge, today, accuracy, bestBets, bestParlay, plays, news, entitlements, props, session, community, leaderboard }

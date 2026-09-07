@@ -27,6 +27,7 @@ const PAGES = [
   ['live', '/live'],
   ['props', '/props'],
   ['edges', '/best-bets'],
+  ['leaderboard', '/leaderboard'],
   ['news', '/news'],
   ['results', '/results'],
   ['parlay', '/parlay'],
@@ -45,6 +46,9 @@ async function stub(page) {
   await page.route('**/api/v1/accuracy', r => r.fulfill({ json: fx.accuracy }))
   await page.route('**/api/v1/news*', r => r.fulfill({ json: fx.news }))
   await page.route('**/api/v1/entitlements', r => r.fulfill({ json: fx.entitlements }))
+  await page.route('**/api/v1/auth/me', r => r.fulfill({ json: fx.session }))
+  await page.route('**/api/v1/picks/game/**', r => r.fulfill({ json: fx.community }))
+  await page.route('**/api/v1/leaderboard*', r => r.fulfill({ json: fx.leaderboard }))
   await page.route('**/api/v1/props*', r => r.fulfill({ json: fx.props }))
   await page.route('**/api/v1/best-bets', r => r.fulfill({ json: fx.bestBets }))
   await page.route('**/api/v1/best-parlay*', r => r.fulfill({ json: fx.bestParlay }))

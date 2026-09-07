@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import { useSession } from '../../session/SessionProvider'
 
 const Football = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -26,12 +27,11 @@ const Whistle = () => (
   </svg>
 )
 
-const items = [
+const baseItems = [
   { to: '/', label: 'Games', Icon: Football, end: true },
   { to: '/live', label: 'Live', Icon: Live, end: false },
   { to: '/props', label: 'Props', Icon: Whistle, end: false },
   { to: '/best-bets', label: 'Edges', Icon: Bars, end: false },
-  { to: '/account', label: 'Account', Icon: Person, end: false },
 ]
 
 /**
@@ -42,6 +42,16 @@ const items = [
  * content. News, Results, Parlay and FAQ sit in the row under the header.
  */
 export function BottomNav() {
+  const { user } = useSession()
+  // The fifth slot is the user's own record once they have one, and the way in
+  // before that — the most useful destination in both states.
+  const items = [
+    ...baseItems,
+    user
+      ? { to: '/my-edge', label: 'My Edge', Icon: Person, end: false }
+      : { to: '/register', label: 'Join', Icon: Person, end: false },
+  ]
+
   return (
     <nav
       aria-label="Primary"

@@ -10,6 +10,9 @@ import { ProbabilityComparison } from '../components/game/ProbabilityComparison'
 import { SportsbookOddsTable } from '../components/game/SportsbookOddsTable'
 import { ModelExplanation } from '../components/game/ModelExplanation'
 import { LineMovementChart } from '../components/game/LineMovementChart'
+import { MakeYourPick } from '../components/picks/MakeYourPick'
+import { GameCommunity } from '../components/picks/GameCommunity'
+import { useGameCommunity } from '../hooks/useGameCommunity'
 import { LiveWinProbabilityChart } from '../components/game/LiveWinProbabilityChart'
 import { LockedPremiumPanel } from '../components/game/LockedPremiumPanel'
 import type { Point } from '../components/game/MiniChart'
@@ -65,6 +68,7 @@ export function GameDetail() {
   const location = useLocation()
   const seedState = location.state as { game?: LiveGameOut } | null
   const { data, pbp, loading, refreshing, error } = useGameDetail(league, eventId)
+  const { community, refreshCommunity } = useGameCommunity(league, eventId)
 
   // Render the matchup immediately when we arrived from a board that already
   // had it, so the header never waits on a round trip.
@@ -212,6 +216,21 @@ export function GameDetail() {
                 />
               )}
             </Panel>
+
+            {game && (
+              <MakeYourPick
+                league={league}
+                game={game}
+                existing={community?.your_picks}
+                onSubmitted={refreshCommunity}
+              />
+            )}
+
+            <GameCommunity
+              data={community}
+              homeAbbr={game?.home_abbr ?? 'HOME'}
+              awayAbbr={game?.away_abbr ?? 'AWAY'}
+            />
           </div>
 
           <div className="min-w-0 space-y-4">

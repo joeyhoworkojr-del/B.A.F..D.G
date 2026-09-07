@@ -5,18 +5,37 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { GameDetail } from './GameDetail'
 import { api } from '../api/client'
 import { gameDetail, liveGame, pregameGame } from '../test/fixtures'
+import { SessionProvider } from '../session/SessionProvider'
 
+// The game page now hosts Make Your Pick, which reads the session. The
+// provider resolves to a guest here, which is the state these tests assert
+// against anyway.
 function renderAt(path: string) {
   return render(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path="/game/:league/:eventId" element={<GameDetail />} />
-      </Routes>
-    </MemoryRouter>,
+    <SessionProvider>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/game/:league/:eventId" element={<GameDetail />} />
+        </Routes>
+      </MemoryRouter>
+    </SessionProvider>,
   )
 }
 
 beforeEach(() => {
+  // Session and community are additive on this page; stub them so these tests
+  // stay about the Game Center rather than about the network.
+  vi.spyOn(api, 'session').mockResolvedValue({
+    user: null,
+    entitlements: {
+      level: 'guest', authenticated: false, beta_open: true,
+      features: {}, unavailable_reason: {}, billing_enabled: false, note: '',
+    },
+  })
+  vi.spyOn(api, 'gameCommunity').mockResolvedValue({
+    game_id: 'ncaaf:401752', total_picks: 0, moneyline_split: {},
+    recent_analysis: [], your_picks: [],
+  })
   vi.spyOn(api, 'playByPlay').mockResolvedValue({
     league: 'ncaaf', event_id: '401752', ok: true, fetched_at: new Date().toISOString(), plays: [],
   })

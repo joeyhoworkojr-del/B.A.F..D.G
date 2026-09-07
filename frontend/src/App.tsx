@@ -4,6 +4,7 @@ import { TopBar } from './components/layout/TopBar'
 import { BottomNav } from './components/layout/BottomNav'
 import { MobileMoreLinks } from './components/layout/MobileMoreLinks'
 import { Footer } from './components/layout/Footer'
+import { SessionProvider } from './session/SessionProvider'
 import { Dashboard } from './pages/Dashboard'
 
 // Route-level code splitting: only the games board ships in the initial
@@ -22,6 +23,12 @@ const Live = lazyPage(() => import('./pages/Live'), 'Live')
 const Props = lazyPage(() => import('./pages/Props'), 'Props')
 const Faq = lazyPage(() => import('./pages/Faq'), 'Faq')
 const NotFound = lazyPage(() => import('./pages/NotFound'), 'NotFound')
+const Login = lazyPage(() => import('./pages/Login'), 'Login')
+const Register = lazyPage(() => import('./pages/Register'), 'Register')
+const Onboarding = lazyPage(() => import('./pages/Onboarding'), 'Onboarding')
+const MyEdge = lazyPage(() => import('./pages/MyEdge'), 'MyEdge')
+const Analyst = lazyPage(() => import('./pages/Analyst'), 'Analyst')
+const Leaderboard = lazyPage(() => import('./pages/Leaderboard'), 'Leaderboard')
 
 function PageFallback() {
   return (
@@ -35,6 +42,7 @@ function PageFallback() {
 export default function App() {
   return (
     <BrowserRouter>
+      <SessionProvider>
       <div className="flex min-h-screen flex-col text-zinc-100">
         <TopBar />
         <MobileMoreLinks />
@@ -54,6 +62,13 @@ export default function App() {
               <Route path="/faq" element={<Faq />} />
               <Route path="/about" element={<About />} />
               <Route path="/account" element={<Account />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              <Route path="/onboarding" element={<Onboarding />} />
+              <Route path="/my-edge" element={<MyEdge />} />
+              <Route path="/leaderboard" element={<Leaderboard />} />
+              {/* Analyst handles are the clean public URL: /@username */}
+              <Route path="/:username" element={<Analyst />} />
               {/* The SPA fallback serves index.html for any path, so without
                   this an unknown URL rendered an empty page. */}
               <Route path="*" element={<NotFound />} />
@@ -63,6 +78,7 @@ export default function App() {
         <Footer />
         <BottomNav />
       </div>
+      </SessionProvider>
     </BrowserRouter>
   )
 }

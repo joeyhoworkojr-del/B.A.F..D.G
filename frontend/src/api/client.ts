@@ -21,6 +21,13 @@ import type {
   EntitlementsOut,
   PropsOut,
   GamePropsOut,
+  SessionOut,
+  MyPicksOut,
+  PickOut,
+  GameCommunityOut,
+  AnalystOut,
+  SubmitPickBody,
+  LeaderboardOut,
 } from '../types'
 
 // Same-origin by default. Vite's dev server proxies /api to :8000, the Docker
@@ -32,7 +39,10 @@ import type {
 const BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/+$/, '')
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, init)
+  // The session is an httpOnly cookie, so it has to be sent explicitly:
+  // fetch omits credentials on cross-origin requests, and would silently log
+  // the user out if VITE_API_BASE ever pointed at the API's own host.
+  const res = await fetch(`${BASE}${path}`, { credentials: 'include', ...init })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     const detail = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail ?? `HTTP ${res.status}`)
@@ -149,6 +159,35 @@ export const api = {
   propsStatus: () => get<PropsOut>('/api/v1/props'),
   gameProps: (league: string, eventId: string) =>
     get<GamePropsOut>(`/api/v1/props/${league}/${encodeURIComponent(eventId)}`),
+
+  // ── Accounts. Session lives in an httpOnly cookie, so every one of these
+  // sends credentials and none of them handles a token in JavaScript. ──
+  session: () => get<SessionOut>('/api/v1/auth/me'),
+  register: (body: { username: string; email: string; password: string; display_name?: string }) =>
+    post<SessionOut>('/api/v1/auth/register', body),
+  login: (body: { identifier: string; password: string }) =>
+    post<SessionOut>('/api/v1/auth/login', body),
+  logout: () => post<{ ok: boolean }>('/api/v1/auth/logout', {}),
+  usernameAvailable: (username: string) =>
+    get<{ username: string; available: boolean }>(
+      `/api/v1/auth/username-available?username=${encodeURIComponent(username)}`),
+  updateProfile: (body: Record<string, unknown>) =>
+    request<SessionOut>('/api/v1/auth/profile', {
+      method: 'PATCH', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+
+  // ── Picks ──
+  submitPick: (body: SubmitPickBody) => post<PickOut>('/api/v1/picks', body),
+  myPicks: () => get<MyPicksOut>('/api/v1/picks/mine'),
+  withdrawPick: (id: string) =>
+    request<{ ok: boolean }>(`/api/v1/picks/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  gameCommunity: (league: string, eventId: string) =>
+    get<GameCommunityOut>(`/api/v1/picks/game/${league}/${encodeURIComponent(eventId)}`),
+  leaderboard: (league?: string) =>
+    get<LeaderboardOut>(`/api/v1/leaderboard${league ? `?league=${league}` : ''}`),
+  analyst: (username: string) =>
+    get<AnalystOut>(`/api/v1/analysts/${encodeURIComponent(username)}`),
 
   // World Cup spotlight (model pre-run on upcoming fixtures)
   soccerUpcoming: () => get<SoccerUpcomingResponse>('/api/v1/soccer/upcoming'),
