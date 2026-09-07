@@ -419,3 +419,38 @@ def test_a_broken_ledger_read_returns_empty_rather_than_raising(monkeypatch):
     ledger.record_pregame(event_id="nfl:1", league="nfl", kickoff="",
                           home="KC", away="BUF", model_home_prob=0.5)
     ledger.reset_store()
+
+
+def test_a_quoted_url_still_works(monkeypatch):
+    """A value copied out of a shell command keeps the quotes that were syntax."""
+    from src.track import store
+    _clear_storage_env(monkeypatch)
+    monkeypatch.setenv("REDIS_URL", "'rediss://default:tok@host.upstash.io:6379'")
+    assert store.redis_url() == "rediss://default:tok@host.upstash.io:6379"
+
+
+def test_a_quoted_postgres_url_still_works(monkeypatch):
+    _clear_storage_env(monkeypatch)
+    monkeypatch.setenv("DATABASE_URL", '"postgresql://u:p@host/db"')
+    assert db.is_postgres() is True
+
+
+def test_surrounding_whitespace_is_tolerated(monkeypatch):
+    from src.track import store
+    _clear_storage_env(monkeypatch)
+    monkeypatch.setenv("REDIS_URL", "  rediss://default:tok@host:6379\n")
+    assert store.redis_url() == "rediss://default:tok@host:6379"
+
+
+def test_trailing_shell_text_is_not_silently_accepted(monkeypatch):
+    """
+    Quotes are syntax and safe to strip. A stray command-line flag is not — it
+    would change the host we connect to, so it must surface as an error rather
+    than be guessed at.
+    """
+    from src.track import store
+    _clear_storage_env(monkeypatch)
+    monkeypatch.setenv("REDIS_URL", "rediss://default:tok@host:6379' --app statedge-api")
+    # Still "usable" by scheme; the driver is what rejects it, and the
+    # diagnostic reports that rather than this layer inventing a repair.
+    assert store.redis_url().endswith("--app statedge-api")
