@@ -301,6 +301,16 @@ def config_report() -> dict:
             # connection string belongs.
             wrong_scheme.append(var)
 
+    # Upstash and Vercel generate several names — UPSTASH_REDIS_REST_URL and
+    # UPSTASH_REDIS_REST_TOKEN among them — and none of those is the connection
+    # string this backend opens. Naming what IS set turns "nothing is
+    # configured" into "you set the wrong one of these".
+    related = sorted(
+        name for name in os.environ
+        if name not in _CONFIG_VARS
+        and any(tok in name.upper() for tok in ("REDIS", "UPSTASH", "KV_", "POSTGRES", "DATABASE"))
+    )
+
     if usable:
         hint = ""
     elif wrong_scheme:
@@ -308,6 +318,13 @@ def config_report() -> dict:
             f"{', '.join(wrong_scheme)} is set but its scheme is not one this "
             "backend can open. Redis needs redis:// or rediss:// (Upstash's "
             "https:// REST endpoint will not work); Postgres needs postgres://."
+        )
+    elif related:
+        hint = (
+            f"None of {', '.join(_CONFIG_VARS)} is set, but these related "
+            f"variables are: {', '.join(related)}. Redis needs the connection "
+            "string (rediss://...), not the REST URL or token — copy it into "
+            "REDIS_URL."
         )
     else:
         hint = (
@@ -321,6 +338,9 @@ def config_report() -> dict:
         "present": present,
         "usable": usable,
         "wrong_scheme": wrong_scheme,
+        # Names only, never values — env var names are not secrets, the
+        # strings they hold are.
+        "other_storage_vars_seen": related,
         "hint": hint,
     }
 

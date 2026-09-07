@@ -328,3 +328,25 @@ def test_the_report_never_contains_a_secret_value(monkeypatch):
     assert "SUPERSECRETTOKEN" not in blob
     assert "upstash.io" not in blob
     assert secret not in blob
+
+
+def test_report_names_a_near_miss_variable(monkeypatch):
+    """
+    Upstash hands out UPSTASH_REDIS_REST_URL, which is not the connection
+    string. Saying "nothing is set" there would be actively misleading.
+    """
+    from src.track import store
+    _clear_storage_env(monkeypatch)
+    monkeypatch.setenv("UPSTASH_REDIS_REST_URL", "https://eu1-abc.upstash.io")
+    monkeypatch.setenv("UPSTASH_REDIS_REST_TOKEN", "AbCdEf")
+    report = store.config_report()
+    assert report["present"] == []
+    assert "UPSTASH_REDIS_REST_URL" in report["other_storage_vars_seen"]
+    assert "REDIS_URL" in report["hint"]
+
+
+def test_the_near_miss_report_still_leaks_no_values(monkeypatch):
+    from src.track import store
+    _clear_storage_env(monkeypatch)
+    monkeypatch.setenv("UPSTASH_REDIS_REST_TOKEN", "SUPERSECRETTOKEN")
+    assert "SUPERSECRETTOKEN" not in repr(store.config_report())
