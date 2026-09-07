@@ -53,7 +53,7 @@ function ScoresStrip({ league, games }: { league: FootballLeague; games: TodayGa
       {ordered.slice(0, 12).map(({ game: g }) => {
         const live = g.state === 'in'
         return (
-          <Link key={g.event_id} to={`/game/${league}/${g.event_id}`}
+          <Link key={g.event_id} to={`/game/${league}/${g.event_id}`} state={{ game: g }}
             className="flex shrink-0 flex-col justify-center border-l border-terminal-border/60 px-3 py-2 hover:bg-terminal-muted/40">
             <span className="flex items-center gap-1.5 whitespace-nowrap font-semibold text-zinc-100">
               {live && <span className="h-1.5 w-1.5 rounded-full bg-signal-green" />}
@@ -120,7 +120,7 @@ function LiveCard({ league, entry }: { league: FootballLeague; entry: TodayGameO
         <span className="text-[11px] text-zinc-500">{LEAGUE_SPORT[league]}</span>
       </div>
       <div className="flex items-stretch gap-3 p-4">
-        <Link to={`/game/${league}/${g.event_id}`} className="min-w-0 flex-1 space-y-3">
+        <Link to={`/game/${league}/${g.event_id}`} state={{ game: g }} className="min-w-0 flex-1 space-y-3">
           {[['away', g.away, g.away_abbr, g.away_logo, g.away_score], ['home', g.home, g.home_abbr, g.home_logo, g.home_score]].map(
             ([side, name, abbr, logo, score]) => (
               <div key={side as string} className="flex items-center gap-2.5">
@@ -206,11 +206,11 @@ function EdgeCard({ league, entry }: { league: FootballLeague; entry: TodayGameO
         <Stat label="Model" value={pct(e.model_prob)} />
         <Stat label="Market" value={pct(e.market_prob)} />
         <Stat label="Edge" value={`+${e.edge_pp.toFixed(0)}%`} green />
-        <Link to={`/game/${league}/${g.event_id}`}
+        <Link to={`/game/${league}/${g.event_id}?market=${e.market.toLowerCase().includes("total") ? "total" : e.market.toLowerCase().includes("spread") ? "spread" : "moneyline"}`} state={{ game: g }}
           className="rounded-lg border border-signal-amber/50 bg-signal-amber/15 px-3 py-1.5 text-[13px] font-bold text-signal-amber">
           {e.rating} · {e.selection} ›
         </Link>
-        <Link to={`/game/${league}/${g.event_id}`} className="ml-auto whitespace-nowrap text-[12px] font-semibold text-zinc-400 hover:text-zinc-200">
+        <Link to={`/game/${league}/${g.event_id}?market=${e.market.toLowerCase().includes("total") ? "total" : e.market.toLowerCase().includes("spread") ? "spread" : "moneyline"}#why`} state={{ game: g }} className="ml-auto whitespace-nowrap text-xs font-semibold text-zinc-400 hover:text-zinc-200">
           Why this edge? ›
         </Link>
       </div>
@@ -256,7 +256,7 @@ export function Dashboard() {
     <div className="pb-4">
       {games.length > 0 && <ScoresStrip league={league} games={games} />}
 
-      <div className="mx-auto max-w-3xl space-y-5 px-4 pt-4">
+      <div className="mx-auto w-full max-w-[1200px] space-y-5 px-4 pt-4">
         <div>
           <h1 className="font-display text-3xl font-black tracking-tight text-zinc-100">Game Center</h1>
           <p className="mt-0.5 text-sm text-zinc-400">AI-powered projections &amp; market edges</p>
@@ -289,14 +289,18 @@ export function Dashboard() {
         {liveGames.length > 0 && (
           <div className="space-y-3">
             <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Live now</h2>
-            {liveGames.map(entry => <LiveCard key={entry.game.event_id} league={league} entry={entry} />)}
+            <div className="grid gap-3 lg:grid-cols-2">
+              {liveGames.map(entry => <LiveCard key={entry.game.event_id} league={league} entry={entry} />)}
+            </div>
           </div>
         )}
 
         {edgeGames.length > 0 && (
           <div className="space-y-3">
             <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Top edges</h2>
-            {edgeGames.map(entry => <EdgeCard key={entry.game.event_id} league={league} entry={entry} />)}
+            <div className="grid gap-3 lg:grid-cols-2">
+              {edgeGames.map(entry => <EdgeCard key={entry.game.event_id} league={league} entry={entry} />)}
+            </div>
           </div>
         )}
 

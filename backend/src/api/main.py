@@ -6,6 +6,8 @@ every other route — one process, one deployment, no CORS.
 """
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -27,11 +29,43 @@ STATIC_DIR = Path(
 )
 
 
+log = logging.getLogger(__name__)
+
+# How often the server freezes pre-game predictions into the ledger. Snapshots
+# are a server responsibility: the track record must not depend on whether a
+# visitor happened to open a page.
+SNAPSHOT_INTERVAL_SECONDS = int(os.getenv("SNAPSHOT_INTERVAL_SECONDS", "600"))
+SNAPSHOTS_ENABLED = os.getenv("SNAPSHOTS_ENABLED", "1") != "0"
+
+
+async def _snapshot_loop() -> None:
+    """Periodically snapshot pre-game picks and grade finished games."""
+    from src.api.routes.predictions import FOCUS_LEAGUES, snapshot_pregame
+
+    while True:
+        for league in FOCUS_LEAGUES:
+            try:
+                n = await snapshot_pregame(league)
+                log.info("snapshot: froze %d %s pre-game picks", n, league)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:   # a bad feed must never kill the loop
+                log.warning("snapshot failed for %s: %s", league, exc)
+        await asyncio.sleep(SNAPSHOT_INTERVAL_SECONDS)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
-    # Startup: could warm caches here
+    task: asyncio.Task | None = None
+    if SNAPSHOTS_ENABLED:
+        task = asyncio.create_task(_snapshot_loop())
     yield
-    # Shutdown: cleanup if needed
+    if task is not None:
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
 
 
 app = FastAPI(

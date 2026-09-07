@@ -99,8 +99,8 @@ def test_performance_settles_on_consensus_pick() -> None:
     assert perf["profit_units"] > 0
 
 
-def test_today_flow_populates_ledger() -> None:
-    """Pre-game slate snapshots; a later final grades it."""
+def test_page_view_never_writes_a_prediction() -> None:
+    """Reading the slate must not snapshot — that is the scheduler's job."""
     from src.ingest.espn import Scoreboard, _parse_event
     from tests.test_espn_today import SAMPLE_EVENT, _patch_poly
 
@@ -108,7 +108,27 @@ def test_today_flow_populates_ledger() -> None:
     board_pre = Scoreboard(league="nfl", games=[_parse_event("nfl", pre)], fetched_at="x")
     with patch("src.api.routes.predictions.fetch_scoreboard", return_value=board_pre), _patch_poly():
         assert client.get("/api/v1/today/nfl").status_code == 200
+    assert ledger.accuracy_summary()["pending"] == 0     # nothing recorded
+
+
+def test_scheduled_snapshot_records_then_grades() -> None:
+    """The server-side job snapshots pre-game; a later final grades it."""
+    import asyncio
+
+    from src.api.routes.predictions import snapshot_pregame
+    from src.ingest.espn import Scoreboard, _parse_event
+    from tests.test_espn_today import SAMPLE_EVENT, _patch_poly
+
+    pre = {**SAMPLE_EVENT, "status": {"type": {"state": "pre", "shortDetail": "8:15 PM"}}}
+    board_pre = Scoreboard(league="nfl", games=[_parse_event("nfl", pre)], fetched_at="x")
+    with patch("src.api.routes.predictions.fetch_scoreboard", return_value=board_pre), _patch_poly():
+        assert asyncio.run(snapshot_pregame("nfl")) == 1
     assert ledger.accuracy_summary()["pending"] == 1
+
+    row = ledger.get_snapshot("nfl:401547401")
+    assert row is not None
+    assert row["model_version"]                      # provenance is recorded
+    assert row["book_source"] == "ESPN BET"
 
     post = {**SAMPLE_EVENT, "status": {"type": {"state": "post", "shortDetail": "Final"}}}
     board_post = Scoreboard(league="nfl", games=[_parse_event("nfl", post)], fetched_at="x")
@@ -121,3 +141,17 @@ def test_today_flow_populates_ledger() -> None:
     row = ledger.recent_graded()[0]
     assert row["home_won"] == 1
     assert row["book_home_prob"] is not None and 0.5 < row["book_home_prob"] < 0.75
+    assert row["closing_spread"] == -3.5              # line frozen at grade time
+
+
+def test_newer_model_cannot_rewrite_an_open_prediction() -> None:
+    ledger.record_pregame(
+        event_id="nfl:v1", league="nfl", kickoff="2026-07-04T20:00Z",
+        home="Chiefs", away="Bills", model_home_prob=0.61, model_version="v1",
+    )
+    ledger.record_pregame(
+        event_id="nfl:v1", league="nfl", kickoff="2026-07-04T20:00Z",
+        home="Chiefs", away="Bills", model_home_prob=0.99, model_version="v2",
+    )
+    row = ledger.get_snapshot("nfl:v1")
+    assert row["model_home_prob"] == 0.61 and row["model_version"] == "v1"

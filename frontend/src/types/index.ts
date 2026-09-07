@@ -437,3 +437,91 @@ export interface HistoryEntry {
   brier_score?: number
   logged_at: string
 }
+
+// ─── Game Center contract (GET /api/v1/game/{league}/{eventId}) ──────────────
+
+/** Which question a market answers — so win / cover / total can never be
+ *  confused with one another in the UI. */
+export type ProbabilityKind = 'win' | 'cover' | 'total'
+export type MarketKey = 'moneyline' | 'spread' | 'total'
+
+export interface MarketSelectionOut {
+  label: string
+  side: 'home' | 'away' | 'over' | 'under'
+  model_prob: number
+  model_prob_raw: number
+  book_prob?: number | null
+  crowd_prob?: number | null
+  price_american: number
+  price_decimal?: number | null
+  fair_price_american?: number | null
+  edge_pp?: number | null
+  ev_per_unit?: number | null
+  grade: string
+}
+
+export interface MarketOut {
+  key: MarketKey
+  label: string
+  question: string
+  probability_kind: ProbabilityKind
+  line?: number | null
+  source: string
+  /** True when the price is our -110 assumption, not a quoted price. */
+  assumed_price: boolean
+  selections: MarketSelectionOut[]
+}
+
+export interface BestEdgeOut extends MarketSelectionOut {
+  market_key: MarketKey
+  market_label: string
+  line?: number | null
+  source: string
+  assumed_price: boolean
+  probability_kind: ProbabilityKind
+}
+
+export interface GradeBand {
+  grade: string
+  min_edge_pp: number
+  label: string
+}
+
+/** The frozen pre-game prediction, as stored by the scheduled snapshot job. */
+export interface SnapshotOut {
+  event_id: string
+  model_version?: string | null
+  book_source?: string | null
+  snapshot_at?: string | null
+  model_home_prob?: number | null
+  consensus_home_prob?: number | null
+  book_home_prob?: number | null
+  market_spread?: number | null
+  market_total?: number | null
+  closing_spread?: number | null
+  closing_total?: number | null
+  closing_home_prob?: number | null
+  graded?: number | null
+  home_score?: number | null
+  away_score?: number | null
+  home_won?: number | null
+}
+
+export interface GameDetailOut {
+  league: string
+  event_id: string
+  status: 'pre' | 'in' | 'post'
+  fetched_at: string
+  source_ok: boolean
+  source: string
+  model_version: string
+  grade_scale: GradeBand[]
+  game: LiveGameOut
+  mapped: boolean
+  model?: TodayModelOut | null
+  edges: EdgeOut[]
+  markets: MarketOut[]
+  best_edge?: BestEdgeOut | null
+  polymarket?: PolymarketOut | null
+  snapshot?: SnapshotOut | null
+}

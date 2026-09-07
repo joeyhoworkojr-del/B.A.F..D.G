@@ -57,7 +57,8 @@ from src.predict.soccer import predict_match
 from src.track import ledger, ratings
 from src.value.edge import american_to_decimal
 from src.simulate.monte_carlo import simulate_soccer
-from src.value.edge import BetEdge, evaluate_market
+from src.value.edge import BetEdge, edge_rating, evaluate_market
+from src.model_version import MODEL_VERSION
 
 router = APIRouter()
 
@@ -623,14 +624,167 @@ def _no_vig_home_prob(g: LiveGame) -> Optional[float]:
     return ih / (ih + ia)
 
 
-async def _slate_entry(league: str, g: LiveGame, poly_markets) -> dict:
-    """Model + live-market comparison for one scoreboard game. Snapshots
-    pre-game picks to the ledger as a side effect."""
+# ─── Structured market comparison (Game Center data contract) ────────────────
+
+# Edge grades, surfaced with the scale so the UI can explain them rather than
+# showing an unexplained letter.
+GRADE_SCALE = [
+    {"grade": "A", "min_edge_pp": 6.0, "label": "Strong"},
+    {"grade": "B", "min_edge_pp": 3.5, "label": "Solid"},
+    {"grade": "C", "min_edge_pp": 1.5, "label": "Slight"},
+    {"grade": "-", "min_edge_pp": 0.0, "label": "No edge"},
+]
+
+# ESPN publishes a spread/total line but no price for it, so we price those at
+# the standard -110 and say so; the moneyline carries real quoted prices.
+ASSUMED_PRICE = -110
+
+
+def _american_from_prob(p: float) -> Optional[int]:
+    """Fair American price for a probability (the model's break-even number)."""
+    if p is None or p <= 0.0 or p >= 1.0:
+        return None
+    dec = 1.0 / p
+    return _american_from_decimal(dec)
+
+
+def _selection(
+    *, label: str, side: str, model_prob: float, model_prob_raw: float,
+    book_prob: Optional[float], price_american: Optional[float],
+    crowd_prob: Optional[float] = None,
+) -> dict:
+    """One side of a market: model vs no-vig book vs crowd, priced."""
+    price = price_american if price_american is not None else ASSUMED_PRICE
+    try:
+        dec = american_to_decimal(price)
+    except ValueError:
+        dec = None
+    ev = (model_prob * (dec - 1.0) - (1.0 - model_prob)) if dec else None
+    edge_pp = (model_prob - book_prob) * 100.0 if book_prob is not None else None
+    return {
+        "label": label,
+        "side": side,
+        "model_prob": round(model_prob, 4),
+        "model_prob_raw": round(model_prob_raw, 4),
+        "book_prob": round(book_prob, 4) if book_prob is not None else None,
+        "crowd_prob": round(crowd_prob, 4) if crowd_prob is not None else None,
+        "price_american": int(price),
+        "price_decimal": round(dec, 3) if dec else None,
+        "fair_price_american": _american_from_prob(model_prob),
+        "edge_pp": round(edge_pp, 1) if edge_pp is not None else None,
+        "ev_per_unit": round(ev, 4) if ev is not None else None,
+        "grade": edge_rating(edge_pp) if edge_pp is not None else "-",
+    }
+
+
+def _build_markets(league: str, g: LiveGame, pred, home: str, away: str, pm: Optional[dict]) -> list[dict]:
+    """Moneyline / Spread / Total, each comparing model, book and crowd.
+
+    Probabilities are the de-biased model numbers the edges are actually taken
+    on; the raw model number rides along for transparency.
+    """
+    markets: list[dict] = []
+    source = g.market_provider or "ESPN"
+
+    # ── Moneyline: real quoted prices, vig removed across the two sides ──
+    if g.market_home_ml is not None and g.market_away_ml is not None:
+        bh = _no_vig_home_prob(g)
+        markets.append({
+            "key": "moneyline",
+            "label": "Moneyline",
+            "question": "Who wins the game outright?",
+            "probability_kind": "win",
+            "line": None,
+            "source": source,
+            "assumed_price": False,
+            "selections": [
+                _selection(label=f"{g.away_abbr or away} ML", side="away",
+                           model_prob=_debias(pred.away_win_prob), model_prob_raw=pred.away_win_prob,
+                           book_prob=(1 - bh) if bh is not None else None,
+                           price_american=g.market_away_ml,
+                           crowd_prob=pm["away_prob"] if pm else None),
+                _selection(label=f"{g.home_abbr or home} ML", side="home",
+                           model_prob=_debias(pred.home_win_prob), model_prob_raw=pred.home_win_prob,
+                           book_prob=bh, price_american=g.market_home_ml,
+                           crowd_prob=pm["home_prob"] if pm else None),
+            ],
+        })
+
+    # ── Spread: line published, price assumed at -110 (no-vig = 50/50) ──
+    if g.market_spread is not None:
+        sp = g.market_spread
+        markets.append({
+            "key": "spread",
+            "label": "Spread",
+            "question": "Who covers the point spread?",
+            "probability_kind": "cover",
+            "line": sp,
+            "source": source,
+            "assumed_price": True,
+            "selections": [
+                _selection(label=f"{g.away_abbr or away} {-sp:+.1f}", side="away",
+                           model_prob=_debias(pred.away_cover_prob), model_prob_raw=pred.away_cover_prob,
+                           book_prob=0.5, price_american=ASSUMED_PRICE),
+                _selection(label=f"{g.home_abbr or home} {sp:+.1f}", side="home",
+                           model_prob=_debias(pred.home_cover_prob), model_prob_raw=pred.home_cover_prob,
+                           book_prob=0.5, price_american=ASSUMED_PRICE),
+            ],
+        })
+
+    # ── Total: same, over/under the published number ──
+    if g.market_over_under is not None:
+        ou = g.market_over_under
+        markets.append({
+            "key": "total",
+            "label": "Total",
+            "question": f"Do both teams combine for more or fewer than {ou} points?",
+            "probability_kind": "total",
+            "line": ou,
+            "source": source,
+            "assumed_price": True,
+            "selections": [
+                _selection(label=f"Over {ou}", side="over",
+                           model_prob=_debias(pred.over_prob), model_prob_raw=pred.over_prob,
+                           book_prob=0.5, price_american=ASSUMED_PRICE),
+                _selection(label=f"Under {ou}", side="under",
+                           model_prob=_debias(pred.under_prob), model_prob_raw=pred.under_prob,
+                           book_prob=0.5, price_american=ASSUMED_PRICE),
+            ],
+        })
+    return markets
+
+
+def _best_selection(markets: list[dict]) -> Optional[dict]:
+    """The single strongest positive edge across every market, or None."""
+    best = None
+    for m in markets:
+        for sel in m["selections"]:
+            if sel["edge_pp"] is None or sel["edge_pp"] <= 0:
+                continue
+            if best is None or sel["edge_pp"] > best["edge_pp"]:
+                best = {**sel, "market_key": m["key"], "market_label": m["label"],
+                        "line": m["line"], "source": m["source"],
+                        "assumed_price": m["assumed_price"],
+                        "probability_kind": m["probability_kind"]}
+    return best
+
+
+async def _slate_entry(
+    league: str, g: LiveGame, poly_markets, *, snapshot: bool = False,
+) -> dict:
+    """Model + live-market comparison for one scoreboard game.
+
+    Pure by default: reading a page never writes a prediction. The scheduled
+    server-side job passes ``snapshot=True`` to freeze pre-game picks into the
+    ledger, so the track record does not depend on someone loading a page.
+    """
     entry: dict = {
         "game": g.__dict__,
         "mapped": False,
         "model": None,
         "edges": [],
+        "markets": [],
+        "best_edge": None,
         "polymarket": match_game(poly_markets, g.home, g.away),
     }
     home = _map_code(league, g.home_abbr)
@@ -757,10 +911,15 @@ async def _slate_entry(league: str, g: LiveGame, poly_markets) -> dict:
         edges.sort(key=lambda e: -e.edge_pp)
         entry["edges"] = [_edges_out([e])[0].model_dump() for e in edges]
 
+        # Structured per-market comparison (model vs no-vig book vs crowd),
+        # which is what the Game Center renders.
+        entry["markets"] = _build_markets(league, g, pred, home, away, pm)
+        entry["best_edge"] = _best_selection(entry["markets"])
+
         # ── Track record: snapshot pre-game; grading happens on every board fetch ──
         # The ledger stores the RAW model prob (book_home is logged separately),
         # so the head-to-head Brier stays an honest model-vs-book comparison.
-        if g.state == "pre":
+        if snapshot and g.state == "pre":
             ledger.record_pregame(
                 event_id=f"{league}:{g.event_id}",
                 league=league,
@@ -778,10 +937,85 @@ async def _slate_entry(league: str, g: LiveGame, poly_markets) -> dict:
                 home_elo=ratings.adjust(league, home, _TEAM_GETTERS[league](home).elo),
                 away_elo=ratings.adjust(league, away, _TEAM_GETTERS[league](away).elo),
                 consensus_home_prob=cal_home,
+                model_version=MODEL_VERSION,
+                book_source=g.market_provider or None,
             )
     except HTTPException:
         pass
     return entry
+
+
+@router.get("/game/{league}/{event_id}", tags=["Predictions"])
+async def game_detail(league: str, event_id: str) -> dict:
+    """
+    One game, fully modelled — the Game Center contract.
+
+    Deliberately scoped to a single event: the slate endpoint runs the model for
+    every game on the board, which is far too much work to render one matchup.
+    Returns the live state, the model, a structured market comparison
+    (model vs no-vig book vs crowd), the strongest edge, and the frozen ledger
+    snapshot once one exists.
+    """
+    league = league.lower()
+    if league not in FOCUS_LEAGUES:
+        raise HTTPException(
+            status_code=404,
+            detail=f"league must be one of: {', '.join(FOCUS_LEAGUES)}",
+        )
+
+    board, poly = await asyncio.gather(
+        fetch_scoreboard(league),
+        fetch_league_markets(league),
+    )
+    ledger.grade_board(league, board.games)
+    game = next((g for g in board.games if str(g.event_id) == str(event_id)), None)
+    if game is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"No {league.upper()} game {event_id!r} on the current board"
+                if board.ok else "Live feed is temporarily unreachable"
+            ),
+        )
+
+    entry = await _slate_entry(league, game, poly)
+    snapshot = ledger.get_snapshot(f"{league}:{game.event_id}")
+
+    return {
+        "league": league,
+        "event_id": str(game.event_id),
+        "status": game.state,
+        "fetched_at": board.fetched_at,
+        "source_ok": board.ok,
+        "source": game.market_provider or board.source,
+        "model_version": MODEL_VERSION,
+        "grade_scale": GRADE_SCALE,
+        **entry,
+        "snapshot": snapshot,
+    }
+
+
+async def snapshot_pregame(league: str) -> int:
+    """Freeze every pre-game pick for a league into the ledger.
+
+    Runs on the server's own schedule (see the app lifespan), never on a page
+    view, so the track record reflects what the model said at a fixed cadence
+    rather than whenever a visitor happened to load the site.
+    """
+    board, poly = await asyncio.gather(
+        fetch_scoreboard(league),
+        fetch_league_markets(league),
+    )
+    ledger.grade_board(league, board.games)
+    ratings.reconcile()
+    n = 0
+    for g in board.games:
+        if g.state != "pre" or not is_current(g):
+            continue
+        entry = await _slate_entry(league, g, poly, snapshot=True)
+        if entry["mapped"]:
+            n += 1
+    return n
 
 
 @router.get("/today/{league}", tags=["Predictions"])
