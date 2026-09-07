@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+
+# Staff-only surface; nothing here is useful to a crawler.
+Disallow: /staff
+
+Sitemap: https://statedge.ca/sitemap.xml

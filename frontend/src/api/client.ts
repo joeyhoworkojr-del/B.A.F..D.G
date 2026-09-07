@@ -20,6 +20,7 @@ import type {
   NewsFeedOut,
   EntitlementsOut,
   PropsOut,
+  GamePropsOut,
 } from '../types'
 
 // Same-origin by default. Vite's dev server proxies /api to :8000, the Docker
@@ -147,7 +148,7 @@ export const api = {
   // Player props — reports what it would need rather than inventing lines
   propsStatus: () => get<PropsOut>('/api/v1/props'),
   gameProps: (league: string, eventId: string) =>
-    get<PropsOut>(`/api/v1/props/${league}/${encodeURIComponent(eventId)}`),
+    get<GamePropsOut>(`/api/v1/props/${league}/${encodeURIComponent(eventId)}`),
 
   // World Cup spotlight (model pre-run on upcoming fixtures)
   soccerUpcoming: () => get<SoccerUpcomingResponse>('/api/v1/soccer/upcoming'),

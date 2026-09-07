@@ -41,7 +41,7 @@ IMPLEMENTED: dict[str, bool] = {
     "line_movement_history": True,
     "model_internals": True,
     "alerts": False,        # needs durable per-user storage
-    "player_props": False,  # needs a props odds provider (see /api/v1/props)
+    "player_props": True,   # projections are served; lines are not
     "saved_games": False,   # needs durable per-user storage
 }
 
@@ -61,7 +61,6 @@ class EntitlementsOut(BaseModel):
 
 _REASONS = {
     "alerts": "Requires a signed-in account and durable storage; neither is configured yet.",
-    "player_props": "Requires a licensed player-props odds provider; none is configured yet.",
     "saved_games": "Requires a signed-in account and durable storage; neither is configured yet.",
 }
 
@@ -104,13 +103,14 @@ async def get_entitlements(request: Request) -> EntitlementsOut:
 
 class PropsOut(BaseModel):
     """
-    Player props are not available.
+    What the props section can and cannot do.
 
-    ESPN's keyless site API — the source behind every other market on the site —
-    carries no player-prop lines. Rather than invent numbers, this endpoint
-    reports the gap and names exactly what is required to close it.
+    Projections are live and real, served per game from /props/{league}/{id}.
+    Prop LINES are the missing half: the keyless feeds behind the site publish
+    no player-prop markets, so no edge against a posted line is claimed.
     """
-    available: bool = False
+    available: bool = True          # projections are served
+    lines_available: bool = False   # posted prop lines are not
     league: str = ""
     event_id: str = ""
     props: list[dict] = Field(default_factory=list)
@@ -119,42 +119,23 @@ class PropsOut(BaseModel):
 
 
 PROPS_REQUIREMENTS = [
-    "A licensed player-props odds provider (for example The Odds API, "
-    "OddsJam, or a sportsbook partner feed) with player-level markets for "
-    "NFL and NCAA football.",
-    "The provider's API key supplied as the PROPS_API_KEY environment "
-    "variable, plus PROPS_PROVIDER naming the integration to use.",
-    "Per-player projections from the model. The gridiron engine currently "
-    "projects team scores and game totals only; player-level distributions "
-    "are not implemented.",
+    "A source of posted player-prop lines. The keyless feeds behind the rest "
+    "of the site publish game markets only, not player markets.",
+    "That source configured as PROPS_PROVIDER, with any credential it needs "
+    "supplied as PROPS_API_KEY.",
 ]
-
-
-@router.get("/props/{league}/{event_id}", response_model=PropsOut, tags=["Props"])
-async def get_player_props(league: str, event_id: str) -> PropsOut:
-    """Player props for one game — unavailable until a props provider is configured."""
-    return PropsOut(
-        available=False,
-        league=league.lower(),
-        event_id=event_id,
-        reason=(
-            "StatEdge has no player-props data source. The keyless ESPN feed "
-            "behind the rest of the site does not publish player-prop lines, and "
-            "the model does not yet produce player-level projections."
-        ),
-        requires=PROPS_REQUIREMENTS,
-    )
 
 
 @router.get("/props", response_model=PropsOut, tags=["Props"])
 async def get_props_status() -> PropsOut:
-    """Whether player props are available at all, and what they would need."""
+    """What the props section serves today, and what the missing half needs."""
     return PropsOut(
-        available=False,
+        available=True,
+        lines_available=False,
         reason=(
-            "StatEdge has no player-props data source. The keyless ESPN feed "
-            "behind the rest of the site does not publish player-prop lines, and "
-            "the model does not yet produce player-level projections."
+            "Projections are live: each player's published per-game usage, "
+            "rescaled by the score the model projects for his team. Posted prop "
+            "lines are not available, so no edge against a line is claimed."
         ),
         requires=PROPS_REQUIREMENTS,
     )

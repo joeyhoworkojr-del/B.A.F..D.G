@@ -2,19 +2,54 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0a0a0f" />
-    <title>StatEdge — Sports Analytics</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Matches the white page. The old value was near-black, which painted
+         mobile browser chrome dark against a white site. -->
+    <meta name="theme-color" content="#ffffff" />
+
+    <title>StatEdge — NFL &amp; college football model projections</title>
+    <meta
+      name="description"
+      content="Projected scores, win probability and cover probability for every NFL and college football game, compared to the market — with the model's full graded record attached. Free, no account needed."
+    />
+    <link rel="canonical" href="https://statedge.ca/" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="StatEdge" />
+    <meta property="og:title" content="StatEdge — NFL &amp; college football model projections" />
+    <meta
+      property="og:description"
+      content="Projected scores, win probability and where the model disagrees with the market — with its full record attached."
+    />
+    <meta property="og:url" content="https://statedge.ca/" />
+    <meta property="og:image" content="https://statedge.ca/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="StatEdge — model projections for NFL and college football" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="StatEdge — NFL &amp; college football model projections" />
+    <meta
+      name="twitter:description"
+      content="Projected scores, win probability and where the model disagrees with the market — with its full record attached."
+    />
+    <meta name="twitter:image" content="https://statedge.ca/og-image.png" />
+
+    <!-- Only the two families the theme actually uses. Space Grotesk was still
+         being fetched after the redesign moved everything to Inter. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      StatEdge needs JavaScript to show live scores and model projections.
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

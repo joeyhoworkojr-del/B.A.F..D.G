@@ -21,6 +21,7 @@ const News = lazyPage(() => import('./pages/News'), 'News')
 const Live = lazyPage(() => import('./pages/Live'), 'Live')
 const Props = lazyPage(() => import('./pages/Props'), 'Props')
 const Faq = lazyPage(() => import('./pages/Faq'), 'Faq')
+const NotFound = lazyPage(() => import('./pages/NotFound'), 'NotFound')
 
 function PageFallback() {
   return (
@@ -53,6 +54,9 @@ export default function App() {
               <Route path="/faq" element={<Faq />} />
               <Route path="/about" element={<About />} />
               <Route path="/account" element={<Account />} />
+              {/* The SPA fallback serves index.html for any path, so without
+                  this an unknown URL rendered an empty page. */}
+              <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
         </main>

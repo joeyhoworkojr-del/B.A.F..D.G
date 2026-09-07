@@ -109,14 +109,32 @@ the payload — nothing is hidden with CSS.
 
 ### 1. Durable storage (blocks accounts, alerts, watchlists)
 
-The prediction ledger is SQLite at `STATEDGE_DB` (default: a path on the
-machine's local disk). On Fly that disk is **ephemeral** — every deploy
-replaces the machine and the graded record starts over.
+**The code is ready; the database is not provisioned.** The ledger now runs on
+either backend: SQLite by default, Postgres as soon as `DATABASE_URL` is set.
+Nothing else needs changing — set the variable and the record becomes durable.
 
-Required:
+Until then the record is SQLite on the container's own disk, which Fly replaces
+on every deploy, so it silently restarts each release. The Results page says so
+in an amber notice, and `/api/v1/accuracy` reports `storage_durable: false`.
 
-- A Fly volume mounted at the ledger's directory, or an external Postgres
-  reachable at `DATABASE_URL`.
+To make it durable, pick one:
+
+- **Upstash Redis (works with Vercel's marketplace).** Provision it, then set
+  the connection string on **Fly**, not Vercel:
+  `fly secrets set REDIS_URL='rediss://default:<token>@<host>:6379' --app statedge-api`.
+  `UPSTASH_REDIS_URL` and `KV_URL` are also read. The conditional upsert and
+  the grade run as Lua inside Redis, so they stay atomic.
+
+- **Managed Postgres.** Create one (Neon, Supabase, or
+  `fly postgres create`) and set `DATABASE_URL` to its connection string:
+  `fly secrets set DATABASE_URL='postgresql://...' --app statedge-api`.
+  The schema is created on first connect; no migration step to run.
+- **A Fly volume.** Mount one, set `LEDGER_PATH=/data/ledger.db`, and set
+  `LEDGER_DURABLE=1` so the UI stops warning. Note the history below.
+
+**The variable goes on Fly, not Vercel.** Vercel serves the SPA and proxies
+`/api` to Fly; the API process — the only thing that touches storage — runs on
+Fly. A database URL set only in Vercel's dashboard has no effect.
 - Two previous attempts to attach a volume to this app failed
   (`insufficient resources to create new machine with existing volume` in
   `dfw`), and the automated migration took the app down because it destroyed
@@ -159,13 +177,26 @@ Required:
   projects team scores and game totals only, so props would need new
   modelling work, not just a feed.
 
-### 4. Push and email alerts
+### 4. Visitor analytics
+
+Not built, on purpose. StatEdge collects nothing about visitors: no analytics
+script, no third-party tracker, no cookies, no local storage, and nothing about
+a person on the server. A frontend test walks the source and fails the build if
+`localStorage`, `sessionStorage` or `document.cookie` reappears, so the privacy
+claim on the About page cannot quietly stop being true.
+
+A staff dashboard of site activity would require collecting that data. If it is
+wanted later, the honest version is aggregate counters only — a per-day count
+per route, with no identifier, no IP and no session — which keeps the "nothing
+about you" claim intact.
+
+### 5. Push and email alerts
 
 The in-app notification centre works today and lists the graded edges the
 model is currently publishing. Delivering alerts off-site needs an account to
 deliver them to, so this is blocked on §1 and §2.
 
-### 5. Billing
+### 6. Billing
 
 Not implemented, and deliberately so — this release is free. Entitlements
 already resolve server-side with `billing_enabled=false`, so a paid tier can

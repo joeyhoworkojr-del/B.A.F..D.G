@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import fs from 'node:fs'
@@ -8,9 +8,9 @@ import { NewsCard } from '../components/news/NewsCard'
 import { FaqList } from '../components/faq/FaqList'
 import { FAQ, FAQ_PREVIEW_IDS } from '../content/faq'
 import { Account } from './Account'
-import { Props } from './Props'
 import { resetEntitlements } from '../hooks/useEntitlement'
-import type { EntitlementsOut, NewsItemOut, PropsOut } from '../types'
+import { PropsTable } from '../components/props/PropsTable'
+import type { EntitlementsOut, NewsItemOut, PropProjectionOut } from '../types'
 
 const newsItem: NewsItemOut = {
   league: 'ncaaf', id: 'n1',
@@ -35,12 +35,6 @@ const entitlements: EntitlementsOut = {
   },
   billing_enabled: false,
   note: 'StatEdge is free during this release.',
-}
-
-const propsStatus: PropsOut = {
-  available: false, league: '', event_id: '', props: [],
-  reason: 'StatEdge has no player-props data source.',
-  requires: ['A licensed player-props odds provider.', 'Per-player projections from the model.'],
 }
 
 const wrap = (ui: React.ReactNode) => render(<MemoryRouter>{ui}</MemoryRouter>)
@@ -149,34 +143,6 @@ describe('Account — access comes from the server', () => {
   })
 })
 
-describe('Props — honest about a missing provider', () => {
-  beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(propsStatus), {
-      status: 200, headers: { 'content-type': 'application/json' },
-    })))
-  })
-  afterEach(() => vi.unstubAllGlobals())
-
-  it('states the feature is unavailable and why', async () => {
-    wrap(<Props />)
-    expect(await screen.findByText(/aren’t available yet/i)).toBeInTheDocument()
-    expect(screen.getByText(propsStatus.reason)).toBeInTheDocument()
-  })
-
-  it('lists what closing the gap would require', async () => {
-    wrap(<Props />)
-    const section = await screen.findByRole('region', { name: /aren’t available yet/i })
-    propsStatus.requires.forEach(r =>
-      expect(within(section).getByText(r)).toBeInTheDocument())
-  })
-
-  it('shows no prop rows at all', async () => {
-    wrap(<Props />)
-    await screen.findByText(/aren’t available yet/i)
-    await waitFor(() => expect(screen.queryByRole('table')).not.toBeInTheDocument())
-  })
-})
-
 describe('Vercel config', () => {
   // vitest runs with `frontend/` as its root, so both files resolve from cwd.
   const read = (rel: string) =>
@@ -204,5 +170,76 @@ describe('Vercel config', () => {
   it('builds the frontend regardless of which root Vercel uses', () => {
     expect(read('../vercel.json').outputDirectory).toBe('frontend/dist')
     expect(read('vercel.json').outputDirectory).toBe('dist')
+  })
+})
+
+describe('PropsTable', () => {
+  const row = (o: Partial<PropProjectionOut> = {}): PropProjectionOut => ({
+    athlete_id: '42', player: 'T. Castellanos', team_abbr: 'FSU', position: 'QB',
+    market: 'pass_yards', label: 'Passing yards',
+    projection: 318.5, season_avg: 260, games_played: 8, actual: false, ...o,
+  })
+
+  it('shows the projection alongside the season average it came from', () => {
+    wrap(<PropsTable teamAbbr="FSU" teamName="Florida State" rows={[row()]} />)
+    expect(screen.getByText('318.5')).toBeInTheDocument()
+    expect(screen.getByText('260')).toBeInTheDocument()
+  })
+
+  it('states how far the projection sits from normal', () => {
+    wrap(<PropsTable teamAbbr="FSU" teamName="Florida State" rows={[row()]} />)
+    expect(screen.getByText('+23%')).toBeInTheDocument()
+  })
+
+  it('labels an in-progress line as actual, never as a projection', () => {
+    wrap(<PropsTable teamAbbr="FSU" teamName="Florida State"
+                     rows={[row({ actual: true, projection: 301, season_avg: 260 })]} />)
+    expect(screen.getByText(/actual — game in progress/i)).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Actual' })).toBeInTheDocument()
+    // No season comparison is asserted for a number that already happened.
+    expect(screen.queryByText(/%/)).not.toBeInTheDocument()
+  })
+
+  it('renders nothing when a team has no usable players', () => {
+    const { container } = wrap(<PropsTable teamAbbr="FSU" teamName="Florida State" rows={[]} />)
+    expect(container).toBeEmptyDOMElement()
+  })
+})
+
+describe('Privacy — nothing is collected', () => {
+  it('the app writes nothing to browser storage', async () => {
+    // A guard, not a formality: this is the claim the About page makes, and a
+    // single localStorage call somewhere would quietly make it false.
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+    const root = path.resolve(process.cwd(), 'src')
+
+    const walk = (dir: string): string[] =>
+      fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => {
+        const full = path.join(dir, e.name)
+        if (e.isDirectory()) return walk(full)
+        return /\.tsx?$/.test(e.name) && !/\.test\./.test(e.name) ? [full] : []
+      })
+
+    const offenders = walk(root).filter(f => {
+      const src = fs.readFileSync(f, 'utf8')
+      // Strip comments so prose explaining what we don't do doesn't trip this.
+      const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+      return /\b(localStorage|sessionStorage|document\.cookie)\b/.test(code)
+    })
+
+    expect(offenders).toEqual([])
+  })
+})
+
+describe('Live play-by-play cadence', () => {
+  it('polls plays faster than the model', async () => {
+    const { POLL_PBP_LIVE_MS, POLL_LIVE_MS } = await import('../hooks/useGameDetail')
+    expect(POLL_PBP_LIVE_MS).toBeLessThan(POLL_LIVE_MS)
+  })
+
+  it('keeps the play loop under four seconds so a drive reads as live', async () => {
+    const { POLL_PBP_LIVE_MS } = await import('../hooks/useGameDetail')
+    expect(POLL_PBP_LIVE_MS).toBeLessThanOrEqual(4_000)
   })
 })
