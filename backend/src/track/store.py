@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from typing import Any, Optional
 
 from . import db
@@ -333,8 +334,15 @@ def config_report() -> dict:
             "has no effect here."
         )
 
+    if _redis_error:
+        hint = (
+            f"Redis is configured but could not be reached, so storage fell "
+            f"back to SQLite. The driver reported: {_redis_error}"
+        )
+
     return {
         "checked": list(_CONFIG_VARS),
+        "redis_error": _redis_error,
         "present": present,
         "usable": usable,
         "wrong_scheme": wrong_scheme,
@@ -345,8 +353,44 @@ def config_report() -> dict:
     }
 
 
+# Set when a configured Redis could not be used, so the diagnostic can say why
+# without anyone reading logs. Scrubbed of credentials before it is stored.
+_redis_error: str = ""
+
+
+def redis_error() -> str:
+    return _redis_error
+
+
+def _scrub(text: str) -> str:
+    """
+    Strip credentials out of a driver error before it can be reported.
+
+    redis-py puts the whole connection URL in its connection errors, password
+    included, and this message is surfaced on a public endpoint.
+    """
+    scrubbed = re.sub(r"://[^@\s]*@", "://***@", str(text))
+    return scrubbed[:300]
+
+
 def build_store(schema: str, migrations: list[tuple[str, str]], table: str):
-    """Whichever backend the environment configures. Redis wins when both are set."""
+    """
+    Whichever backend the environment configures. Redis wins when both are set.
+
+    A configured Redis that cannot actually be reached falls back to SQL rather
+    than propagating. Storage being misconfigured must not take the site down:
+    the ledger is one feature, and every page that shows a live score would 500
+    alongside it.
+    """
+    global _redis_error
     if redis_url():
-        return RedisStore()
+        try:
+            store = RedisStore()
+            store._redis().ping()
+            _redis_error = ""
+            return store
+        except Exception as exc:
+            _redis_error = _scrub(exc)
+            log.error("Redis configured but unusable, falling back to SQL: %s",
+                      _redis_error)
     return SqlStore(schema, migrations, table)

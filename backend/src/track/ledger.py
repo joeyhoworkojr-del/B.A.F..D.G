@@ -17,6 +17,8 @@ DATABASE_URL at a managed Postgres is what makes the record durable.
 """
 from __future__ import annotations
 
+import functools
+import logging
 import os
 import threading
 from datetime import datetime, timezone
@@ -24,6 +26,8 @@ from typing import Any, Optional
 
 from . import db
 from .store import build_store, config_report
+
+log = logging.getLogger(__name__)
 
 _LOCK = threading.Lock()
 
@@ -92,6 +96,27 @@ def _connect():
 _store = None
 
 
+def _safe(default):
+    """
+    Storage failures must not 500 a page.
+
+    The ledger is one feature; a live scoreboard, the game pages and the props
+    all call into it incidentally. If storage is unreachable those pages should
+    still render, with the record simply empty, rather than the whole site
+    returning an error.
+    """
+    def decorate(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            try:
+                return fn(*args, **kwargs)
+            except Exception as exc:
+                log.error("ledger %s failed: %s", fn.__name__, exc)
+                return default() if callable(default) else default
+        return wrapper
+    return decorate
+
+
 def _get_store():
     """
     The row store, chosen from the environment on first use.
@@ -131,6 +156,7 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+@_safe(None)
 def record_pregame(
     *,
     event_id: str,
@@ -177,6 +203,7 @@ def record_pregame(
         })
 
 
+@_safe(False)
 def grade(event_id: str, home_score: int, away_score: int) -> bool:
     """Grade a stored snapshot against the final score. Ties are ignored."""
     if home_score == away_score:
@@ -317,6 +344,7 @@ def performance() -> dict:
     }
 
 
+@_safe(None)
 def get_snapshot(event_id: str) -> Optional[dict]:
     """The frozen prediction for one event, or None if nothing is stored yet.
 
@@ -328,6 +356,7 @@ def get_snapshot(event_id: str) -> Optional[dict]:
         return _get_store().get(event_id)
 
 
+@_safe(list)
 def recent_graded(limit: int = 25) -> list[dict]:
     with _LOCK:
         rows = _get_store().rows(graded=True)

@@ -350,3 +350,72 @@ def test_the_near_miss_report_still_leaks_no_values(monkeypatch):
     _clear_storage_env(monkeypatch)
     monkeypatch.setenv("UPSTASH_REDIS_REST_TOKEN", "SUPERSECRETTOKEN")
     assert "SUPERSECRETTOKEN" not in repr(store.config_report())
+
+
+# ─── Failure containment ─────────────────────────────────────────────────────
+
+class BrokenRedis:
+    """A Redis that is configured but unreachable — the case that 500'd the site."""
+    def ping(self): raise ConnectionError(
+        "Error connecting to rediss://default:SUPERSECRETTOKEN@host.upstash.io:6379")
+    def register_script(self, body): raise ConnectionError("unreachable")
+    def get(self, *a): raise ConnectionError("unreachable")
+    def smembers(self, *a): raise ConnectionError("unreachable")
+
+
+def test_an_unreachable_redis_falls_back_instead_of_raising(monkeypatch):
+    from src.track import store
+    _clear_storage_env(monkeypatch)
+    monkeypatch.setenv("REDIS_URL", "rediss://default:tok@host.upstash.io:6379")
+    monkeypatch.setattr(store.RedisStore, "_redis", lambda self: BrokenRedis())
+
+    built = store.build_store("CREATE TABLE IF NOT EXISTS t (event_id TEXT PRIMARY KEY)",
+                              [], "t")
+    assert isinstance(built, store.SqlStore), "a bad Redis must not take storage down"
+    assert store.redis_error() != ""
+
+
+def test_the_reported_redis_error_carries_no_password(monkeypatch):
+    """redis-py puts the whole URL in its errors, and this endpoint is public."""
+    from src.track import store
+    _clear_storage_env(monkeypatch)
+    monkeypatch.setenv("REDIS_URL", "rediss://default:tok@host.upstash.io:6379")
+    monkeypatch.setattr(store.RedisStore, "_redis", lambda self: BrokenRedis())
+    store.build_store("CREATE TABLE IF NOT EXISTS t (event_id TEXT PRIMARY KEY)", [], "t")
+
+    reported = store.redis_error()
+    assert "SUPERSECRETTOKEN" not in reported
+    assert "***@" in reported
+
+
+def test_the_hint_explains_an_unreachable_redis(monkeypatch):
+    from src.track import store
+    _clear_storage_env(monkeypatch)
+    monkeypatch.setenv("REDIS_URL", "rediss://default:tok@host.upstash.io:6379")
+    monkeypatch.setattr(store.RedisStore, "_redis", lambda self: BrokenRedis())
+    store.build_store("CREATE TABLE IF NOT EXISTS t (event_id TEXT PRIMARY KEY)", [], "t")
+
+    hint = store.config_report()["hint"]
+    assert "could not be reached" in hint
+    assert "fell back" in hint
+
+
+def test_a_broken_ledger_read_returns_empty_rather_than_raising(monkeypatch):
+    """Every page that shows a live score calls into the ledger incidentally."""
+    from src.track import ledger
+
+    class Exploding:
+        backend = "redis"
+        durable = True
+        def get(self, *a, **k): raise ConnectionError("gone")
+        def rows(self, *a, **k): raise ConnectionError("gone")
+        def upsert_pregame(self, *a, **k): raise ConnectionError("gone")
+        def mark_graded(self, *a, **k): raise ConnectionError("gone")
+
+    monkeypatch.setattr(ledger, "_store", Exploding())
+    assert ledger.get_snapshot("nfl:1") is None
+    assert ledger.recent_graded(5) == []
+    assert ledger.grade("nfl:1", 21, 17) is False
+    ledger.record_pregame(event_id="nfl:1", league="nfl", kickoff="",
+                          home="KC", away="BUF", model_home_prob=0.5)
+    ledger.reset_store()
