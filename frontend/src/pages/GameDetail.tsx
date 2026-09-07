@@ -1,265 +1,342 @@
-import { useState, useEffect, useCallback } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import { api } from '../api/client'
-import type { TodayGameOut, PlayByPlayOut, PlayOut, FootballLeague } from '../types'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useParams, useSearchParams, Link, useLocation } from 'react-router-dom'
+import type { LiveGameOut, MarketKey, PlayOut } from '../types'
+import { useGameDetail } from '../hooks/useGameDetail'
+import { GameHeader } from '../components/game/GameHeader'
+import { Panel } from '../components/game/Panel'
+import { PrimaryEdgeCard } from '../components/game/PrimaryEdgeCard'
+import { MarketSelector } from '../components/game/MarketSelector'
+import { ProbabilityComparison } from '../components/game/ProbabilityComparison'
+import { SportsbookOddsTable } from '../components/game/SportsbookOddsTable'
+import { ModelExplanation } from '../components/game/ModelExplanation'
+import { LineMovementChart } from '../components/game/LineMovementChart'
+import { LiveWinProbabilityChart } from '../components/game/LiveWinProbabilityChart'
+import { LockedPremiumPanel } from '../components/game/LockedPremiumPanel'
+import type { Point } from '../components/game/MiniChart'
 
-const pct = (v?: number | null) => (v == null ? '—' : `${Math.round(v * 100)}%`)
-
-/** Stylised football field with the possessing team's half tinted + the live
- *  down/distance called out, echoing a sportsbook live tile. */
-function FieldGraphic({ entry }: { entry: TodayGameOut }) {
-  const g = entry.game
-  const live = g.state === 'in'
-  const possHome = g.possession_abbr && g.possession_abbr === g.home_abbr
-  const possAway = g.possession_abbr && g.possession_abbr === g.away_abbr
-  return (
-    <div className="relative overflow-hidden rounded-xl border border-terminal-border">
-      <div className="flex h-40 w-full">
-        {/* Away endzone side */}
-        <div className={`flex w-1/2 items-center justify-start pl-3 ${possAway ? 'bg-signal-green/25' : 'bg-terminal-muted'}`}>
-          <span className="text-[11px] font-black uppercase tracking-widest text-zinc-400">{g.away_abbr}</span>
-        </div>
-        {/* Home endzone side */}
-        <div className={`flex w-1/2 items-center justify-end pr-3 ${possHome ? 'bg-signal-green/25' : 'bg-terminal-muted'}`}>
-          <span className="text-[11px] font-black uppercase tracking-widest text-zinc-400">{g.home_abbr}</span>
-        </div>
-      </div>
-      {/* Yard lines */}
-      <div className="pointer-events-none absolute inset-0 flex items-stretch justify-between px-[12.5%]">
-        {[10, 20, 30, 40, 50, 40, 30, 20, 10].map((n, i) => (
-          <div key={i} className="flex flex-col items-center justify-between py-2 opacity-30">
-            <div className="h-2 w-px bg-zinc-500" />
-            <span className="text-[9px] text-zinc-500">{n}</span>
-            <div className="h-2 w-px bg-zinc-500" />
-          </div>
-        ))}
-      </div>
-      {/* Center callout */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
-        {live ? (
-          <>
-            <span className="font-display text-xl font-black italic text-zinc-100">
-              {g.down_distance || `Q${g.period ?? ''} ${g.clock ?? ''}`}
-            </span>
-            <span className="rounded-full bg-terminal-bg/80 px-3 py-1 text-[11px] font-semibold text-signal-green">
-              {g.possession_abbr ? `${g.possession_abbr} ball` : 'In progress'}
-            </span>
-          </>
-        ) : (
-          <span className="rounded-full bg-terminal-bg/80 px-3 py-1 text-xs font-semibold text-zinc-400">
-            {g.state === 'post' ? 'Final' : 'Kickoff pending'}
-          </span>
-        )}
-      </div>
-    </div>
-  )
-}
+const LEAGUE_LABEL: Record<string, string> = { ncaaf: 'College Football', nfl: 'NFL' }
+const MARKET_PANEL_ID = 'market-panel'
+const pct1 = (v?: number | null) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`)
 
 function PlayRow({ p }: { p: PlayOut }) {
   return (
-    <div className={`flex gap-3 border-b border-terminal-border/60 py-2.5 ${p.scoring ? 'bg-signal-green/5' : ''}`}>
+    <li className={`flex gap-3 border-b border-terminal-border/60 py-2.5 last:border-0 ${p.scoring ? 'bg-signal-green/5' : ''}`}>
       <div className="w-14 shrink-0 text-right">
-        <div className="text-[11px] font-mono font-semibold text-zinc-400">{p.period ? `Q${p.period}` : ''}</div>
-        <div className="text-[10px] font-mono text-zinc-600">{p.clock}</div>
+        <div className="font-mono text-xs font-semibold text-zinc-300">{p.period ? `Q${p.period}` : ''}</div>
+        <div className="font-mono text-xs text-zinc-500">{p.clock}</div>
       </div>
-      <div className="min-w-0 flex-1">
-        <p className={`text-[13px] leading-snug ${p.scoring ? 'font-semibold text-signal-green' : 'text-zinc-200'}`}>
-          {p.scoring && <span className="mr-1">🏈</span>}{p.text}
-        </p>
-      </div>
+      <p className={`min-w-0 flex-1 text-sm leading-snug ${p.scoring ? 'font-semibold text-signal-green' : 'text-zinc-200'}`}>
+        {p.text}
+      </p>
       {(p.home_score != null || p.away_score != null) && (
-        <div className="w-12 shrink-0 text-right font-mono text-[11px] font-bold text-zinc-400 tabular-nums">
+        <span className="w-12 shrink-0 text-right font-mono text-xs font-bold tabular-nums text-zinc-400">
           {p.away_score}-{p.home_score}
-        </div>
+        </span>
       )}
+    </li>
+  )
+}
+
+/** Field position — only meaningful while a game is actually being played. */
+function FieldPosition({ game }: { game: LiveGameOut }) {
+  const possHome = !!game.possession_abbr && game.possession_abbr === game.home_abbr
+  const possAway = !!game.possession_abbr && game.possession_abbr === game.away_abbr
+  return (
+    <div className="relative overflow-hidden rounded-lg border border-terminal-border">
+      <div className="flex h-24 w-full" aria-hidden="true">
+        <div className={`w-1/2 ${possAway ? 'bg-signal-green/20' : 'bg-terminal-muted'}`} />
+        <div className={`w-1/2 ${possHome ? 'bg-signal-green/20' : 'bg-terminal-muted'}`} />
+      </div>
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 px-3 text-center">
+        <span className="font-display text-lg font-black text-zinc-100">
+          {game.down_distance || `Q${game.period ?? ''} ${game.clock ?? ''}`}
+        </span>
+        <span className="text-xs font-semibold text-signal-green">
+          {game.possession_abbr ? `${game.possession_abbr} has the ball` : 'In progress'}
+        </span>
+      </div>
     </div>
   )
 }
 
 export function GameDetail() {
-  const { league, eventId } = useParams<{ league: string; eventId: string }>()
-  const lg = (league ?? 'nfl') as FootballLeague
-  const [entry, setEntry] = useState<TodayGameOut | null>(null)
-  const [pbp, setPbp] = useState<PlayByPlayOut | null>(null)
-  const [tab, setTab] = useState<'model' | 'plays'>('plays')
-  const [error, setError] = useState('')
+  const { league = 'nfl', eventId } = useParams<{ league: string; eventId: string }>()
+  const [params, setParams] = useSearchParams()
+  const location = useLocation()
+  const seedState = location.state as { game?: LiveGameOut } | null
+  const { data, pbp, loading, refreshing, error } = useGameDetail(league, eventId)
 
-  const loadGame = useCallback(() => {
-    if (!eventId) return
-    api.today(lg)
-      .then(d => { setEntry(d.games.find(x => x.game.event_id === eventId) ?? null); setError('') })
-      .catch(e => setError(e.message))
-  }, [lg, eventId])
+  // Render the matchup immediately when we arrived from a board that already
+  // had it, so the header never waits on a round trip.
+  const seed = seedState?.game
+  const game = data?.game ?? seed ?? null
+  const status = data?.status ?? seed?.state ?? 'pre'
+  const live = status === 'in'
 
-  const loadPbp = useCallback(() => {
-    if (!eventId) return
-    api.playByPlay(lg, eventId).then(setPbp).catch(() => {})
-  }, [lg, eventId])
+  const markets = useMemo(() => data?.markets ?? [], [data])
+  const requested = params.get('market') as MarketKey | null
+  const [active, setActive] = useState<MarketKey>(requested ?? 'spread')
 
+  // Keep the selected market valid for whatever the book actually posts.
   useEffect(() => {
-    loadGame(); loadPbp()
-    // Score/clock refresh every 20s; play-by-play polls faster so it stays live.
-    const g1 = setInterval(loadGame, 20_000)
-    const g2 = setInterval(loadPbp, 10_000)
-    return () => { clearInterval(g1); clearInterval(g2) }
-  }, [loadGame, loadPbp])
+    if (!markets.length) return
+    if (!markets.some(m => m.key === active)) setActive(markets[0].key)
+  }, [markets, active])
 
-  const g = entry?.game
-  const m = entry?.model
-  const live = g?.state === 'in'
+  const selectMarket = (key: MarketKey) => {
+    setActive(key)
+    const next = new URLSearchParams(params)
+    next.set('market', key)
+    setParams(next, { replace: true })
+  }
+
+  // "Why this edge?" deep-links to the market *and* its explanation.
+  const whyRef = useRef<HTMLDivElement>(null)
+  const explain = (key: string) => {
+    selectMarket(key as MarketKey)
+    whyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+  useEffect(() => {
+    if (location.hash === '#why' && data) {
+      whyRef.current?.scrollIntoView({ block: 'start' })
+    }
+  }, [data, location.hash])
+
+  // Sample live win probability while the page is open (no server history yet).
+  const [wpPoints, setWpPoints] = useState<Point[]>([])
+  const homeWin = data?.model?.live_home_win ?? data?.model?.calibrated_home_win ?? data?.model?.home_win_prob
+  useEffect(() => {
+    if (!live || homeWin == null) return
+    setWpPoints(prev => {
+      const last = prev[prev.length - 1]
+      if (last && Math.abs(last.v - homeWin) < 1e-6) return prev
+      return [...prev, { t: Date.now(), v: homeWin }].slice(-120)
+    })
+  }, [live, homeWin])
+
+  const activeMarket = markets.find(m => m.key === active) ?? markets[0]
+  const snap = data?.snapshot
+
+  // Real observed line movement: the snapshotted line vs the current one.
+  const linePoints = useMemo<Point[]>(() => {
+    if (!data) return []
+    const cur = activeMarket?.key === 'total' ? data.game.market_over_under : data.game.market_spread
+    const snapped = activeMarket?.key === 'total' ? snap?.market_total : snap?.market_spread
+    const pts: Point[] = []
+    if (snapped != null) pts.push({ t: 0, v: snapped })
+    if (cur != null) pts.push({ t: 1, v: cur })
+    return pts
+  }, [data, activeMarket, snap])
+
+  if (!game) {
+    return (
+      <div className="mx-auto w-full max-w-[1200px] px-4 py-6">
+        <Link to="/" className="text-sm font-semibold text-zinc-300 hover:text-zinc-100">← Scores</Link>
+        {loading
+          ? <div className="mt-4 space-y-3"><div className="skeleton h-28 rounded-xl" /><div className="skeleton h-40 rounded-xl" /></div>
+          : <p role="alert" className="mt-4 text-sm text-signal-red">{error || 'Game not found on the current board.'}</p>}
+      </div>
+    )
+  }
 
   return (
-    <div className="mx-auto max-w-2xl px-3 py-4 sm:px-4">
-      <Link to="/" className="mb-3 inline-flex items-center gap-1 text-sm font-semibold text-zinc-400 hover:text-zinc-100">
-        ← Scores
-      </Link>
+    <div className="mx-auto w-full max-w-[1200px] px-4 py-6">
+      <Link to="/" className="text-sm font-semibold text-zinc-300 hover:text-zinc-100">← Scores</Link>
 
-      {error && <div className="rounded-xl border border-signal-red/40 bg-terminal-surface p-4 text-sm text-signal-red">{error}</div>}
+      <div className="mt-3 space-y-4">
+        <GameHeader game={game} leagueLabel={LEAGUE_LABEL[league] ?? league.toUpperCase()} />
 
-      {!entry && !error && <div className="skeleton h-64 rounded-xl" />}
+        {error && data && (
+          <p role="status" className="rounded-lg border border-signal-amber/40 bg-signal-amber/10 px-3 py-2 text-sm text-signal-amber">
+            Live feed hiccup — showing the last good data. {error}
+          </p>
+        )}
+        {error && !data && (
+          <p role="alert" className="rounded-lg border border-signal-red/40 bg-terminal-surface px-3 py-2 text-sm text-signal-red">
+            Couldn’t load the model for this game. {error}
+          </p>
+        )}
 
-      {g && (
-        <>
-          {/* Scoreboard header */}
-          <div className="mb-4 rounded-xl border border-terminal-border bg-terminal-surface p-4">
-            <div className="mb-3 flex items-center justify-center gap-4">
-              <div className="flex flex-1 items-center justify-end gap-2 text-right">
-                <span className="truncate text-sm font-bold text-zinc-100">{g.away}</span>
-                {g.away_logo && <img src={g.away_logo} alt="" className="h-8 w-8 object-contain" />}
-              </div>
-              <div className="flex items-center gap-3 font-mono text-3xl font-black tabular-nums text-zinc-100">
-                <span>{g.away_score ?? 0}</span>
-                <span className="text-zinc-600">–</span>
-                <span>{g.home_score ?? 0}</span>
-              </div>
-              <div className="flex flex-1 items-center gap-2">
-                {g.home_logo && <img src={g.home_logo} alt="" className="h-8 w-8 object-contain" />}
-                <span className="truncate text-sm font-bold text-zinc-100">{g.home}</span>
-              </div>
-            </div>
-            <div className="text-center">
-              {live ? (
-                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-signal-green">
-                  <span className="h-1.5 w-1.5 rounded-full bg-signal-green animate-pulse" />
-                  {g.period ? `Q${g.period} ` : ''}{g.clock || g.detail}
-                </span>
-              ) : (
-                <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">{g.detail}</span>
+        {/* Desktop: insight and context side by side; mobile: stacked. */}
+        <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
+          <div className="min-w-0 space-y-4">
+            {data?.mapped === false ? (
+              <Panel title="Best available edge" state="empty"
+                     emptyMessage="This matchup isn’t mapped to the model yet, so no edge is claimed for it." />
+            ) : (
+              <PrimaryEdgeCard
+                edge={data?.best_edge}
+                gradeScale={data?.grade_scale ?? []}
+                fetchedAt={data?.fetched_at}
+                sourceOk={data?.source_ok ?? true}
+                onExplain={explain}
+              />
+            )}
+
+            <Panel
+              title="Markets"
+              subtitle="Model, sportsbook (vig removed) and prediction-market crowd on the same market."
+              state={loading && !data ? 'loading' : markets.length ? 'ready' : 'empty'}
+              emptyMessage="No lines are posted for this game yet, so there is nothing to compare."
+              refreshing={refreshing}
+              fetchedAt={data?.fetched_at}
+              source={data?.source}
+              sourceOk={data?.source_ok}
+              actions={markets.length > 0 && (
+                <MarketSelector markets={markets} active={active} onChange={selectMarket} panelId={MARKET_PANEL_ID} />
               )}
-            </div>
+            >
+              {activeMarket && (
+                <div id={MARKET_PANEL_ID} role="tabpanel" aria-labelledby={`market-tab-${activeMarket.key}`} tabIndex={0}
+                     className="space-y-6 focus:outline-none">
+                  <ProbabilityComparison market={activeMarket} />
+                  <SportsbookOddsTable market={activeMarket} />
+                </div>
+              )}
+            </Panel>
+
+            <div ref={whyRef} />
+            <Panel
+              id="why"
+              title="Why this edge?"
+              subtitle={activeMarket ? `Explaining the ${activeMarket.label.toLowerCase()} market.` : undefined}
+              state={activeMarket ? 'ready' : 'empty'}
+              emptyMessage="Nothing to explain until a line is posted."
+            >
+              {activeMarket && (
+                <ModelExplanation
+                  market={activeMarket}
+                  model={data?.model}
+                  gradeScale={data?.grade_scale ?? []}
+                  modelVersion={data?.model_version ?? '—'}
+                />
+              )}
+            </Panel>
           </div>
 
-          {/* Field graphic */}
-          <div className="mb-4"><FieldGraphic entry={entry!} /></div>
-          {g.last_play && live && (
-            <p className="mb-4 rounded-lg border border-terminal-border bg-terminal-surface px-3 py-2 text-[13px] text-zinc-300">
-              <span className="font-bold text-signal-green">Last play · </span>{g.last_play}
-            </p>
-          )}
+          <div className="min-w-0 space-y-4">
+            {live && (
+              <Panel title="Live win probability" refreshing={refreshing}
+                     fetchedAt={data?.fetched_at} source={data?.source} sourceOk={data?.source_ok}
+                     staleAfterSeconds={45}>
+                <div className="space-y-4">
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-sm text-zinc-300">{game.home_abbr} (home)</span>
+                    <span className="font-mono text-2xl font-black tabular-nums text-signal-green">{pct1(homeWin)}</span>
+                  </div>
+                  <LiveWinProbabilityChart points={wpPoints} teamLabel={game.home_abbr} />
+                  <FieldPosition game={game} />
+                </div>
+              </Panel>
+            )}
 
-          {/* Tabs */}
-          <div className="mb-3 flex gap-2">
-            {(['plays', 'model'] as const).map(t => (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                className={`rounded-full px-4 py-1.5 text-sm font-bold ${
-                  tab === t ? 'bg-zinc-100 text-terminal-bg' : 'bg-terminal-surface text-zinc-400'
-                }`}
-              >
-                {t === 'plays' ? 'Play-by-play' : 'Model'}
-              </button>
-            ))}
-          </div>
-
-          {tab === 'plays' && (() => {
-            // Always lead with the live last play from the scoreboard (updates
-            // fastest), so the feed is live even if the summary lags a beat.
-            const feed = pbp?.plays ?? []
-            const synthetic: PlayOut[] = (live && g.last_play && (feed.length === 0 || feed[0].text !== g.last_play))
-              ? [{ period: g.period, clock: g.clock, text: g.last_play, team_abbr: g.possession_abbr, scoring: false, home_score: g.home_score, away_score: g.away_score }]
-              : []
-            const plays = [...synthetic, ...feed]
-            return (
-              <div>
-                {live && (
-                  <div className="mb-2 flex items-center gap-1.5 px-1 text-[11px] font-bold text-signal-green">
-                    <span className="h-1.5 w-1.5 rounded-full bg-signal-green animate-pulse" /> LIVE · updates every 10s
+            {status === 'pre' && (
+              <Panel title="Projected score"
+                     subtitle="Model projection before kickoff — not a live score."
+                     state={data?.model ? 'ready' : loading ? 'loading' : 'empty'}
+                     emptyMessage="No projection until this matchup is mapped to the model."
+                     fetchedAt={data?.fetched_at} source={data?.source} sourceOk={data?.source_ok}>
+                {data?.model && (
+                  <div className="space-y-3">
+                    <p className="font-mono text-3xl font-black tabular-nums text-zinc-100">
+                      {data.model.proj_away_score ?? '—'} – {data.model.proj_home_score ?? '—'}
+                    </p>
+                    <p className="text-xs text-zinc-400">{game.away_abbr} at {game.home_abbr}</p>
+                    <dl className="grid grid-cols-2 gap-3 border-t border-terminal-border/70 pt-3 text-sm">
+                      <div>
+                        <dt className="text-xs text-zinc-400">Win probability ({game.home_abbr})</dt>
+                        <dd className="font-mono font-bold tabular-nums text-zinc-100">
+                          {pct1(data.model.calibrated_home_win ?? data.model.home_win_prob)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-zinc-400">Projected total</dt>
+                        <dd className="font-mono font-bold tabular-nums text-zinc-100">
+                          {data.model.total_estimate?.toFixed(1) ?? '—'}
+                        </dd>
+                      </div>
+                    </dl>
                   </div>
                 )}
-                <div className="rounded-xl border border-terminal-border bg-terminal-surface px-3">
-                  {plays.length > 0 ? (
-                    plays.map((p, i) => <PlayRow key={i} p={p} />)
-                  ) : (
-                    <p className="py-8 text-center text-sm text-zinc-500">
-                      {g.state === 'pre' ? 'Play-by-play appears once the game kicks off.' : 'Waiting for the next play…'}
+              </Panel>
+            )}
+
+            {status === 'post' && (
+              <Panel title="Result vs the pre-game call"
+                     subtitle="The frozen prediction, judged against the closing line."
+                     state={snap ? 'ready' : 'empty'}
+                     emptyMessage="No pre-game snapshot was stored for this game, so there is nothing to grade.">
+                {snap && (
+                  <dl className="space-y-2 text-sm">
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-zinc-400">Final</dt>
+                      <dd className="font-mono font-bold text-zinc-100">{game.away_score}–{game.home_score}</dd>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-zinc-400">Model said ({game.home_abbr} win)</dt>
+                      <dd className="font-mono font-bold text-zinc-100">{pct1(snap.model_home_prob)}</dd>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-zinc-400">Closing spread</dt>
+                      <dd className="font-mono font-bold text-zinc-100">{snap.closing_spread ?? '—'}</dd>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-zinc-400">Result</dt>
+                      <dd className={`font-bold ${
+                        snap.graded
+                          ? ((snap.model_home_prob ?? 0.5) >= 0.5) === (snap.home_won === 1)
+                            ? 'text-signal-green' : 'text-signal-red'
+                          : 'text-zinc-400'
+                      }`}>
+                        {snap.graded
+                          ? ((snap.model_home_prob ?? 0.5) >= 0.5) === (snap.home_won === 1) ? 'Model correct' : 'Model wrong'
+                          : 'Awaiting grading'}
+                      </dd>
+                    </div>
+                    <p className="border-t border-terminal-border/70 pt-2 text-xs text-zinc-500">
+                      Snapshotted {snap.snapshot_at ?? 'pre-kickoff'} by model{' '}
+                      <span className="font-mono">{snap.model_version ?? 'unknown'}</span>.
                     </p>
-                  )}
-                </div>
-              </div>
-            )
-          })()}
+                  </dl>
+                )}
+              </Panel>
+            )}
 
-          {tab === 'model' && (() => {
-            const mLive = !!m?.live
-            const projA = mLive ? m?.live_proj_away : m?.proj_away_score
-            const projH = mLive ? m?.live_proj_home : m?.proj_home_score
-            const winH = mLive && m?.live_home_win != null ? m.live_home_win : (m?.calibrated_home_win ?? m?.home_win_prob)
-            return (
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-xl border border-terminal-border bg-terminal-surface p-4">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
-                    {mLive ? 'Projected final' : 'Projected score'}
-                  </p>
-                  <p className="mt-1 font-mono text-2xl font-black text-zinc-100 tabular-nums">
-                    {projA ?? '—'} – {projH ?? '—'}
-                  </p>
-                  <p className="mt-0.5 text-[11px] text-zinc-500">{g.away_abbr} @ {g.home_abbr}</p>
-                </div>
-                <div className="rounded-xl border border-terminal-border bg-terminal-surface p-4">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
-                    {mLive ? '● Live win probability' : 'Win probability'}
-                  </p>
-                  <p className={`mt-1 font-mono text-2xl font-black tabular-nums ${mLive ? 'text-signal-red' : 'text-signal-green'}`}>
-                    {pct(winH)}
-                  </p>
-                  <p className="mt-0.5 text-[11px] text-zinc-500">
-                    {g.home_abbr} (home){mLive && m?.time_remaining_pct != null ? ` · ${Math.round(m.time_remaining_pct)}% left` : m?.market_anchored ? ' · market-anchored' : ''}
-                  </p>
-                </div>
-              </div>
+            <LockedPremiumPanel
+              title="Line movement"
+              description="Track how this line has moved since it opened, and where the sharp money went."
+              requires="line_movement_history"
+            >
+              <Panel title="Line movement"
+                     subtitle={activeMarket ? `${activeMarket.label} line since our first snapshot.` : undefined}>
+                <LineMovementChart
+                  points={linePoints}
+                  label={activeMarket?.label ?? 'Line'}
+                  emptyMessage="Only the current line is known — line history isn’t recorded server-side yet."
+                />
+              </Panel>
+            </LockedPremiumPanel>
 
-              {entry!.edges.filter(e => e.rating === 'A' || e.rating === 'B').length > 0 ? (
-                <div className="rounded-xl border border-terminal-border bg-terminal-surface p-4">
-                  <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Model edges vs the live line</p>
-                  <div className="space-y-2">
-                    {entry!.edges.filter(e => e.rating === 'A' || e.rating === 'B').map((e, i) => (
-                      <div key={i} className="flex items-center gap-2 text-sm">
-                        <span className="rounded-full bg-signal-amber-dim px-2 py-0.5 text-[11px] font-bold text-signal-amber">{e.rating}</span>
-                        <span className="font-semibold text-zinc-100">{e.selection}</span>
-                        <span className="ml-auto font-mono text-[12px] text-zinc-400">+{e.edge_pp.toFixed(1)}pp</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-xl border border-terminal-border bg-terminal-surface p-4 text-sm text-zinc-500">
-                  {m
-                    ? 'Model agrees with the market here — no strong edge. It only flags a play when the disagreement is large.'
-                    : 'This matchup isn’t mapped to the model yet.'}
-                </div>
-              )}
-              <p className="text-center text-[10px] text-zinc-600">
-                {mLive
-                  ? 'Live win probability updates from the score, clock and possession as the game unfolds.'
-                  : 'Projected score blends the model with the market spread + total. Win prob is anchored to the live line.'}
-              </p>
-            </div>
-            )
-          })()}
-        </>
-      )}
+            <Panel
+              title="Play-by-play"
+              subtitle={live ? 'Updates automatically every 10 seconds.' : undefined}
+              state={status === 'pre' ? 'empty' : (pbp?.plays.length ? 'ready' : loading ? 'loading' : 'empty')}
+              emptyMessage={status === 'pre'
+                ? 'Play-by-play begins at kickoff.'
+                : 'No plays have been published for this game yet.'}
+              refreshing={refreshing}
+              fetchedAt={pbp?.fetched_at}
+              source="ESPN"
+              sourceOk={pbp?.ok ?? true}
+              staleAfterSeconds={45}
+            >
+              <ul className="max-h-[28rem] overflow-y-auto">
+                {(pbp?.plays ?? []).map((p, i) => <PlayRow key={i} p={p} />)}
+              </ul>
+            </Panel>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

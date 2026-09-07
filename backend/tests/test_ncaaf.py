@@ -247,3 +247,70 @@ def test_best_parlay_combines_multiple_legs() -> None:
     assert len(d["legs"]) == d["leg_count"]
     # Each leg is a favourite the model likes (>=50%).
     assert all(leg["model_prob"] >= 0.5 for leg in d["legs"])
+
+
+# ─── Game Center contract ─────────────────────────────────────────────────────
+
+def _one_board(board):
+    async def _fetch(league):
+        return board if league == "ncaaf" else Scoreboard(league=league, games=[], fetched_at="x")
+    return _fetch
+
+
+def test_game_detail_contract() -> None:
+    board = Scoreboard(league="ncaaf", games=[_parse_event("ncaaf", CFB_EVENT)], fetched_at="2026-09-06T23:40:00+00:00")
+    with patch("src.api.routes.predictions.fetch_scoreboard", side_effect=_one_board(board)), _patch_poly():
+        r = client.get("/api/v1/game/ncaaf/401752")
+    assert r.status_code == 200
+    d = r.json()
+
+    assert d["status"] == "in" and d["mapped"] is True
+    assert d["model_version"]
+    assert d["fetched_at"]
+    assert d["source"] == "ESPN BET"
+    assert [g["grade"] for g in d["grade_scale"]] == ["A", "B", "C", "-"]
+
+    keys = {m["key"] for m in d["markets"]}
+    assert keys == {"moneyline", "spread", "total"}
+
+    by_key = {m["key"]: m for m in d["markets"]}
+    # Each market says what question it answers, so probabilities can't be confused
+    assert by_key["moneyline"]["probability_kind"] == "win"
+    assert by_key["spread"]["probability_kind"] == "cover"
+    assert by_key["total"]["probability_kind"] == "total"
+    # Spread/total prices are assumed and flagged as such; moneyline is real
+    assert by_key["spread"]["assumed_price"] is True
+    assert by_key["moneyline"]["assumed_price"] is False
+    assert by_key["spread"]["line"] == -38.5
+    assert by_key["total"]["line"] == 59.5
+
+    for m in d["markets"]:
+        assert len(m["selections"]) == 2
+        for sel in m["selections"]:
+            assert 0 <= sel["model_prob"] <= 1
+            assert sel["price_american"] is not None
+            assert sel["grade"] in ("A", "B", "C", "-")
+    # Two sides of a market are complementary probabilities
+    ml = by_key["moneyline"]["selections"]
+    assert abs(ml[0]["model_prob"] + ml[1]["model_prob"] - 1.0) < 1e-6
+
+
+def test_game_detail_unknown_event_404() -> None:
+    board = Scoreboard(league="ncaaf", games=[_parse_event("ncaaf", CFB_EVENT)], fetched_at="x")
+    with patch("src.api.routes.predictions.fetch_scoreboard", side_effect=_one_board(board)), _patch_poly():
+        assert client.get("/api/v1/game/ncaaf/does-not-exist").status_code == 404
+
+
+def test_game_detail_rejects_unsupported_league() -> None:
+    assert client.get("/api/v1/game/mlb/1").status_code == 404
+
+
+def test_game_detail_does_not_snapshot() -> None:
+    """Opening a game page must not write a prediction."""
+    from src.track import ledger
+
+    pre = {**CFB_EVENT, "status": {"type": {"state": "pre", "shortDetail": "Sat 7:30 PM"}}}
+    board = Scoreboard(league="ncaaf", games=[_parse_event("ncaaf", pre)], fetched_at="x")
+    with patch("src.api.routes.predictions.fetch_scoreboard", side_effect=_one_board(board)), _patch_poly():
+        assert client.get("/api/v1/game/ncaaf/401752").status_code == 200
+    assert ledger.accuracy_summary()["pending"] == 0

@@ -48,7 +48,12 @@ CREATE TABLE IF NOT EXISTS predictions (
     home_elo        REAL,
     away_elo        REAL,
     elo_applied     INTEGER DEFAULT 0,
-    consensus_home_prob REAL
+    consensus_home_prob REAL,
+    model_version   TEXT,
+    book_source     TEXT,
+    closing_spread  REAL,
+    closing_total   REAL,
+    closing_home_prob REAL
 );
 """
 
@@ -61,6 +66,13 @@ _MIGRATIONS = [
     ("elo_applied", "INTEGER DEFAULT 0"),
     # Market-anchored "consensus" prob — what the product actually recommends.
     ("consensus_home_prob", "REAL"),
+    # Integrity: which model made the call, which book priced it, and the
+    # line as it stood at kickoff (frozen when the game grades).
+    ("model_version", "TEXT"),
+    ("book_source", "TEXT"),
+    ("closing_spread", "REAL"),
+    ("closing_total", "REAL"),
+    ("closing_home_prob", "REAL"),
 ]
 
 
@@ -117,6 +129,8 @@ def record_pregame(
     home_elo: Optional[float] = None,
     away_elo: Optional[float] = None,
     consensus_home_prob: Optional[float] = None,
+    model_version: Optional[str] = None,
+    book_source: Optional[str] = None,
 ) -> None:
     """Upsert the latest pre-game snapshot; frozen once the game is graded.
 
@@ -124,6 +138,10 @@ def record_pregame(
     ratings module reconciles from once the game grades. `consensus_home_prob`
     is the market-anchored recommendation (what P/L is settled on); the raw
     `model_home_prob` is kept for the honest model-vs-book Brier comparison.
+
+    Integrity: a row is only refreshed while it is ungraded AND was produced by
+    the same `model_version`. A newer model therefore cannot silently rewrite a
+    prediction an older model already made and is being judged on.
     """
     with _LOCK, _connect() as conn:
         conn.execute(
@@ -132,8 +150,9 @@ def record_pregame(
                 event_id, league, kickoff, home, away, snapshot_at,
                 model_home_prob, model_total, book_home_prob,
                 crowd_home_prob, market_spread, market_total,
-                home_code, away_code, home_elo, away_elo, consensus_home_prob
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                home_code, away_code, home_elo, away_elo, consensus_home_prob,
+                model_version, book_source
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(event_id) DO UPDATE SET
                 snapshot_at     = excluded.snapshot_at,
                 model_home_prob = excluded.model_home_prob,
@@ -146,13 +165,17 @@ def record_pregame(
                 away_code       = excluded.away_code,
                 home_elo        = excluded.home_elo,
                 away_elo        = excluded.away_elo,
-                consensus_home_prob = excluded.consensus_home_prob
+                consensus_home_prob = excluded.consensus_home_prob,
+                book_source     = excluded.book_source
             WHERE predictions.graded = 0
+              AND (predictions.model_version IS NULL
+                   OR predictions.model_version = excluded.model_version)
             """,
             (event_id, league, kickoff, home, away, _now(),
              model_home_prob, model_total, book_home_prob,
              crowd_home_prob, market_spread, market_total,
-             home_code, away_code, home_elo, away_elo, consensus_home_prob),
+             home_code, away_code, home_elo, away_elo, consensus_home_prob,
+             model_version, book_source),
         )
 
 
@@ -165,7 +188,12 @@ def grade(event_id: str, home_score: int, away_score: int) -> bool:
             """
             UPDATE predictions
             SET graded = 1, home_score = ?, away_score = ?,
-                home_won = ?, graded_at = ?
+                home_won = ?, graded_at = ?,
+                -- Freeze the line as it last stood pre-kickoff: that is the
+                -- closing number the prediction is judged against.
+                closing_spread    = COALESCE(closing_spread, market_spread),
+                closing_total     = COALESCE(closing_total, market_total),
+                closing_home_prob = COALESCE(closing_home_prob, book_home_prob)
             WHERE event_id = ? AND graded = 0
             """,
             (home_score, away_score,
@@ -284,6 +312,20 @@ def performance() -> dict:
         "roi_pct": round(100 * cum / staked, 1) if staked else None,
         "series": series,
     }
+
+
+def get_snapshot(event_id: str) -> Optional[dict]:
+    """The frozen prediction for one event, or None if nothing is stored yet.
+
+    This is what the game page shows as "what the model said beforehand" — it
+    never recomputes, so a graded call can be compared against the closing line
+    exactly as it was made.
+    """
+    with _LOCK, _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM predictions WHERE event_id = ?", (event_id,),
+        ).fetchone()
+    return dict(row) if row else None
 
 
 def recent_graded(limit: int = 25) -> list[dict]:

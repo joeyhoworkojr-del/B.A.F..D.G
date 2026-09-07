@@ -12,6 +12,10 @@ os.environ.setdefault(
     "LEDGER_PATH", os.path.join(tempfile.mkdtemp(prefix="ledger-test-"), "ledger.db"),
 )
 
+# The app's background snapshot loop must never run during tests — it would
+# reach for the live ESPN feed and write to the ledger mid-assertion.
+os.environ["SNAPSHOTS_ENABLED"] = "0"
+
 
 @pytest.fixture(autouse=True)
 def _clear_live_caches():

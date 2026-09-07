@@ -14,10 +14,11 @@ const BestBets = lazyPage(() => import('./pages/BestBets'), 'BestBets')
 const Parlay = lazyPage(() => import('./pages/Parlay'), 'Parlay')
 const TrackRecord = lazyPage(() => import('./pages/TrackRecord'), 'TrackRecord')
 const About = lazyPage(() => import('./pages/About'), 'About')
+const Account = lazyPage(() => import('./pages/Account'), 'Account')
 
 function PageFallback() {
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6 space-y-4">
+    <div className="mx-auto w-full max-w-[1200px] px-4 py-6 space-y-4">
       <div className="skeleton h-8 w-56 rounded" />
       <div className="skeleton h-64 w-full rounded-2xl" />
     </div>
@@ -29,7 +30,7 @@ export default function App() {
     <BrowserRouter>
       <div className="min-h-screen text-zinc-100">
         <TopBar />
-        <main className="pb-20">
+        <main className="pb-24 md:pb-10">
           <Suspense fallback={<PageFallback />}>
             <Routes>
               <Route path="/" element={<Dashboard />} />
@@ -38,6 +39,7 @@ export default function App() {
               <Route path="/parlay" element={<Parlay />} />
               <Route path="/track" element={<TrackRecord />} />
               <Route path="/about" element={<About />} />
+              <Route path="/account" element={<Account />} />
             </Routes>
           </Suspense>
         </main>
