@@ -269,3 +269,62 @@ def test_redis_clear_empties_the_index_too(redis_store):
                                 "model_home_prob": 0.5, "model_version": "v1"})
     redis_store.clear()
     assert redis_store.rows() == []
+
+
+# ─── Configuration diagnostic ────────────────────────────────────────────────
+
+def _clear_storage_env(monkeypatch):
+    for var in ("REDIS_URL", "UPSTASH_REDIS_URL", "KV_URL", "DATABASE_URL"):
+        monkeypatch.delenv(var, raising=False)
+
+
+def test_report_says_nothing_is_configured(monkeypatch):
+    from src.track import store
+    _clear_storage_env(monkeypatch)
+    report = store.config_report()
+    assert report["present"] == []
+    assert "Fly" in report["hint"]
+
+
+def test_report_names_a_usable_variable(monkeypatch):
+    from src.track import store
+    _clear_storage_env(monkeypatch)
+    monkeypatch.setenv("REDIS_URL", "rediss://default:tok@eu1.upstash.io:6379")
+    report = store.config_report()
+    assert report["present"] == ["REDIS_URL"]
+    assert report["usable"] == ["REDIS_URL"]
+    assert report["hint"] == ""
+
+
+def test_report_flags_the_upstash_rest_url_mistake(monkeypatch):
+    """The single most likely misconfiguration deserves a named diagnosis."""
+    from src.track import store
+    _clear_storage_env(monkeypatch)
+    monkeypatch.setenv("REDIS_URL", "https://eu1-abc.upstash.io")
+    report = store.config_report()
+    assert report["present"] == ["REDIS_URL"]
+    assert report["usable"] == []
+    assert report["wrong_scheme"] == ["REDIS_URL"]
+    assert "rediss://" in report["hint"]
+
+
+def test_a_postgres_url_is_recognised_as_usable(monkeypatch):
+    from src.track import store
+    _clear_storage_env(monkeypatch)
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@host/db")
+    assert store.config_report()["usable"] == ["DATABASE_URL"]
+
+
+def test_the_report_never_contains_a_secret_value(monkeypatch):
+    """
+    This endpoint is public. A diagnostic that echoed the URL would publish the
+    database password to anyone who loaded it.
+    """
+    from src.track import store
+    _clear_storage_env(monkeypatch)
+    secret = "rediss://default:SUPERSECRETTOKEN@eu1.upstash.io:6379"
+    monkeypatch.setenv("REDIS_URL", secret)
+    blob = repr(store.config_report())
+    assert "SUPERSECRETTOKEN" not in blob
+    assert "upstash.io" not in blob
+    assert secret not in blob

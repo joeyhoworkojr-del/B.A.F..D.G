@@ -268,6 +268,63 @@ class RedisStore:
         client.delete(_INDEX_KEY)
 
 
+# Every variable the storage layer will look at, in precedence order.
+_CONFIG_VARS = ("REDIS_URL", "UPSTASH_REDIS_URL", "KV_URL", "DATABASE_URL")
+
+_ACCEPTED_SCHEMES = {
+    "REDIS_URL": ("redis://", "rediss://"),
+    "UPSTASH_REDIS_URL": ("redis://", "rediss://"),
+    "KV_URL": ("redis://", "rediss://"),
+    "DATABASE_URL": ("postgres://", "postgresql://"),
+}
+
+
+def config_report() -> dict:
+    """
+    Which storage variables this process can see, and whether each is usable.
+
+    Names and scheme validity only — never a value, not even partially. The
+    point is to answer "is the key missing, or is it the wrong kind of URL?"
+    without a secret leaving the server, because that question has otherwise
+    needed a round trip through someone's dashboard to settle.
+    """
+    present, usable, wrong_scheme = [], [], []
+    for var in _CONFIG_VARS:
+        raw = (os.getenv(var) or "").strip()
+        if not raw:
+            continue
+        present.append(var)
+        if raw.startswith(_ACCEPTED_SCHEMES[var]):
+            usable.append(var)
+        else:
+            # e.g. Upstash's https:// REST endpoint pasted where the Redis
+            # connection string belongs.
+            wrong_scheme.append(var)
+
+    if usable:
+        hint = ""
+    elif wrong_scheme:
+        hint = (
+            f"{', '.join(wrong_scheme)} is set but its scheme is not one this "
+            "backend can open. Redis needs redis:// or rediss:// (Upstash's "
+            "https:// REST endpoint will not work); Postgres needs postgres://."
+        )
+    else:
+        hint = (
+            "No storage variable is set on this process. Note the API runs on "
+            "Fly, so the value must be a Fly secret — setting it anywhere else "
+            "has no effect here."
+        )
+
+    return {
+        "checked": list(_CONFIG_VARS),
+        "present": present,
+        "usable": usable,
+        "wrong_scheme": wrong_scheme,
+        "hint": hint,
+    }
+
+
 def build_store(schema: str, migrations: list[tuple[str, str]], table: str):
     """Whichever backend the environment configures. Redis wins when both are set."""
     if redis_url():
