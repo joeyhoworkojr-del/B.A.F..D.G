@@ -86,15 +86,15 @@ export function MonteCarloChart({ sim, homeLabel, awayLabel, knockout = false }:
       {/* Win/draw/loss from simulation */}
       <div className="grid grid-cols-3 gap-2 text-center">
         <div className="rounded-lg bg-terminal-surface p-2">
-          <p className="text-[10px] text-zinc-500">{homeLabel} wins</p>
+          <p className="text-xs text-zinc-500">{homeLabel} wins</p>
           <p className="font-mono text-signal-blue text-sm">{Math.round(sim.home_wins * 100)}%</p>
         </div>
         <div className="rounded-lg bg-terminal-surface p-2">
-          <p className="text-[10px] text-zinc-500">Draw</p>
+          <p className="text-xs text-zinc-500">Draw</p>
           <p className="font-mono text-zinc-400 text-sm">{Math.round(sim.draws * 100)}%</p>
         </div>
         <div className="rounded-lg bg-terminal-surface p-2">
-          <p className="text-[10px] text-zinc-500">{awayLabel} wins</p>
+          <p className="text-xs text-zinc-500">{awayLabel} wins</p>
           <p className="font-mono text-signal-red text-sm">{Math.round(sim.away_wins * 100)}%</p>
         </div>
       </div>

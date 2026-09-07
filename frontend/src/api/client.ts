@@ -16,11 +16,19 @@ import type {
   SoccerUpcomingResponse,
   PlayByPlayOut,
   GameDetailOut,
+  FootballLeague,
+  NewsFeedOut,
+  EntitlementsOut,
+  PropsOut,
 } from '../types'
 
-// Strip trailing slashes so VITE_API_BASE="/" (same-origin via nginx proxy)
-// yields "/api/v1/..." and not a protocol-relative "//api/v1/..." URL.
-const BASE = (import.meta.env.VITE_API_BASE ?? 'http://localhost:8000').replace(/\/+$/, '')
+// Same-origin by default. Vite's dev server proxies /api to :8000, the Docker
+// image serves the SPA from the API process, and on Vercel the rewrites in
+// vercel.json forward /api to the Fly API — so an unset VITE_API_BASE is
+// correct in every environment rather than pointing at localhost.
+// Trailing slashes are stripped so VITE_API_BASE="/" yields "/api/v1/..." and
+// not a protocol-relative "//api/v1/..." URL.
+const BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/+$/, '')
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, init)
@@ -128,6 +136,18 @@ export const api = {
 
   // Track record
   accuracy: () => get<AccuracyResponse>('/api/v1/accuracy'),
+
+  // News — attributed headlines, never full articles
+  news: (league: 'all' | FootballLeague = 'all', limit = 30) =>
+    get<NewsFeedOut>(`/api/v1/news?league=${league}&limit=${limit}`),
+
+  // Access, decided server-side
+  entitlements: () => get<EntitlementsOut>('/api/v1/entitlements'),
+
+  // Player props — reports what it would need rather than inventing lines
+  propsStatus: () => get<PropsOut>('/api/v1/props'),
+  gameProps: (league: string, eventId: string) =>
+    get<PropsOut>(`/api/v1/props/${league}/${encodeURIComponent(eventId)}`),
 
   // World Cup spotlight (model pre-run on upcoming fixtures)
   soccerUpcoming: () => get<SoccerUpcomingResponse>('/api/v1/soccer/upcoming'),

@@ -252,11 +252,24 @@ def accuracy_summary() -> dict:
             "crowd": _brier(subset, "crowd_home_prob"),
         }
 
+    versions = sorted({r["model_version"] for r in rows if r["model_version"]})
+
     return {
         "overall": summarize(rows),
         "by_league": {lg: summarize(rs) for lg, rs in sorted(leagues.items())},
         "pending": pending,
         "note": "Brier score: lower is better; 0.25 = coin flip. All signals snapshotted pre-game at the same moment.",
+        # Everything in this ledger is a pre-game snapshot. In-game updates are
+        # shown live but never stored or graded, so they cannot flatter the
+        # record — and the UI must not present the two as one number.
+        "scope": "pregame",
+        "live_record_available": False,
+        "live_note": (
+            "Live in-game win probabilities are recalculated from the score and "
+            "clock while a game is running. They are not snapshotted or graded, "
+            "so they are not part of the record above."
+        ),
+        "model_versions": versions,
     }
 
 

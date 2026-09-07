@@ -13,14 +13,14 @@ const SPORT_LABELS: Record<Sport, string> = {
 
 function TeamRow({ team, sport }: { team: RankedTeam; sport: Sport }) {
   const confBadge = sport === 'nfl' && team.conference
-    ? <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-terminal-muted text-zinc-400">{team.conference}</span>
+    ? <span className="px-1.5 py-0.5 rounded text-xs font-mono bg-terminal-muted text-zinc-400">{team.conference}</span>
     : team.group
-    ? <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-terminal-muted text-zinc-400">Grp {team.group}</span>
+    ? <span className="px-1.5 py-0.5 rounded text-xs font-mono bg-terminal-muted text-zinc-400">Grp {team.group}</span>
     : null
 
   return (
     <div className="flex items-center gap-3 py-2.5 border-b border-terminal-muted/50 hover:bg-terminal-muted/20 -mx-2 px-2 rounded transition-colors">
-      <span className="font-mono text-sm text-zinc-600 w-6 text-right">{team.rank}</span>
+      <span className="font-mono text-sm text-zinc-500 w-6 text-right">{team.rank}</span>
       <span className="text-xl">{team.flag}</span>
       <span className="flex-1 font-display text-sm text-zinc-200">{team.name}</span>
       {confBadge}
@@ -73,8 +73,8 @@ export function Rankings() {
             onClick={() => setSport(s)}
             className={`px-4 py-1.5 rounded-lg text-sm font-display font-medium transition-colors ${
               sport === s
-                ? 'bg-signal-amber text-terminal-bg'
-                : 'bg-terminal-surface border border-terminal-border text-zinc-400 hover:text-zinc-100'
+                ? 'bg-brand text-white shadow-card'
+                : 'bg-terminal-muted border border-terminal-border text-zinc-400 hover:text-zinc-100'
             }`}
           >
             {SPORT_LABELS[s]}
@@ -92,7 +92,7 @@ export function Rankings() {
 
       <div className="rounded-xl border border-terminal-border bg-terminal-surface p-4">
         {/* Header */}
-        <div className="flex items-center gap-3 pb-2 border-b border-terminal-border text-[10px] font-display uppercase tracking-widest text-zinc-600">
+        <div className="flex items-center gap-3 pb-2 border-b border-terminal-border text-xs font-display uppercase tracking-widest text-zinc-500">
           <span className="w-6 text-right">#</span>
           <span className="w-7" />
           <span className="flex-1">Team</span>
@@ -100,15 +100,15 @@ export function Rankings() {
         </div>
 
         {loading ? (
-          <div className="py-12 text-center text-zinc-600 font-mono text-sm">Loading…</div>
+          <div className="py-12 text-center text-zinc-500 font-mono text-sm">Loading…</div>
         ) : filtered.length === 0 ? (
-          <div className="py-12 text-center text-zinc-600 font-mono text-sm">No teams found.</div>
+          <div className="py-12 text-center text-zinc-500 font-mono text-sm">No teams found.</div>
         ) : (
           filtered.map(t => <TeamRow key={t.code} team={t} sport={sport} />)
         )}
       </div>
 
-      <p className="text-[10px] text-zinc-600 italic">
+      <p className="text-xs text-zinc-500 italic">
         {sport === 'soccer'
           ? 'Elo ratings sourced from eloratings.net scale (June 2026). Hosts USA, MEX, CAN receive +150 home-venue bonus in predictions, not reflected here.'
           : 'Elo ratings calibrated to end-of-2025 NFL season. Home-field advantage (+48 Elo) applied during predictions.'}

@@ -49,7 +49,7 @@ export const LEAGUE_CONFIGS: Record<GridironLeague, LeagueConfig> = {
 function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
     <div className="rounded-lg border border-terminal-border bg-terminal-surface p-3 text-center">
-      <p className="text-[10px] font-display uppercase tracking-widest text-zinc-500">{label}</p>
+      <p className="text-xs font-display uppercase tracking-widest text-zinc-500">{label}</p>
       <p className={`font-mono text-xl mt-1 ${accent ? 'text-signal-green' : 'text-signal-amber'}`}>{value}</p>
     </div>
   )
@@ -60,7 +60,7 @@ function NumInput({ label, value, onChange, placeholder, step = '0.5' }: {
 }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[10px] font-display uppercase tracking-widest text-zinc-500">{label}</span>
+      <span className="text-xs font-display uppercase tracking-widest text-zinc-500">{label}</span>
       <input
         type="number"
         step={step}
@@ -195,7 +195,7 @@ export function GridironPredictor({ config }: { config: LeagueConfig }) {
         <button
           onClick={runPrediction}
           disabled={!home || !away || loading}
-          className="w-full rounded-lg bg-signal-amber px-4 py-2.5 font-display font-semibold text-terminal-bg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors"
+          className="w-full rounded-lg bg-brand px-4 py-2.5 font-display font-semibold text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-brand-strong transition-colors"
         >
           {loading ? 'Analysing…' : 'Run Prediction'}
         </button>
@@ -220,7 +220,7 @@ export function GridironPredictor({ config }: { config: LeagueConfig }) {
               <EdgeReadout probability={result.home_win_prob} label={`${result.home_team.name} Win`} color="blue" size="lg" />
               <EdgeReadout probability={result.away_win_prob} label={`${result.away_team.name} Win`} color="red" size="lg" />
             </div>
-            <p className="font-mono text-[11px] text-zinc-600 text-center">
+            <p className="font-mono text-xs text-zinc-500 text-center">
               Fair ML: {result.home_team.code} {result.fair_odds.home_ml?.toFixed(2)} · {result.away_team.code} {result.fair_odds.away_ml?.toFixed(2)}
             </p>
           </div>
@@ -271,7 +271,7 @@ export function GridironPredictor({ config }: { config: LeagueConfig }) {
             <WhyPanel factors={result.why_factors} />
           </div>
 
-          <p className="text-[10px] text-zinc-600 italic">{result.data_warning}</p>
+          <p className="text-xs text-zinc-500 italic">{result.data_warning}</p>
         </div>
       )}
     </div>

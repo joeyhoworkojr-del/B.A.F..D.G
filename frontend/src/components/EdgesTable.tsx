@@ -9,7 +9,7 @@ const RATING_STYLE: Record<string, string> = {
 
 export function RatingChip({ rating }: { rating: string }) {
   return (
-    <span className={`rounded border px-1.5 py-0.5 font-mono text-[10px] font-bold ${RATING_STYLE[rating] ?? RATING_STYLE['-']}`}>
+    <span className={`rounded border px-1.5 py-0.5 font-mono text-xs font-bold ${RATING_STYLE[rating] ?? RATING_STYLE['-']}`}>
       {rating === '-' ? 'PASS' : rating}
     </span>
   )
@@ -21,7 +21,7 @@ export function EdgesTable({ edges }: { edges: EdgeOut[] }) {
     <div className="overflow-x-auto">
       <table className="w-full text-xs font-body">
         <thead>
-          <tr className="text-[10px] font-display uppercase tracking-widest text-zinc-600 border-b border-terminal-border">
+          <tr className="text-xs font-display uppercase tracking-widest text-zinc-500 border-b border-terminal-border">
             <th className="text-left py-1.5 pr-2">Bet</th>
             <th className="text-right py-1.5 px-2">Model</th>
             <th className="text-right py-1.5 px-2">Market*</th>
@@ -36,7 +36,7 @@ export function EdgesTable({ edges }: { edges: EdgeOut[] }) {
             <tr key={i} className="border-b border-terminal-muted/30">
               <td className="py-1.5 pr-2">
                 <span className="text-zinc-200">{e.selection}</span>
-                <span className="ml-1.5 text-zinc-600 font-mono text-[10px]">{e.market} @ {e.decimal_odds.toFixed(2)}</span>
+                <span className="ml-1.5 text-zinc-500 font-mono text-xs">{e.market} @ {e.decimal_odds.toFixed(2)}</span>
               </td>
               <td className="text-right px-2 font-mono text-zinc-300">{(e.model_prob * 100).toFixed(1)}%</td>
               <td className="text-right px-2 font-mono text-zinc-500">{(e.market_prob * 100).toFixed(1)}%</td>
@@ -54,7 +54,7 @@ export function EdgesTable({ edges }: { edges: EdgeOut[] }) {
           ))}
         </tbody>
       </table>
-      <p className="text-[10px] text-zinc-600 italic mt-2">
+      <p className="text-xs text-zinc-500 italic mt-2">
         *Market = no-vig implied probability. Kelly = quarter-Kelly share of bankroll. Grades: A ≥ 6pp, B ≥ 3.5pp, C ≥ 1.5pp edge.
       </p>
     </div>

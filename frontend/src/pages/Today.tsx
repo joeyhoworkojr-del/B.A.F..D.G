@@ -40,7 +40,7 @@ function Marker({ at, color, label }: { at: number; color: string; label: string
 
 function SignalLegend({ items }: { items: Array<{ dot: string; text: string } | null> }) {
   return (
-    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] font-mono text-zinc-500">
+    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs font-mono text-zinc-500">
       {items.filter(Boolean).map((it, i) => (
         <span key={i} className="flex items-center gap-1">
           <span className={`inline-block h-2 w-2 rounded-sm ${it!.dot}`} />
@@ -67,9 +67,9 @@ function GameCard({ entry }: { entry: TodayGameOut }) {
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="font-display font-semibold text-sm text-zinc-100 truncate">
-            {g.away} <span className="text-zinc-600">@</span> {g.home}
+            {g.away} <span className="text-zinc-500">@</span> {g.home}
           </p>
-          <p className={`text-[11px] font-body ${live ? 'text-signal-green' : 'text-zinc-500'}`}>
+          <p className={`text-xs font-body ${live ? 'text-signal-green' : 'text-zinc-500'}`}>
             {live && <span className="inline-block h-1.5 w-1.5 rounded-full bg-signal-green animate-pulse mr-1.5 align-middle" />}
             {g.detail}
           </p>
@@ -82,7 +82,7 @@ function GameCard({ entry }: { entry: TodayGameOut }) {
       </div>
 
       {!entry.mapped || !m ? (
-        <p className="text-xs text-zinc-600 font-body">
+        <p className="text-xs text-zinc-500 font-body">
           No model coverage for this matchup{pm ? ' — but the crowd has a price:' : '.'}
           {pm && (
             <a href={pm.url} target="_blank" rel="noreferrer" className="ml-1 text-signal-purple hover:underline">
@@ -94,7 +94,7 @@ function GameCard({ entry }: { entry: TodayGameOut }) {
         <>
           {/* Three signals, one scale: model fill, book marker, crowd marker */}
           <div className="space-y-1.5">
-            <div className="flex justify-between text-[10px] font-display uppercase tracking-widest text-zinc-600">
+            <div className="flex justify-between text-xs font-display uppercase tracking-widest text-zinc-500">
               <span>{g.home_abbr} win probability</span>
               <span className="text-zinc-500">{pct(m.home_win_prob)} model</span>
             </div>
@@ -111,14 +111,14 @@ function GameCard({ entry }: { entry: TodayGameOut }) {
               pm ? { dot: 'bg-signal-purple', text: `crowd ${pct(pm.home_prob)} · ${volume(pm.volume_usd)}` } : null,
             ]} />
             {m.market_anchored && m.calibrated_home_win != null && (
-              <p className="text-[10px] font-mono text-zinc-500" title="Model win probability shrunk toward the no-vig market line — the most reliable single number to trust.">
+              <p className="text-xs font-mono text-zinc-500" title="Model win probability shrunk toward the no-vig market line — the most reliable single number to trust.">
                 consensus estimate:{' '}
                 <span className="font-semibold text-zinc-300">{pct(m.calibrated_home_win)} {g.home_abbr}</span>
-                {' '}<span className="text-zinc-600">(model tempered by the market)</span>
+                {' '}<span className="text-zinc-500">(model tempered by the market)</span>
               </p>
             )}
             {pm && Math.abs(m.home_win_prob - pm.home_prob) >= 0.05 && (
-              <p className="text-[10px] font-mono">
+              <p className="text-xs font-mono">
                 <span className={m.home_win_prob > pm.home_prob ? 'text-signal-green' : 'text-signal-red'}>
                   model {m.home_win_prob > pm.home_prob ? 'likes' : 'fades'} {g.home_abbr} vs the crowd's money
                 </span>
@@ -129,7 +129,7 @@ function GameCard({ entry }: { entry: TodayGameOut }) {
           </div>
 
           {/* Projection + market lines */}
-          <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-zinc-400">
+          <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs text-zinc-400">
             <span title="Model projected score">
               Proj: {g.away_abbr} {m.away_expected.toFixed(1)} @ {g.home_abbr} {m.home_expected.toFixed(1)}
             </span>
@@ -151,14 +151,14 @@ function GameCard({ entry }: { entry: TodayGameOut }) {
               {topEdges.map((e, i) => (
                 <span key={i} className="flex items-center gap-1.5 rounded-lg border border-terminal-border bg-terminal-muted/30 px-2 py-1">
                   <RatingChip rating={e.rating} />
-                  <span className="text-[11px] font-body text-zinc-300">{e.selection}</span>
-                  <span className="text-[10px] font-mono text-signal-green">+{e.edge_pp.toFixed(1)}pp</span>
+                  <span className="text-xs font-body text-zinc-300">{e.selection}</span>
+                  <span className="text-xs font-mono text-signal-green">+{e.edge_pp.toFixed(1)}pp</span>
                 </span>
               ))}
               {entry.edges.length > 0 && (
                 <button
                   onClick={() => setOpen(o => !o)}
-                  className="text-[10px] font-display uppercase tracking-widest text-zinc-500 hover:text-zinc-300"
+                  className="text-xs font-display uppercase tracking-widest text-zinc-500 hover:text-zinc-300"
                 >
                   {open ? 'hide detail ▲' : 'all markets ▼'}
                 </button>
@@ -169,11 +169,11 @@ function GameCard({ entry }: { entry: TodayGameOut }) {
           {open && (
             <div className="border-t border-terminal-muted/40 pt-2 space-y-1">
               {entry.edges.map((e, i) => (
-                <div key={i} className="flex items-center justify-between text-[11px] font-mono">
-                  <span className="text-zinc-400 truncate">{e.selection} <span className="text-zinc-600">· {e.market}</span></span>
+                <div key={i} className="flex items-center justify-between text-xs font-mono">
+                  <span className="text-zinc-400 truncate">{e.selection} <span className="text-zinc-500">· {e.market}</span></span>
                   <span className="flex items-center gap-2 shrink-0">
                     <span className="text-zinc-500">mdl {pct(e.model_prob)}</span>
-                    <span className="text-zinc-600">mkt {pct(e.market_prob)}</span>
+                    <span className="text-zinc-500">mkt {pct(e.market_prob)}</span>
                     <span className={e.edge_pp >= 1.5 ? 'text-signal-green' : e.edge_pp <= -1.5 ? 'text-signal-red' : 'text-zinc-500'}>
                       {e.edge_pp >= 0 ? '+' : ''}{e.edge_pp.toFixed(1)}pp
                     </span>
@@ -243,15 +243,15 @@ export function Today() {
             onClick={() => setLeague(l.id)}
             className={`px-4 py-1.5 rounded-lg text-sm font-display font-medium ${
               league === l.id
-                ? 'bg-signal-amber text-terminal-bg'
-                : 'bg-terminal-surface border border-terminal-border text-zinc-400 hover:text-zinc-100'
+                ? 'bg-brand text-white shadow-card'
+                : 'bg-terminal-muted border border-terminal-border text-zinc-400 hover:text-zinc-100'
             }`}
           >
             {l.label}
           </button>
         ))}
         {data && (
-          <span className="ml-auto text-[10px] font-mono text-zinc-600">
+          <span className="ml-auto text-xs font-mono text-zinc-500">
             {data.market_source ? `book: ${data.market_source} · ` : ''}updated {data.fetched_at.slice(11, 19)} UTC
           </span>
         )}
@@ -277,7 +277,7 @@ export function Today() {
         <GameCard key={entry.game.event_id} entry={entry} />
       ))}
 
-      <p className="text-[10px] text-zinc-600 italic">
+      <p className="text-xs text-zinc-500 italic">
         Book lines from the live ESPN feed; crowd prices from Polymarket (real-money prediction market);
         totals/spread edges assume −110 pricing. Probabilities, not promises — bet responsibly.
       </p>

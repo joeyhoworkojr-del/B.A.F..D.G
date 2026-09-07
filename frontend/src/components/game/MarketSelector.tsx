@@ -55,7 +55,7 @@ export function MarketSelector({ markets, active, onChange, panelId }: MarketSel
             onKeyDown={e => onKeyDown(e, i)}
             className={`rounded-full px-4 py-1.5 text-sm font-bold transition ${
               selected
-                ? 'bg-zinc-100 text-terminal-bg'
+                ? 'bg-brand text-white shadow-card'
                 : 'bg-terminal-muted text-zinc-300 hover:text-zinc-100'
             }`}
           >

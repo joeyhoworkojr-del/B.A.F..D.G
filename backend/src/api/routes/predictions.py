@@ -1089,6 +1089,7 @@ async def best_bets() -> BestBetsResponse:
                     continue
                 bets.append(BestBetOut(
                     fixture_id=f"{lg}:{g.event_id}",
+                    league=lg, event_id=g.event_id,
                     kickoff=g.kickoff, venue="",
                     home=g.home, away=g.away,
                     home_flag=flag, away_flag=flag,

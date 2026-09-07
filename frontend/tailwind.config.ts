@@ -5,43 +5,68 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Sportsbook palette — deep near-black surfaces, sportsbook green, and
-        // gold "odds" highlights. Token names are shared so every component
-        // re-skins at once: terminal.* = surfaces, signal.amber = the gold
-        // odds/active accent, signal.green = live/positive/brand green.
+        // ── StatEdge light theme ────────────────────────────────────────────
+        // White page, very light grey secondary surfaces, charcoal text and an
+        // emerald brand accent. The `terminal.*` / `signal.*` / inverted `zinc`
+        // names are kept so the whole app re-skins from this one file.
         terminal: {
-          bg: '#0a0e12',
-          surface: '#141a20',
-          border: '#28313b',
-          muted: '#1b232b',
+          bg: '#ffffff',        // page background
+          surface: '#ffffff',   // cards (separated by border, not fill)
+          muted: '#f5f6f8',     // secondary surface / table stripes
+          border: '#e4e7ec',    // hairline borders
         },
         signal: {
-          amber: '#f5c518',       // odds gold / active highlight
-          'amber-dim': '#3a3418',
-          green: '#2fd07a',       // live / positive / brand green
-          red: '#f2555a',
-          blue: '#4f9cf5',
-          purple: '#a855f7',
+          amber: '#b45309',        // watch / medium confidence (AA on white)
+          // Light enough that #b45309 text on it clears 4.5:1 (amber-100 does not).
+          'amber-dim': '#fffbeb',
+          green: '#059669',        // brand + genuine positive value
+          'green-dim': '#ecfdf5',
+          red: '#dc2626',          // negative / stale / error
+          'red-dim': '#fef2f2',
+          blue: '#2563eb',         // informational (crowd / market)
+          purple: '#7c3aed',
         },
-        // Standard dark zinc scale: zinc-100 = primary near-white text,
-        // descending to muted greys and dark surfaces.
+        // Inverted scale: the app writes `text-zinc-100` for primary text, so
+        // 100 is the darkest value here and the ramp lightens as it climbs.
         zinc: {
-          50: '#0a0e12',
-          100: '#f3f6f9',
-          200: '#dbe2ea',
-          300: '#b7c1cc',
-          400: '#8b97a5',
-          500: '#6d7885',
-          600: '#525c68',
-          700: '#3a434e',
-          800: '#28313b',
-          900: '#141a20',
+          50: '#ffffff',
+          100: '#111827',   // primary text — charcoal
+          200: '#1f2937',
+          300: '#374151',
+          400: '#4b5563',   // secondary text (AA on white)
+          500: '#6b7280',   // tertiary text
+          600: '#9ca3af',   // faint / disabled
+          700: '#d1d5db',
+          800: '#e5e7eb',
+          900: '#f3f4f6',
+        },
+        // Semantic aliases for new components.
+        brand: {
+          DEFAULT: '#059669',
+          strong: '#047857',
+          soft: '#ecfdf5',
         },
       },
+      borderRadius: {
+        card: '14px',
+      },
+      boxShadow: {
+        card: '0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06)',
+        pop: '0 8px 24px -6px rgba(16, 24, 40, 0.12)',
+      },
       fontFamily: {
-        display: ['"Space Grotesk"', 'sans-serif'],
-        mono: ['"JetBrains Mono"', 'monospace'],
-        body: ['Inter', 'sans-serif'],
+        display: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+        body: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+      },
+      fontSize: {
+        // Body text sits at 14–16px; nothing meaningful below 12px.
+        xs: ['0.75rem', { lineHeight: '1rem' }],
+        sm: ['0.875rem', { lineHeight: '1.25rem' }],
+        base: ['1rem', { lineHeight: '1.5rem' }],
+      },
+      maxWidth: {
+        app: '1280px',
       },
     },
   },

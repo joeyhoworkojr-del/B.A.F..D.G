@@ -9,7 +9,7 @@ export function WhyPanel({ factors }: Props) {
 
   return (
     <div className="space-y-2">
-      <p className="text-[10px] font-display uppercase tracking-widest text-zinc-600">
+      <p className="text-xs font-display uppercase tracking-widest text-zinc-500">
         Why — signed contributions to home win probability
       </p>
       {factors.map((f, i) => {

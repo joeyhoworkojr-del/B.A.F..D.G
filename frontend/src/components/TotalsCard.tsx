@@ -33,7 +33,7 @@ export function TotalsCard({ totals, homeLabel, awayLabel }: Props) {
           Totals & Over/Under
         </p>
         <span className="font-mono text-sm text-zinc-300">
-          {homeLabel} {hs}–{as} {awayLabel} <span className="text-zinc-600">(expected)</span>
+          {homeLabel} {hs}–{as} {awayLabel} <span className="text-zinc-500">(expected)</span>
         </span>
       </div>
 
@@ -59,13 +59,13 @@ export function TotalsCard({ totals, homeLabel, awayLabel }: Props) {
 
       <div className="mt-3 grid grid-cols-2 gap-4 pt-2 border-t border-terminal-border">
         <div>
-          <p className="text-[10px] font-display uppercase tracking-widest text-zinc-600 mb-1">{homeLabel} goals</p>
+          <p className="text-xs font-display uppercase tracking-widest text-zinc-500 mb-1">{homeLabel} goals</p>
           <Row label="Over 0.5" prob={totals.home_over_0_5} />
           <Row label="Over 1.5" prob={totals.home_over_1_5} />
           <Row label="Over 2.5" prob={totals.home_over_2_5} />
         </div>
         <div>
-          <p className="text-[10px] font-display uppercase tracking-widest text-zinc-600 mb-1">{awayLabel} goals</p>
+          <p className="text-xs font-display uppercase tracking-widest text-zinc-500 mb-1">{awayLabel} goals</p>
           <Row label="Over 0.5" prob={totals.away_over_0_5} />
           <Row label="Over 1.5" prob={totals.away_over_1_5} />
           <Row label="Over 2.5" prob={totals.away_over_2_5} />

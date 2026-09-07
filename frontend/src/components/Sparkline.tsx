@@ -10,7 +10,7 @@ interface Props {
 export function Sparkline({ data, width = 320, height = 96, stroke = '#2563eb', id = 'spark' }: Props) {
   if (data.length < 2) {
     return (
-      <div className="flex items-center justify-center text-[11px] font-body text-zinc-600" style={{ height }}>
+      <div className="flex items-center justify-center text-xs font-body text-zinc-500" style={{ height }}>
         Chart appears after a few graded picks
       </div>
     )

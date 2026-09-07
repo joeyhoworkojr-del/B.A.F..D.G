@@ -46,7 +46,7 @@ export function PlayerPropsTable({ props, homeCode, homeFlag, awayFlag }: Omit<P
           </div>
         )
       })}
-      <p className="text-[10px] text-zinc-600 italic pt-1">
+      <p className="text-xs text-zinc-500 italic pt-1">
         Anytime = P(≥1 goal). Shares grounded in tournament goal records.
         Cannot see today's lineup — treat as soft estimates.
       </p>

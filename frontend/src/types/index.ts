@@ -104,6 +104,8 @@ export interface NFLMarketOdds {
 
 export interface BestBetOut {
   fixture_id: string
+  league: string
+  event_id: string
   kickoff: string
   venue: string
   home: string
@@ -332,6 +334,11 @@ export interface AccuracyResponse {
   by_league: Record<string, AccuracyBucket>
   pending: number
   note: string
+  /** Everything graded here is a frozen pre-game snapshot. */
+  scope?: 'pregame'
+  live_record_available?: boolean
+  live_note?: string
+  model_versions?: string[]
   performance: PerformanceOut
   recent: GradedRow[]
 }
@@ -524,4 +531,63 @@ export interface GameDetailOut {
   best_edge?: BestEdgeOut | null
   polymarket?: PolymarketOut | null
   snapshot?: SnapshotOut | null
+}
+
+// ─── News ─────────────────────────────────────────────────────────────────────
+
+export type NewsCategory = 'news' | 'injury' | 'preview' | 'recap'
+
+export interface NewsItemOut {
+  league: string
+  id: string
+  headline: string
+  description: string
+  published: string
+  byline: string
+  url: string
+  image: string
+  category: NewsCategory
+  teams: string[]
+  source: string
+  /** The model does not read these stories. Never claim otherwise. */
+  reflected_in_projection: boolean
+}
+
+export interface NewsFeedOut {
+  league: string
+  items: NewsItemOut[]
+  fetched_at: string
+  ok: boolean
+  source: string
+  attribution: string
+}
+
+// ─── Entitlements ─────────────────────────────────────────────────────────────
+
+export type FeatureKey =
+  | 'line_movement_history'
+  | 'model_internals'
+  | 'alerts'
+  | 'player_props'
+  | 'saved_games'
+
+export interface EntitlementsOut {
+  plan: string
+  authenticated: boolean
+  auth_configured: boolean
+  features: Record<string, boolean>
+  unavailable_reason: Record<string, string>
+  billing_enabled: boolean
+  note: string
+}
+
+// ─── Player props (unavailable until a provider is configured) ────────────────
+
+export interface PropsOut {
+  available: boolean
+  league: string
+  event_id: string
+  props: unknown[]
+  reason: string
+  requires: string[]
 }

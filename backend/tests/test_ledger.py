@@ -155,3 +155,25 @@ def test_newer_model_cannot_rewrite_an_open_prediction() -> None:
     )
     row = ledger.get_snapshot("nfl:v1")
     assert row["model_home_prob"] == 0.61 and row["model_version"] == "v1"
+
+
+def test_accuracy_summary_declares_a_pregame_scope():
+    """
+    Two different things get called "the model's accuracy". The summary has to
+    say which one it is measuring, so the UI can label them apart.
+    """
+    summary = ledger.accuracy_summary()
+    assert summary["scope"] == "pregame"
+    assert summary["live_record_available"] is False
+    assert "not" in summary["live_note"].lower()
+
+
+def test_graded_rows_report_the_model_versions_behind_them():
+    ledger.reset()
+    ledger.record_pregame(
+        event_id="nfl:900", league="nfl", kickoff="2026-09-05T18:00:00+00:00",
+        home="KC", away="BUF", model_home_prob=0.6,
+        model_version="test-1.0",
+    )
+    ledger.grade("nfl:900", home_score=24, away_score=20)
+    assert ledger.accuracy_summary()["model_versions"] == ["test-1.0"]

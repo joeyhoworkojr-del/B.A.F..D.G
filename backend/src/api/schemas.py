@@ -272,6 +272,33 @@ class PlayByPlayOut(BaseModel):
     fetched_at: str = ""
 
 
+class NewsItemOut(BaseModel):
+    """One story, attributed. Headline + the publisher's own summary line only."""
+    league: str
+    id: str
+    headline: str
+    description: str = ""
+    published: str = ""       # ISO-8601 UTC
+    byline: str = ""
+    url: str = ""             # canonical link back to the publisher
+    image: str = ""
+    category: str = "news"    # news | injury | preview | recap
+    teams: list[str] = Field(default_factory=list)
+    source: str = "ESPN"
+    # The model does not read these stories, so the UI must never claim one
+    # moved a projection. Kept explicit rather than implied by omission.
+    reflected_in_projection: bool = False
+
+
+class NewsFeedOut(BaseModel):
+    league: str
+    items: list[NewsItemOut] = Field(default_factory=list)
+    fetched_at: str = ""
+    ok: bool = True
+    source: str = "ESPN"
+    attribution: str = "Headlines and summaries from ESPN. Follow a link to read the full story at the source."
+
+
 class ScoreboardOut(BaseModel):
     league: str
     games: list[LiveGameOut] = Field(default_factory=list)
@@ -305,6 +332,10 @@ class SetPlayerStatusRequest(BaseModel):
 
 class BestBetOut(BaseModel):
     fixture_id: str
+    # Split out so the UI can deep-link to /game/{league}/{event_id} without
+    # re-parsing the composite fixture_id.
+    league: str = ""
+    event_id: str = ""
     kickoff: str
     venue: str
     home: str

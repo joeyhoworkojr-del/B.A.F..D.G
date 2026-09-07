@@ -12,7 +12,7 @@ function TeamBadge({
         {flag}
       </div>
       <div className="mt-2 max-w-full truncate font-display text-base font-bold text-zinc-100">{name}</div>
-      <div className="font-mono text-[11px] text-zinc-500">Elo {Math.round(elo)}</div>
+      <div className="font-mono text-xs text-zinc-500">Elo {Math.round(elo)}</div>
       <div className="mt-1 font-mono text-2xl font-bold text-signal-blue">{pct(win)}%</div>
     </div>
   )
@@ -32,10 +32,10 @@ export function MatchupHero({ result }: { result: SoccerPredictResponse }) {
 
           <div className="flex shrink-0 flex-col items-center justify-center px-1">
             <SoccerBall className="h-9 w-9 text-signal-blue" />
-            <span className="mt-1 font-display text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
+            <span className="mt-1 font-display text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
               vs
             </span>
-            <span className="mt-1 rounded-full bg-signal-amber-dim px-2 py-0.5 font-mono text-[10px] font-semibold text-signal-blue">
+            <span className="mt-1 rounded-full bg-signal-amber-dim px-2 py-0.5 font-mono text-xs font-semibold text-signal-blue">
               {pct(p.draw)}% draw
             </span>
           </div>
@@ -50,7 +50,7 @@ export function MatchupHero({ result }: { result: SoccerPredictResponse }) {
           <div style={{ width: `${pct(p.draw)}%` }} className="bg-zinc-400" />
           <div style={{ width: `${pct(p.away_win)}%` }} className="bg-signal-red" />
         </div>
-        <div className="mt-1.5 flex justify-between font-mono text-[11px]">
+        <div className="mt-1.5 flex justify-between font-mono text-xs">
           <span className="text-signal-blue">{result.home_team.name} {pct(p.home_win)}%</span>
           <span className="text-signal-red">{pct(p.away_win)}% {result.away_team.name}</span>
         </div>
@@ -58,7 +58,7 @@ export function MatchupHero({ result }: { result: SoccerPredictResponse }) {
         {/* xG strip */}
         <div className="mt-4 flex items-center justify-center gap-2 border-t border-terminal-border pt-3 font-mono text-sm">
           <span className="text-signal-blue font-semibold">{p.home_xg.toFixed(2)}</span>
-          <span className="text-[10px] uppercase tracking-widest text-zinc-500">expected goals</span>
+          <span className="text-xs uppercase tracking-widest text-zinc-500">expected goals</span>
           <span className="text-signal-red font-semibold">{p.away_xg.toFixed(2)}</span>
         </div>
       </div>

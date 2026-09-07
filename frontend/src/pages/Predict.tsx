@@ -41,7 +41,7 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 function OddsInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[10px] font-display uppercase tracking-widest text-zinc-500">{label}</span>
+      <span className="text-xs font-display uppercase tracking-widest text-zinc-500">{label}</span>
       <input
         type="number"
         step="0.01"
@@ -175,7 +175,7 @@ export function Predict() {
 
         {/* Venue — drives weather + altitude (e.g. Estadio Azteca at 2,240 m) */}
         <label className="flex flex-col gap-1">
-          <span className="text-[10px] font-display uppercase tracking-widest text-zinc-500">
+          <span className="text-xs font-display uppercase tracking-widest text-zinc-500">
             🏔 Venue (altitude &amp; weather)
           </span>
           <select
@@ -204,10 +204,10 @@ export function Predict() {
           onClick={() => runPrediction()}
           disabled={!home || !away || loading}
           className="
-            w-full rounded-lg bg-signal-amber px-4 py-2.5
-            font-display font-semibold text-terminal-bg
+            w-full rounded-lg bg-brand px-4 py-2.5
+            font-display font-semibold text-white
             disabled:opacity-40 disabled:cursor-not-allowed
-            hover:bg-blue-700 transition-colors
+            hover:bg-brand-strong transition-colors
           "
         >
           {loading ? 'Analysing…' : 'Run Prediction'}
@@ -318,7 +318,7 @@ export function Predict() {
                 </div>
               )}
 
-              <p className="text-[10px] text-zinc-600 italic">{result.data_warning}</p>
+              <p className="text-xs text-zinc-500 italic">{result.data_warning}</p>
             </Card>
           )}
 
@@ -357,7 +357,7 @@ export function Predict() {
                   <button
                     onClick={() => runPrediction(true)}
                     disabled={loading}
-                    className="w-full rounded-lg bg-signal-amber px-3 py-1.5 font-display font-semibold text-sm text-terminal-bg disabled:opacity-40 hover:bg-blue-700 transition-colors"
+                    className="w-full rounded-lg bg-brand px-3 py-1.5 font-display font-semibold text-sm text-white disabled:opacity-40 hover:bg-brand-strong transition-colors"
                   >
                     {loading ? '…' : 'Evaluate'}
                   </button>
@@ -416,7 +416,7 @@ export function Predict() {
           {activeTab === 'why' && (
             <Card title="">
               <WhyPanel factors={result.why_factors} />
-              <p className="text-[10px] text-zinc-600 italic pt-2">
+              <p className="text-xs text-zinc-500 italic pt-2">
                 Values show change in home-win probability relative to two equal teams at a neutral venue.
               </p>
             </Card>
