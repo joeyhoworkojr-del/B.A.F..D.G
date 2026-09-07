@@ -131,7 +131,8 @@ export const FAQ: FaqEntry[] = [
     category: 'Markets & odds',
     q: 'Where do the odds come from?',
     a: [
-      'From ESPN\'s public scoreboard feed, which carries the line a named provider is posting — usually ESPN BET. The provider is shown next to the numbers on every panel.',
+      'From ESPN\'s public scoreboard feed. That feed reports which sportsbook priced a given game — often ESPN BET or DraftKings — and StatEdge shows that name so you know where the number came from.',
+      'To be explicit: StatEdge has no relationship with any sportsbook. No partnership, no data agreement, no affiliate arrangement. Seeing a book named next to a line means ESPN reported that book\'s price, nothing more.',
       'StatEdge does not shop lines across books and does not claim to show the best available price.',
     ],
   },

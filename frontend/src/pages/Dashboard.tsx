@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { DataFreshnessBadge } from '../components/game/DataFreshnessBadge'
 import { FaqList } from '../components/faq/FaqList'
+import { oddsSourceSentence } from '../components/OddsSource'
 import { FAQ, FAQ_PREVIEW_IDS } from '../content/faq'
 import { api } from '../api/client'
 import type { TodayResponse, TodayGameOut, EdgeOut, AccuracyResponse, FootballLeague } from '../types'
@@ -360,7 +361,7 @@ export function Dashboard() {
         </section>
 
         <div className="flex flex-wrap items-center justify-center gap-2 pt-1 text-xs text-zinc-500">
-          <span>Lines via {data?.market_source || 'ESPN'}</span>
+          <span>{oddsSourceSentence(data?.market_source)}</span>
           <span aria-hidden="true">•</span>
           {/* Age comes from the payload's own timestamp — a running poll timer
               is not evidence that the data on screen is current. */}

@@ -96,6 +96,11 @@ export function About() {
           <li>League-calibrated power ratings for NFL and FBS college football</li>
         </ul>
         <p className="text-zinc-400">
+          ESPN’s feed reports which sportsbook priced each game, and StatEdge shows that
+          name so the number is traceable. StatEdge has no relationship with any
+          sportsbook — no partnership, no data agreement, no affiliate arrangement.
+        </p>
+        <p className="text-zinc-400">
           News headlines link back to the publisher. StatEdge shows the headline and the
           publisher’s own summary line only, and never republishes a full article. The model
           does not read news stories, so nothing on the site claims a headline moved a

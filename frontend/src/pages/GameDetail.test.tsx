@@ -67,7 +67,9 @@ describe('Game Center — pregame', () => {
   it('always shows the source and freshness', async () => {
     vi.spyOn(api, 'gameDetail').mockResolvedValue(gameDetail())
     renderAt('/game/ncaaf/401752')
-    expect((await screen.findAllByText('ESPN BET')).length).toBeGreaterThan(0)
+    // Attributed to the feed we actually use, with the book named only as the
+    // line's origin — printing "ESPN BET" alone reads as a partnership.
+    expect((await screen.findAllByText('ESPN (ESPN BET line)')).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/Updated .* ago/).length).toBeGreaterThan(0)
   })
 })

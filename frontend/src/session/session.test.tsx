@@ -193,3 +193,24 @@ describe('Partial payloads', () => {
     expect(screen.getByText(/0 predictions/i)).toBeInTheDocument()
   })
 })
+
+describe('Odds attribution', () => {
+  it('names the feed, not the sportsbook, as the source', async () => {
+    const { oddsSourceLabel } = await import('../components/OddsSource')
+    // "DraftKings" alone implies a relationship StatEdge does not have.
+    expect(oddsSourceLabel('DraftKings')).toBe('ESPN (DraftKings line)')
+    expect(oddsSourceLabel('ESPN BET')).toBe('ESPN (ESPN BET line)')
+  })
+
+  it('does not double up when the feed is its own source', async () => {
+    const { oddsSourceLabel } = await import('../components/OddsSource')
+    expect(oddsSourceLabel('ESPN')).toBe('ESPN')
+    expect(oddsSourceLabel('')).toBe('ESPN')
+    expect(oddsSourceLabel(null)).toBe('ESPN')
+  })
+
+  it('states plainly that there is no sportsbook relationship', async () => {
+    const { oddsSourceSentence } = await import('../components/OddsSource')
+    expect(oddsSourceSentence('DraftKings')).toContain('no relationship')
+  })
+})

@@ -13,6 +13,7 @@ import { LineMovementChart } from '../components/game/LineMovementChart'
 import { MakeYourPick } from '../components/picks/MakeYourPick'
 import { GameCommunity } from '../components/picks/GameCommunity'
 import { useGameCommunity } from '../hooks/useGameCommunity'
+import { oddsSourceLabel } from '../components/OddsSource'
 import { LiveWinProbabilityChart } from '../components/game/LiveWinProbabilityChart'
 import { LockedPremiumPanel } from '../components/game/LockedPremiumPanel'
 import type { Point } from '../components/game/MiniChart'
@@ -184,7 +185,7 @@ export function GameDetail() {
               emptyMessage="No lines are posted for this game yet, so there is nothing to compare."
               refreshing={refreshing}
               fetchedAt={data?.fetched_at}
-              source={data?.source}
+              source={oddsSourceLabel(data?.source)}
               sourceOk={data?.source_ok}
               actions={markets.length > 0 && (
                 <MarketSelector markets={markets} active={active} onChange={selectMarket} panelId={MARKET_PANEL_ID} />
@@ -236,7 +237,7 @@ export function GameDetail() {
           <div className="min-w-0 space-y-4">
             {live && (
               <Panel title="Live win probability" refreshing={refreshing}
-                     fetchedAt={data?.fetched_at} source={data?.source} sourceOk={data?.source_ok}
+                     fetchedAt={data?.fetched_at} source={oddsSourceLabel(data?.source)} sourceOk={data?.source_ok}
                      staleAfterSeconds={45}>
                 <div className="space-y-4">
                   <div className="flex items-baseline justify-between">
@@ -254,7 +255,7 @@ export function GameDetail() {
                      subtitle="Model projection before kickoff — not a live score."
                      state={data?.model ? 'ready' : loading ? 'loading' : 'empty'}
                      emptyMessage="No projection until this matchup is mapped to the model."
-                     fetchedAt={data?.fetched_at} source={data?.source} sourceOk={data?.source_ok}>
+                     fetchedAt={data?.fetched_at} source={oddsSourceLabel(data?.source)} sourceOk={data?.source_ok}>
                 {data?.model && (
                   <div className="space-y-3">
                     <p className="font-mono text-3xl font-black tabular-nums text-zinc-100">

@@ -1,5 +1,6 @@
 import type { BestEdgeOut, GradeBand, ProbabilityKind } from '../../types'
 import { DataFreshnessBadge } from './DataFreshnessBadge'
+import { oddsSourceLabel } from '../OddsSource'
 
 const KIND_LABEL: Record<ProbabilityKind, string> = {
   win: 'Model win probability',
@@ -57,7 +58,7 @@ export function PrimaryEdgeCard({
         <h2 id="primary-edge-heading" className="text-sm font-bold text-zinc-100">
           Best available edge
         </h2>
-        <DataFreshnessBadge fetchedAt={fetchedAt} source={edge.source} ok={sourceOk} />
+        <DataFreshnessBadge fetchedAt={fetchedAt} source={oddsSourceLabel(edge.source)} ok={sourceOk} />
       </div>
 
       <div className="flex flex-wrap items-end justify-between gap-4">
