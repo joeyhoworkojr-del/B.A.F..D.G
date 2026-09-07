@@ -10,12 +10,15 @@ from src.api.schemas import (
     AllScoreboardsOut,
     KeyPlayerOut,
     LiveGameOut,
+    NewsFeedOut,
+    NewsItemOut,
     PlayByPlayOut,
     PlayOut,
     ScoreboardOut,
     SetPlayerStatusRequest,
 )
 from src.data import lineups
+from src.ingest.news import fetch_news, fetch_news_multi
 from src.ingest.espn import (
     LEAGUE_PATHS,
     fetch_playbyplay,
@@ -165,6 +168,37 @@ async def get_play_by_play(league: str, event_id: str) -> PlayByPlayOut:
         league=feed.league, event_id=feed.event_id, ok=feed.ok,
         plays=[PlayOut(**p.__dict__) for p in feed.plays],
         fetched_at=feed.fetched_at,
+    )
+
+
+@router.get("/news", response_model=NewsFeedOut, tags=["News"])
+async def get_news(league: str = "all", limit: int = 30) -> NewsFeedOut:
+    """
+    Latest NFL / college-football headlines from ESPN's keyless news feed.
+
+    Only the headline, ESPN's own summary line, the byline and a link back to
+    the article are returned — full article bodies are never reproduced. The
+    model does not read these stories, so every item carries
+    `reflected_in_projection=False`; the UI must say so rather than implying a
+    projection moved because of a headline.
+    """
+    limit = max(1, min(limit, 50))
+    key = league.lower()
+    if key in ("all", "football"):
+        feed = await fetch_news_multi(FOOTBALL_LEAGUES, limit=limit)
+    elif key in FOOTBALL_LEAGUES:
+        feed = await fetch_news(key, limit=limit)
+    else:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown league {league!r}; expected 'all' or one of {list(FOOTBALL_LEAGUES)}",
+        )
+    return NewsFeedOut(
+        league=feed.league,
+        items=[NewsItemOut(**item.__dict__) for item in feed.items],
+        fetched_at=feed.fetched_at,
+        ok=feed.ok,
+        source=feed.source,
     )
 
 

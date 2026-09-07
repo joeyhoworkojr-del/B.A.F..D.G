@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.api.routes.predictions import router as pred_router
+from src.api.routes.account import router as account_router
 from src.api.routes.live import router as live_router
 from src.api.schemas import HealthResponse
 from src.config import settings
@@ -93,6 +94,7 @@ app.add_middleware(
 
 app.include_router(pred_router, prefix="/api/v1")
 app.include_router(live_router, prefix="/api/v1")
+app.include_router(account_router, prefix="/api/v1")
 
 
 # ─── Caching ──────────────────────────────────────────────────────────────────
@@ -110,6 +112,12 @@ _CACHE_RULES: tuple[tuple[str, str], ...] = (
     ("/api/v1/best-bets", "public, max-age=30, stale-while-revalidate=90"),
     ("/api/v1/best-parlay", "public, max-age=30, stale-while-revalidate=90"),
     ("/api/v1/accuracy", "public, max-age=60, stale-while-revalidate=300"),
+    ("/api/v1/news", "public, max-age=120, stale-while-revalidate=600"),
+    ("/api/v1/props", "public, max-age=300"),
+    # Entitlements are per-caller. Even while every caller is anonymous, a
+    # shared cache here would leak one person's plan to the next once auth
+    # lands, so this is never stored.
+    ("/api/v1/entitlements", "private, no-store"),
     ("/api/v1/teams/", "public, max-age=300"),
     ("/api/v1/rankings/", "public, max-age=300"),
 )
