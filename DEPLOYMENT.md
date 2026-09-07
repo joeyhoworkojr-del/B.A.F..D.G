@@ -237,6 +237,31 @@ Project settings that matter:
 Changing the API host means editing the two rewrite destinations in
 `frontend/vercel.json`.
 
+### If sign-in doesn't persist on statedge.ca
+
+The session is an httpOnly cookie set by the API on Fly. The SPA is served from
+Vercel and `/api` is rewritten to Fly, so the browser sees one origin and a
+`SameSite=Lax` cookie is correct.
+
+If that rewrite ever stops forwarding cookies, sign-in appears to succeed and
+then the user is treated as a guest — which also makes Make Your Pick sit on
+"Create free account" forever, because the two symptoms share one cause.
+
+`GET /api/v1/auth/me` reports which cookie names reached the process, so
+"the proxy dropped it" and "the browser never stored it" can be told apart.
+
+Two ways out:
+
+- **Point the frontend straight at the API.** Set `VITE_API_BASE` to
+  `https://statedge-api.fly.dev` in Vercel, and on Fly set
+  `SESSION_SAMESITE=none`. That combination is genuinely cross-site, so a Lax
+  cookie would never be sent; `none` forces Secure on and CORS already allows
+  statedge.ca with credentials. It weakens CSRF protection, which is why it is
+  not the default.
+- **Serve everything from Fly.** The API image already contains the SPA, so
+  pointing statedge.ca at the Fly app removes the hop entirely and keeps the
+  stricter cookie.
+
 ### What does *not* move
 
 The API cannot go serverless as-is without replacing two things first:

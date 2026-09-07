@@ -30,6 +30,17 @@ SESSION_DAYS = int(os.getenv("SESSION_DAYS", "30"))
 # Secure cookie is simply never sent, which would make login appear broken.
 SECURE_COOKIES = os.getenv("ENV", "development").lower() == "production"
 
+# "lax" is correct when the API is same-origin with the site — which it is when
+# /api is proxied — and it blocks cross-site POSTs, so it is the safer default.
+#
+# It is also wrong the moment the browser talks to the API host directly:
+# statedge.ca calling statedge-api.fly.dev is cross-site, and a Lax cookie is
+# simply not sent, which presents as being signed out immediately after signing
+# in. Set SESSION_SAMESITE=none for that topology. None requires Secure, so it
+# is only honoured over HTTPS.
+_SAMESITE = os.getenv("SESSION_SAMESITE", "lax").strip().lower()
+SAMESITE = _SAMESITE if _SAMESITE in ("lax", "strict", "none") else "lax"
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
@@ -94,8 +105,10 @@ def cookie_kwargs(expires_iso: str) -> dict:
     return {
         "key": SESSION_COOKIE,
         "httponly": True,
-        "samesite": "lax",
-        "secure": SECURE_COOKIES,
+        "samesite": SAMESITE,
+        # SameSite=None is meaningless without Secure and browsers reject the
+        # pair, so None forces Secure on regardless of environment.
+        "secure": SECURE_COOKIES or SAMESITE == "none",
         "path": "/",
         "max_age": SESSION_DAYS * 24 * 3600,
     }
