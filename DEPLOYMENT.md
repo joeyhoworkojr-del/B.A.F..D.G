@@ -117,14 +117,24 @@ Until then the record is SQLite on the container's own disk, which Fly replaces
 on every deploy, so it silently restarts each release. The Results page says so
 in an amber notice, and `/api/v1/accuracy` reports `storage_durable: false`.
 
-To make it durable, either:
+To make it durable, pick one:
 
-- **Managed Postgres (recommended).** Create one (Neon, Supabase, or
+- **Upstash Redis (works with Vercel's marketplace).** Provision it, then set
+  the connection string on **Fly**, not Vercel:
+  `fly secrets set REDIS_URL='rediss://default:<token>@<host>:6379' --app statedge-api`.
+  `UPSTASH_REDIS_URL` and `KV_URL` are also read. The conditional upsert and
+  the grade run as Lua inside Redis, so they stay atomic.
+
+- **Managed Postgres.** Create one (Neon, Supabase, or
   `fly postgres create`) and set `DATABASE_URL` to its connection string:
   `fly secrets set DATABASE_URL='postgresql://...' --app statedge-api`.
   The schema is created on first connect; no migration step to run.
 - **A Fly volume.** Mount one, set `LEDGER_PATH=/data/ledger.db`, and set
   `LEDGER_DURABLE=1` so the UI stops warning. Note the history below.
+
+**The variable goes on Fly, not Vercel.** Vercel serves the SPA and proxies
+`/api` to Fly; the API process — the only thing that touches storage — runs on
+Fly. A database URL set only in Vercel's dashboard has no effect.
 - Two previous attempts to attach a volume to this app failed
   (`insufficient resources to create new machine with existing volume` in
   `dfw`), and the automated migration took the app down because it destroyed

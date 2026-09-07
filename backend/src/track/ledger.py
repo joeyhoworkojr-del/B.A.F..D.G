@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from . import db
+from .store import build_store
 
 _LOCK = threading.Lock()
 
@@ -84,13 +85,35 @@ def _db_path() -> str:
 
 
 def _connect():
-    """A ready connection on whichever backend is configured."""
+    """A ready connection on whichever SQL backend is configured."""
     return db.connect(_SCHEMA, _MIGRATIONS, "predictions")
 
 
+_store = None
+
+
+def _get_store():
+    """
+    The row store, chosen from the environment on first use.
+
+    Resolved lazily rather than at import so tests (and a deploy that sets its
+    variables late) can change backend without reimporting the module.
+    """
+    global _store
+    if _store is None:
+        _store = build_store(_SCHEMA, _MIGRATIONS, "predictions")
+    return _store
+
+
+def reset_store() -> None:
+    """Test seam: forget the resolved backend so the next call re-reads the env."""
+    global _store
+    _store = None
+
+
 def storage_backend() -> str:
-    """"sqlite" or "postgres" — surfaced so the record can state its durability."""
-    return db.backend_name()
+    """"sqlite", "postgres" or "redis" — so the record can state its durability."""
+    return _get_store().backend
 
 
 def storage_durable() -> bool:
@@ -101,7 +124,7 @@ def storage_durable() -> bool:
     each release. The UI must not present a graded record as permanent when the
     storage behind it is not.
     """
-    return db.is_postgres() or bool(os.getenv("LEDGER_DURABLE"))
+    return _get_store().durable or bool(os.getenv("LEDGER_DURABLE"))
 
 
 def _now() -> str:
@@ -140,63 +163,29 @@ def record_pregame(
     the same `model_version`. A newer model therefore cannot silently rewrite a
     prediction an older model already made and is being judged on.
     """
-    with _LOCK, _connect() as conn:
-        conn.execute(
-            """
-            INSERT INTO predictions (
-                event_id, league, kickoff, home, away, snapshot_at,
-                model_home_prob, model_total, book_home_prob,
-                crowd_home_prob, market_spread, market_total,
-                home_code, away_code, home_elo, away_elo, consensus_home_prob,
-                model_version, book_source
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(event_id) DO UPDATE SET
-                snapshot_at     = excluded.snapshot_at,
-                model_home_prob = excluded.model_home_prob,
-                model_total     = excluded.model_total,
-                book_home_prob  = excluded.book_home_prob,
-                crowd_home_prob = excluded.crowd_home_prob,
-                market_spread   = excluded.market_spread,
-                market_total    = excluded.market_total,
-                home_code       = excluded.home_code,
-                away_code       = excluded.away_code,
-                home_elo        = excluded.home_elo,
-                away_elo        = excluded.away_elo,
-                consensus_home_prob = excluded.consensus_home_prob,
-                book_source     = excluded.book_source
-            WHERE predictions.graded = 0
-              AND (predictions.model_version IS NULL
-                   OR predictions.model_version = excluded.model_version)
-            """,
-            (event_id, league, kickoff, home, away, _now(),
-             model_home_prob, model_total, book_home_prob,
-             crowd_home_prob, market_spread, market_total,
-             home_code, away_code, home_elo, away_elo, consensus_home_prob,
-             model_version, book_source),
-        )
+    with _LOCK:
+        _get_store().upsert_pregame({
+            "event_id": event_id, "league": league, "kickoff": kickoff,
+            "home": home, "away": away, "snapshot_at": _now(),
+            "model_home_prob": model_home_prob, "model_total": model_total,
+            "book_home_prob": book_home_prob, "crowd_home_prob": crowd_home_prob,
+            "market_spread": market_spread, "market_total": market_total,
+            "home_code": home_code, "away_code": away_code,
+            "home_elo": home_elo, "away_elo": away_elo,
+            "consensus_home_prob": consensus_home_prob,
+            "model_version": model_version, "book_source": book_source,
+        })
 
 
 def grade(event_id: str, home_score: int, away_score: int) -> bool:
     """Grade a stored snapshot against the final score. Ties are ignored."""
     if home_score == away_score:
         return False
-    with _LOCK, _connect() as conn:
-        cur = conn.execute(
-            """
-            UPDATE predictions
-            SET graded = 1, home_score = ?, away_score = ?,
-                home_won = ?, graded_at = ?,
-                -- Freeze the line as it last stood pre-kickoff: that is the
-                -- closing number the prediction is judged against.
-                closing_spread    = COALESCE(closing_spread, market_spread),
-                closing_total     = COALESCE(closing_total, market_total),
-                closing_home_prob = COALESCE(closing_home_prob, book_home_prob)
-            WHERE event_id = ? AND graded = 0
-            """,
-            (home_score, away_score,
-             1 if home_score > away_score else 0, _now(), event_id),
+    with _LOCK:
+        return _get_store().mark_graded(
+            event_id, home_score, away_score,
+            1 if home_score > away_score else 0, _now(),
         )
-        return cur.rowcount > 0
 
 
 def grade_board(league: str, games) -> int:
@@ -229,13 +218,10 @@ def _brier(rows: list[Any], col: str) -> Optional[dict]:
 
 def accuracy_summary() -> dict:
     """Head-to-head scorecard: model vs book vs crowd on identical games."""
-    with _LOCK, _connect() as conn:
-        rows = conn.execute(
-            "SELECT * FROM predictions WHERE graded = 1",
-        ).fetchall()
-        pending = conn.execute(
-            "SELECT COUNT(*) AS n FROM predictions WHERE graded = 0",
-        ).fetchone()["n"]
+    with _LOCK:
+        store = _get_store()
+        rows = store.rows(graded=True)
+        pending = store.count(graded=False)
 
     leagues: dict[str, list[Any]] = {}
     for r in rows:
@@ -286,10 +272,10 @@ def performance() -> dict:
     older rows. `avg_edge_pp` still measures the raw model's divergence from the
     book on the bet side, so we can see what the model adds.
     """
-    with _LOCK, _connect() as conn:
-        rows = conn.execute(
-            "SELECT * FROM predictions WHERE graded = 1 ORDER BY graded_at ASC",
-        ).fetchall()
+    with _LOCK:
+        rows = _get_store().rows(graded=True)
+    # Oldest first, so the P/L series reads left to right.
+    rows.sort(key=lambda r: (r.get("graded_at") or ""))
 
     series: list[float] = []
     cum = 0.0
@@ -336,26 +322,18 @@ def get_snapshot(event_id: str) -> Optional[dict]:
     never recomputes, so a graded call can be compared against the closing line
     exactly as it was made.
     """
-    with _LOCK, _connect() as conn:
-        row = conn.execute(
-            "SELECT * FROM predictions WHERE event_id = ?", (event_id,),
-        ).fetchone()
-    return dict(row) if row else None
+    with _LOCK:
+        return _get_store().get(event_id)
 
 
 def recent_graded(limit: int = 25) -> list[dict]:
-    with _LOCK, _connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT * FROM predictions WHERE graded = 1
-            ORDER BY graded_at DESC LIMIT ?
-            """,
-            (limit,),
-        ).fetchall()
-    return [dict(r) for r in rows]
+    with _LOCK:
+        rows = _get_store().rows(graded=True)
+    rows.sort(key=lambda r: (r.get("graded_at") or ""), reverse=True)
+    return rows[:limit]
 
 
 def reset() -> None:
     """Test helper — wipe the ledger."""
-    with _LOCK, _connect() as conn:
-        conn.execute("DELETE FROM predictions")
+    with _LOCK:
+        _get_store().clear()
