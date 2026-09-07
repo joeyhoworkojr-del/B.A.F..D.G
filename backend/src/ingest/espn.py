@@ -263,7 +263,11 @@ class GameFeed:
 
 
 _feed_cache: dict[str, tuple[float, list[PlayItem]]] = {}
-_FEED_TTL = 8.0   # live drives move fast — keep the feed genuinely live
+# Plays land on ESPN's feed within a couple of seconds of the whistle. An 8s
+# cache put us a whole play behind on a hurry-up drive, so this is tightened to
+# roughly the source's own publish granularity. It still collapses a burst of
+# viewers on the same game into one upstream fetch.
+_FEED_TTL = 2.5
 
 
 def _play_item(p: dict, team_abbr: str = "") -> PlayItem:

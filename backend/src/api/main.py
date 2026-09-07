@@ -106,7 +106,10 @@ app.include_router(account_router, prefix="/api/v1")
 # background. TTLs stay at or below the upstream cache windows so a response is
 # never fresher-looking than the data behind it.
 _CACHE_RULES: tuple[tuple[str, str], ...] = (
-    ("/api/v1/live/pbp/", "public, max-age=8, stale-while-revalidate=30"),
+    # Browser cache and server cache stack: an 8s max-age on top of an 8s
+    # server TTL meant a play could be 16s old before anything refetched.
+    # Two seconds keeps a burst of tabs cheap without adding visible lag.
+    ("/api/v1/live/pbp/", "public, max-age=2, stale-while-revalidate=10"),
     ("/api/v1/live/scores", "public, max-age=15, stale-while-revalidate=45"),
     ("/api/v1/game/", "public, max-age=10, stale-while-revalidate=30"),
     ("/api/v1/today/", "public, max-age=15, stale-while-revalidate=45"),

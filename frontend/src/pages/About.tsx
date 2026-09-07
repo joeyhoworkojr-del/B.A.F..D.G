@@ -106,13 +106,15 @@ export function About() {
       <section className="space-y-3">
         <H2 id="privacy">Privacy</H2>
         <p>
-          There are no accounts, so StatEdge holds no personal data — no names, no email
-          addresses, no passwords. Nothing you do here is tied to an identity.
+          StatEdge collects nothing about you. There are no accounts, so there are no
+          names, email addresses or passwords. There is no analytics script, no advertising
+          network and no third-party tracker on any page.
         </p>
         <p>
-          Two small preferences are kept in your own browser: which notifications you have
-          already seen, and lightweight UI state. That data stays on your device, is never
-          sent to the server, and clearing your browser data removes it.
+          Nothing is written to your browser either — no cookies, no local storage, no
+          fingerprinting. Close the tab and no trace of your visit remains, on your device
+          or on ours. The only thing the server keeps is the model's own prediction record,
+          which is about games, not people.
         </p>
       </section>
 

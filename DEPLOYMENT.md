@@ -177,13 +177,26 @@ Required:
   projects team scores and game totals only, so props would need new
   modelling work, not just a feed.
 
-### 4. Push and email alerts
+### 4. Visitor analytics
+
+Not built, on purpose. StatEdge collects nothing about visitors: no analytics
+script, no third-party tracker, no cookies, no local storage, and nothing about
+a person on the server. A frontend test walks the source and fails the build if
+`localStorage`, `sessionStorage` or `document.cookie` reappears, so the privacy
+claim on the About page cannot quietly stop being true.
+
+A staff dashboard of site activity would require collecting that data. If it is
+wanted later, the honest version is aggregate counters only — a per-day count
+per route, with no identifier, no IP and no session — which keeps the "nothing
+about you" claim intact.
+
+### 5. Push and email alerts
 
 The in-app notification centre works today and lists the graded edges the
 model is currently publishing. Delivering alerts off-site needs an account to
 deliver them to, so this is blocked on §1 and §2.
 
-### 5. Billing
+### 6. Billing
 
 Not implemented, and deliberately so — this release is free. Entitlements
 already resolve server-side with `billing_enabled=false`, so a paid tier can

@@ -205,3 +205,41 @@ describe('PropsTable', () => {
     expect(container).toBeEmptyDOMElement()
   })
 })
+
+describe('Privacy — nothing is collected', () => {
+  it('the app writes nothing to browser storage', async () => {
+    // A guard, not a formality: this is the claim the About page makes, and a
+    // single localStorage call somewhere would quietly make it false.
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+    const root = path.resolve(process.cwd(), 'src')
+
+    const walk = (dir: string): string[] =>
+      fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => {
+        const full = path.join(dir, e.name)
+        if (e.isDirectory()) return walk(full)
+        return /\.tsx?$/.test(e.name) && !/\.test\./.test(e.name) ? [full] : []
+      })
+
+    const offenders = walk(root).filter(f => {
+      const src = fs.readFileSync(f, 'utf8')
+      // Strip comments so prose explaining what we don't do doesn't trip this.
+      const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+      return /\b(localStorage|sessionStorage|document\.cookie)\b/.test(code)
+    })
+
+    expect(offenders).toEqual([])
+  })
+})
+
+describe('Live play-by-play cadence', () => {
+  it('polls plays faster than the model', async () => {
+    const { POLL_PBP_LIVE_MS, POLL_LIVE_MS } = await import('../hooks/useGameDetail')
+    expect(POLL_PBP_LIVE_MS).toBeLessThan(POLL_LIVE_MS)
+  })
+
+  it('keeps the play loop under four seconds so a drive reads as live', async () => {
+    const { POLL_PBP_LIVE_MS } = await import('../hooks/useGameDetail')
+    expect(POLL_PBP_LIVE_MS).toBeLessThanOrEqual(4_000)
+  })
+})

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
 import type { BestBetsResponse } from '../types'
 
-const STORAGE_KEY = 'statedge.notifications.read'
 const POLL_MS = 120_000
 
 export interface Notice {
@@ -12,22 +11,6 @@ export interface Notice {
   href: string
   at: string
   tone: 'edge' | 'info'
-}
-
-/** Read-state is a per-device convenience, never an identity or an entitlement. */
-function loadRead(): Set<string> {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    return new Set<string>(raw ? JSON.parse(raw) : [])
-  } catch {
-    return new Set()
-  }
-}
-
-function saveRead(ids: Set<string>) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([...ids].slice(-200)))
-  } catch { /* private mode — read state simply doesn't persist */ }
 }
 
 function noticesFrom(bets: BestBetsResponse): Notice[] {
@@ -51,12 +34,15 @@ function noticesFrom(bets: BestBetsResponse): Notice[] {
  *
  * Every notice is derived from something the model actually produced — a graded
  * edge currently on the board — rather than being invented to fill the panel.
- * Nothing is pushed to a device: there is no per-user storage to subscribe
- * against, so this is a view of the current slate, with read-state kept locally.
+ *
+ * Nothing is stored, anywhere. Read-state lives in memory for the current tab
+ * only: StatEdge writes nothing to your browser and keeps nothing about you on
+ * the server, so there is no record of what you looked at to keep or to leak.
  */
 export function useNotifications() {
   const [notices, setNotices] = useState<Notice[]>([])
-  const [read, setRead] = useState<Set<string>>(loadRead)
+  // In-memory only — deliberately resets with the tab.
+  const [read, setRead] = useState<Set<string>>(() => new Set())
   const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(() => {
@@ -75,7 +61,6 @@ export function useNotifications() {
     setRead(prev => {
       const next = new Set(prev)
       notices.forEach(n => next.add(n.id))
-      saveRead(next)
       return next
     })
   }, [notices])
