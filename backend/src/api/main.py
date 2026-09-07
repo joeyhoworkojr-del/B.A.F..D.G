@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from src.api.routes.predictions import router as pred_router
 from src.api.routes.account import router as account_router
 from src.api.routes.auth import router as auth_router
+from src.api.routes.picks import router as picks_router
 from src.api.routes.live import router as live_router
 from src.api.schemas import HealthResponse
 from src.config import settings
@@ -98,6 +99,7 @@ app.include_router(pred_router, prefix="/api/v1")
 app.include_router(live_router, prefix="/api/v1")
 app.include_router(account_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")
+app.include_router(picks_router, prefix="/api/v1")
 
 
 # ─── Caching ──────────────────────────────────────────────────────────────────
@@ -125,6 +127,7 @@ _CACHE_RULES: tuple[tuple[str, str], ...] = (
     # lands, so this is never stored.
     ("/api/v1/entitlements", "private, no-store"),
     ("/api/v1/auth/", "private, no-store"),
+    ("/api/v1/picks/mine", "private, no-store"),
     ("/api/v1/teams/", "public, max-age=300"),
     ("/api/v1/rankings/", "public, max-age=300"),
 )
