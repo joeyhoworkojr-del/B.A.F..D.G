@@ -187,9 +187,13 @@ token is involved — Vercel builds from the repo.
 
 Project settings that matter:
 
-- **Root Directory: `frontend`.** Without it Vercel builds the repo root and
-  fails. Everything else (Vite preset, `npm run build`, `dist/`) is detected,
-  and `frontend/vercel.json` pins it anyway.
+- **Root Directory: either setting works.** There are two `vercel.json` files
+  and Vercel reads whichever matches the configured root: the one at the repo
+  root builds `frontend/` explicitly, the one in `frontend/` builds in place.
+  Their `rewrites` and `headers` are identical and must be kept in sync — a
+  test asserts it.
+- **The custom domain serves `main`.** Preview deployments get their own URL;
+  `statedge.ca` only changes when a commit lands on the production branch.
 - **No `VITE_API_BASE` needed.** The app is same-origin by default and
   `vercel.json` rewrites `/api/*` and `/health` to
   `https://statedge-api.fly.dev`, so the browser never makes a cross-origin

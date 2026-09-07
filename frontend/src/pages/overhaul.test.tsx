@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
+import fs from 'node:fs'
+import path from 'node:path'
 import { NewsCard } from '../components/news/NewsCard'
 import { FaqList } from '../components/faq/FaqList'
 import { FAQ, FAQ_PREVIEW_IDS } from '../content/faq'
@@ -172,5 +174,35 @@ describe('Props — honest about a missing provider', () => {
     wrap(<Props />)
     await screen.findByText(/aren’t available yet/i)
     await waitFor(() => expect(screen.queryByRole('table')).not.toBeInTheDocument())
+  })
+})
+
+describe('Vercel config', () => {
+  // vitest runs with `frontend/` as its root, so both files resolve from cwd.
+  const read = (rel: string) =>
+    JSON.parse(fs.readFileSync(path.resolve(process.cwd(), rel), 'utf8'))
+
+  it('keeps both vercel.json files in sync', () => {
+    // Vercel reads whichever file matches the project's Root Directory. If the
+    // two drift, the deployment behaves differently depending on a dashboard
+    // setting nobody remembers changing.
+    const root = read('../vercel.json')
+    const fe = read('vercel.json')
+    expect(root.rewrites).toEqual(fe.rewrites)
+    expect(root.headers).toEqual(fe.headers)
+  })
+
+  it('proxies the API before falling back to the SPA', () => {
+    for (const rel of ['../vercel.json', 'vercel.json']) {
+      const sources = read(rel).rewrites.map((r: { source: string }) => r.source)
+      expect(sources[0]).toBe('/api/:path*')
+      // The catch-all must come last or it swallows /api.
+      expect(sources.indexOf('/(.*)')).toBe(sources.length - 1)
+    }
+  })
+
+  it('builds the frontend regardless of which root Vercel uses', () => {
+    expect(read('../vercel.json').outputDirectory).toBe('frontend/dist')
+    expect(read('vercel.json').outputDirectory).toBe('dist')
   })
 })
