@@ -24,9 +24,17 @@ class Settings(BaseSettings):
     # ── API ───────────────────────────────────────────────────────────────────
     api_host: str = Field(default="0.0.0.0", alias="API_HOST")
     api_port: int = Field(default=8000, alias="API_PORT")
+    # The app normally runs same-origin (the API serves the SPA, and on Vercel a
+    # rewrite proxies /api to this host), so CORS is only exercised when the
+    # frontend is pointed at the absolute API URL instead. Vercel preview
+    # deployments get a fresh subdomain each time, hence the regex.
     cors_origins: list[str] = Field(
         default=["http://localhost:5173", "http://localhost:4173"],
         alias="CORS_ORIGINS",
+    )
+    cors_origin_regex: str = Field(
+        default=r"https://.*\.vercel\.app",
+        alias="CORS_ORIGIN_REGEX",
     )
 
     # ── Model params (soccer Elo-Poisson) ─────────────────────────────────────

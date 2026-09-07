@@ -178,3 +178,38 @@ be introduced later without changing how features are gated.
 | `AUTH_PROVIDER` | *(unset)* | Names the identity provider. While unset, `/api/v1/entitlements` reports `auth_configured=false` and every caller is anonymous on the free plan. |
 | `PROPS_PROVIDER` | *(unset)* | Names the player-props odds integration. |
 | `PROPS_API_KEY` | *(unset)* | Credential for that provider. |
+
+## Vercel (frontend) + Fly (API)
+
+The SPA is deployed from Vercel's GitHub integration; the API stays on Fly,
+where the snapshot loop and the in-process ESPN caches keep working. No Vercel
+token is involved — Vercel builds from the repo.
+
+Project settings that matter:
+
+- **Root Directory: `frontend`.** Without it Vercel builds the repo root and
+  fails. Everything else (Vite preset, `npm run build`, `dist/`) is detected,
+  and `frontend/vercel.json` pins it anyway.
+- **No `VITE_API_BASE` needed.** The app is same-origin by default and
+  `vercel.json` rewrites `/api/*` and `/health` to
+  `https://statedge-api.fly.dev`, so the browser never makes a cross-origin
+  request and CORS never applies. Set `VITE_API_BASE` only if you deliberately
+  want the bundle to call the Fly host directly.
+- If you do set it to the absolute Fly URL, CORS covers Vercel already:
+  `CORS_ORIGIN_REGEX` defaults to `https://.*\.vercel\.app`, which matches
+  preview deployments too. A custom domain needs adding to `CORS_ORIGINS`.
+
+Changing the API host means editing the two rewrite destinations in
+`frontend/vercel.json`.
+
+### What does *not* move
+
+The API cannot go serverless as-is without replacing two things first:
+
+- The snapshot loop in `src/api/main.py` runs in the FastAPI lifespan and only
+  exists while a long-lived process does. On serverless it stops silently and
+  the track record stops recording. It would need a scheduled invocation of a
+  `/internal/snapshot` route instead.
+- The SQLite ledger would land on per-instance `/tmp`, so the record would
+  fragment across instances — worse than today's single ephemeral copy.
+  Postgres is a prerequisite, not an optimisation.

@@ -22,9 +22,13 @@ import type {
   PropsOut,
 } from '../types'
 
-// Strip trailing slashes so VITE_API_BASE="/" (same-origin via nginx proxy)
-// yields "/api/v1/..." and not a protocol-relative "//api/v1/..." URL.
-const BASE = (import.meta.env.VITE_API_BASE ?? 'http://localhost:8000').replace(/\/+$/, '')
+// Same-origin by default. Vite's dev server proxies /api to :8000, the Docker
+// image serves the SPA from the API process, and on Vercel the rewrites in
+// vercel.json forward /api to the Fly API — so an unset VITE_API_BASE is
+// correct in every environment rather than pointing at localhost.
+// Trailing slashes are stripped so VITE_API_BASE="/" yields "/api/v1/..." and
+// not a protocol-relative "//api/v1/..." URL.
+const BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/+$/, '')
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, init)
