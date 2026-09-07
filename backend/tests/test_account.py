@@ -22,8 +22,9 @@ def test_granted_features_are_only_ones_the_server_can_serve():
     # Anything not implemented must report False regardless of plan, so the UI
     # can never advertise a feature the backend cannot serve.
     assert features["alerts"] is False
-    assert features["player_props"] is False
     assert features["saved_games"] is False
+    # Projections are implemented, so this one is genuinely available.
+    assert features["player_props"] is True
     assert features["line_movement_history"] is True
 
 
@@ -34,19 +35,12 @@ def test_every_withheld_feature_explains_itself():
         assert body["unavailable_reason"].get(key), f"{key} withheld without a reason"
 
 
-def test_props_report_unavailable_rather_than_inventing_lines():
+def test_props_serve_projections_but_admit_lines_are_missing():
     body = client.get("/api/v1/props").json()
-    assert body["available"] is False
-    assert body["props"] == []
+    assert body["available"] is True        # projections are served
+    assert body["lines_available"] is False  # posted lines are not
     assert body["reason"]
     assert len(body["requires"]) >= 2
-
-
-def test_props_for_a_game_are_also_unavailable_not_faked():
-    body = client.get("/api/v1/props/ncaaf/401752").json()
-    assert body["available"] is False
-    assert body["props"] == []
-    assert body["event_id"] == "401752"
 
 
 def test_news_route_rejects_unknown_leagues():

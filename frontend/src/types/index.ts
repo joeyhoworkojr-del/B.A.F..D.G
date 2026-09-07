@@ -585,9 +585,46 @@ export interface EntitlementsOut {
 
 export interface PropsOut {
   available: boolean
+  lines_available: boolean
   league: string
   event_id: string
   props: unknown[]
   reason: string
   requires: string[]
+}
+
+// ─── Player prop projections ──────────────────────────────────────────────────
+
+export interface PropProjectionOut {
+  athlete_id: string
+  player: string
+  team_abbr: string
+  position: string
+  market: string
+  label: string
+  projection: number
+  season_avg: number
+  games_played: number
+  /** True once the game is under way: this is what happened, not a forecast. */
+  actual: boolean
+}
+
+export interface GamePropsOut {
+  league: string
+  event_id: string
+  status: 'pre' | 'in' | 'post'
+  home: string
+  away: string
+  home_abbr: string
+  away_abbr: string
+  fetched_at: string
+  source: string
+  source_ok: boolean
+  model_version: string
+  projected_home_points?: number | null
+  projected_away_points?: number | null
+  lines_available: boolean
+  lines_note: string
+  projections: PropProjectionOut[]
+  note: string
 }

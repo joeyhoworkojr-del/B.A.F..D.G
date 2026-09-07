@@ -59,6 +59,8 @@ from src.value.edge import american_to_decimal
 from src.simulate.monte_carlo import simulate_soccer
 from src.value.edge import BetEdge, edge_rating, evaluate_market
 from src.model_version import MODEL_VERSION
+from src.ingest.player_stats import fetch_player_pool
+from src.predict.player_props import project_game
 
 router = APIRouter()
 
@@ -992,6 +994,90 @@ async def game_detail(league: str, event_id: str) -> dict:
         "grade_scale": GRADE_SCALE,
         **entry,
         "snapshot": snapshot,
+    }
+
+
+@router.get("/props/{league}/{event_id}", tags=["Props"])
+async def game_player_props(league: str, event_id: str) -> dict:
+    """
+    Player prop projections for one game.
+
+    Projections are real: each player's published season usage, rescaled by the
+    score this game's model actually expects for that player's team. Once a
+    game is under way the box score supersedes the forecast and the numbers are
+    flagged as actuals rather than projections.
+
+    Market prop LINES are a separate matter. They need an odds source, and
+    `lines_available` says plainly whether one is configured — a projection is
+    never dressed up as an edge against a line that does not exist.
+    """
+    league = league.lower()
+    if league not in FOCUS_LEAGUES:
+        raise HTTPException(
+            status_code=404,
+            detail=f"league must be one of: {', '.join(FOCUS_LEAGUES)}",
+        )
+
+    board, poly, pool = await asyncio.gather(
+        fetch_scoreboard(league),
+        fetch_league_markets(league),
+        fetch_player_pool(league, event_id),
+    )
+    game = next((g for g in board.games if str(g.event_id) == str(event_id)), None)
+    if game is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"No {league.upper()} game {event_id!r} on the current board"
+                if board.ok else "Live feed is temporarily unreachable"
+            ),
+        )
+
+    entry = await _slate_entry(league, game, poly)
+    model = entry.get("model") or {}
+    home_pts = model.get("proj_home_score") or model.get("home_expected")
+    away_pts = model.get("proj_away_score") or model.get("away_expected")
+
+    home_abbr = pool.home_abbr or game.home_abbr
+    away_abbr = pool.away_abbr or game.away_abbr
+
+    projections = project_game(
+        pool.players, league, home_abbr, away_abbr, home_pts, away_pts,
+    )
+
+    return {
+        "league": league,
+        "event_id": str(game.event_id),
+        "status": game.state,
+        "home": game.home, "away": game.away,
+        "home_abbr": home_abbr, "away_abbr": away_abbr,
+        "fetched_at": pool.fetched_at or board.fetched_at,
+        "source": pool.source,
+        "source_ok": pool.ok and board.ok,
+        "model_version": MODEL_VERSION,
+        "projected_home_points": home_pts,
+        "projected_away_points": away_pts,
+        # Projections stand on their own; lines are the part that needs a feed.
+        "lines_available": False,
+        "lines_note": (
+            "Projections only. Comparing them to a posted prop line needs an "
+            "odds source, which is not configured — so no prop edge is claimed."
+        ),
+        "projections": [
+            {
+                "athlete_id": p.athlete_id, "player": p.player,
+                "team_abbr": p.team_abbr, "position": p.position,
+                "market": p.market, "label": p.label,
+                "projection": p.projection, "season_avg": p.season_avg,
+                "games_played": p.games_played, "actual": p.actual,
+            }
+            for p in projections
+        ],
+        "note": (
+            "Each number is that player's published per-game usage, rescaled by "
+            "the score the model projects for his team. Players without enough "
+            "published usage are omitted rather than estimated."
+        ),
     }
 
 
