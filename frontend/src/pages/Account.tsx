@@ -77,7 +77,7 @@ export function Account() {
               <p className="mt-3 text-sm leading-relaxed text-zinc-400">{data.note}</p>
 
               <ul className="mt-4 space-y-2">
-                {Object.entries(data.features).map(([key, granted]) => (
+                {Object.entries(data.features ?? {}).map(([key, granted]) => (
                   <li key={key} className="text-sm">
                     <span className="flex items-center gap-2">
                       <span
@@ -92,9 +92,9 @@ export function Account() {
                         {FEATURE_LABEL[key] ?? key}
                       </span>
                     </span>
-                    {!granted && data.unavailable_reason[key] && (
+                    {!granted && data.unavailable_reason?.[key] && (
                       <span className="mt-0.5 block pl-6 text-xs leading-relaxed text-zinc-500">
-                        {data.unavailable_reason[key]}
+                        {data.unavailable_reason?.[key]}
                       </span>
                     )}
                   </li>

@@ -13,7 +13,11 @@ export function GameCommunity({
 }: { data: GameCommunityOut | null; homeAbbr: string; awayAbbr: string }) {
   if (!data) return <div className="skeleton h-32 rounded-card" />
 
-  const split = data.moneyline_split
+  // A partial payload must not take the game page down: the community block is
+  // additive, so missing fields degrade to the empty state.
+  const split = data.moneyline_split ?? {}
+  const analysis = data.recent_analysis ?? []
+  const totalPicks = data.total_picks ?? 0
   const hasSplit = Object.keys(split).length > 0
 
   return (
@@ -21,14 +25,14 @@ export function GameCommunity({
       <header className="flex items-baseline justify-between border-b border-terminal-border px-4 py-3">
         <h2 id="community" className="text-sm font-bold text-zinc-100">Community</h2>
         <span className="text-xs text-zinc-500">
-          {data.total_picks} {data.total_picks === 1 ? 'prediction' : 'predictions'}
+          {totalPicks} {totalPicks === 1 ? 'prediction' : 'predictions'}
         </span>
       </header>
 
       <div className="space-y-4 p-4">
         {!hasSplit ? (
           <p className="text-sm leading-relaxed text-zinc-400">
-            {data.total_picks === 0
+            {totalPicks === 0
               ? 'Be one of the first analysts to make your pick on this matchup.'
               : 'Not enough moneyline picks yet to show a split.'}
           </p>
@@ -54,11 +58,11 @@ export function GameCommunity({
           </div>
         )}
 
-        {data.recent_analysis.length > 0 && (
+        {analysis.length > 0 && (
           <div className="border-t border-terminal-border pt-3">
             <h3 className="text-xs font-bold uppercase tracking-wide text-zinc-500">Recent analysis</h3>
             <ul className="mt-2 space-y-3">
-              {data.recent_analysis.map((a, i) => (
+              {analysis.map((a, i) => (
                 <li key={`${a.username}-${i}`}>
                   <div className="flex flex-wrap items-baseline gap-2 text-sm">
                     <Link to={`/@${a.username}`} className="font-mono font-semibold text-brand hover:underline">

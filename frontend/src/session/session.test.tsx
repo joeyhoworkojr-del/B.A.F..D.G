@@ -183,3 +183,13 @@ describe('RecordSummary', () => {
     expect(screen.getByText('+0.82u')).toBeInTheDocument()
   })
 })
+
+describe('Partial payloads', () => {
+  it('a community response missing its fields does not crash the game page', () => {
+    // The screenshot harness caught this against the real bundle: a partial
+    // payload threw Object.keys(undefined) and took the whole page down.
+    wrap(<GameCommunity data={{} as never} homeAbbr="FSU" awayAbbr="CLEM" />)
+    expect(screen.getByText(/be one of the first analysts/i)).toBeInTheDocument()
+    expect(screen.getByText(/0 predictions/i)).toBeInTheDocument()
+  })
+})
