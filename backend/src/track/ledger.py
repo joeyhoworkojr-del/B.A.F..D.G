@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from . import db
-from .store import build_store
+from .store import build_store, config_report
 
 _LOCK = threading.Lock()
 
@@ -258,6 +258,8 @@ def accuracy_summary() -> dict:
         # between a verifiable record and one that quietly resets.
         "storage_backend": storage_backend(),
         "storage_durable": storage_durable(),
+        # Names and scheme validity only — never a secret's value.
+        "storage_config": config_report(),
     }
 
 
