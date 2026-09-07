@@ -1,5 +1,0 @@
-import { GridironPredictor, LEAGUE_CONFIGS } from '../components/GridironPredictor'
-
-export function NFL() {
-  return <GridironPredictor config={LEAGUE_CONFIGS.nfl} />
-}
