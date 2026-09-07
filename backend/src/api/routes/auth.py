@@ -132,13 +132,36 @@ async def logout(request: Request, response: Response) -> dict:
     return {"ok": True}
 
 
+def _request_diagnostics(request: Request) -> dict:
+    """
+    Whether a session cookie reached this process at all.
+
+    statedge.ca serves the SPA from Vercel and proxies /api to Fly, so a
+    request crosses a boundary that can drop cookies. "Signed in but treated as
+    a guest" and "never signed in" look identical from the browser; this tells
+    them apart without exposing anything — presence and names only, never a
+    value.
+    """
+    return {
+        "cookies_received": sorted(request.cookies.keys()),
+        "session_cookie_present": sessions.SESSION_COOKIE in request.cookies,
+        "secure_cookies": sessions.SECURE_COOKIES,
+        "origin": request.headers.get("origin", ""),
+    }
+
+
 @router.get("/auth/me", tags=["Auth"])
 async def me(request: Request) -> dict:
     """The current session. Anonymous is a valid answer, not an error."""
     user = current_user(request)
+    diagnostics = _request_diagnostics(request)
     if user is None:
-        return {"user": None, "entitlements": _ent_dict(entitlements_for(None))}
-    return _session_payload(user)
+        return {
+            "user": None,
+            "entitlements": _ent_dict(entitlements_for(None)),
+            "debug": diagnostics,
+        }
+    return {**_session_payload(user), "debug": diagnostics}
 
 
 @router.get("/auth/username-available", tags=["Auth"])
