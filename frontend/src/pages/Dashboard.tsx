@@ -1,5 +1,8 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { DataFreshnessBadge } from '../components/game/DataFreshnessBadge'
+import { FaqList } from '../components/faq/FaqList'
+import { FAQ, FAQ_PREVIEW_IDS } from '../content/faq'
 import { api } from '../api/client'
 import type { TodayResponse, TodayGameOut, EdgeOut, AccuracyResponse, FootballLeague } from '../types'
 
@@ -228,6 +231,8 @@ function Stat({ label, value, green }: { label: string; value: string; green?: b
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export function Dashboard() {
+  const [params, setParams] = useSearchParams()
+  const query = params.get('q') ?? ''
   const [league, setLeague] = useState<FootballLeague>('ncaaf')
   const [data, setData] = useState<TodayResponse | null>(null)
   const [acc, setAcc] = useState<AccuracyResponse | null>(null)
@@ -245,7 +250,16 @@ export function Dashboard() {
     return () => clearInterval(iv)
   }, [league, load])
 
-  const games = data?.games ?? []
+  // Search matches either team's name or abbreviation, so "bama" and "ALA"
+  // both find the same game.
+  const games = useMemo(() => {
+    const all = data?.games ?? []
+    const q = query.trim().toLowerCase()
+    if (!q) return all
+    return all.filter(({ game: g }) =>
+      [g.home, g.away, g.home_abbr, g.away_abbr].some(v => v.toLowerCase().includes(q)))
+  }, [data, query])
+
   const liveGames = games.filter(x => x.game.state === 'in')
   const edgeGames = games
     .filter(x => x.game.state === 'pre' && x.mapped && x.model && bestEdge(x.edges))
@@ -263,6 +277,22 @@ export function Dashboard() {
         </div>
 
         <StatBar acc={acc} />
+
+        {query.trim() && (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-zinc-400">
+              Showing games matching <span className="font-bold text-zinc-100">“{query.trim()}”</span>
+              {' '}— {games.length} of {data?.games.length ?? 0}
+            </span>
+            <button
+              type="button"
+              onClick={() => { const next = new URLSearchParams(params); next.delete('q'); setParams(next) }}
+              className="tap inline-flex items-center rounded-full border border-terminal-border px-3 text-xs font-semibold text-zinc-400 hover:text-zinc-100"
+            >
+              Clear search
+            </button>
+          </div>
+        )}
 
         {/* Tabs + live badge */}
         <div className="flex items-center gap-2">
@@ -310,14 +340,36 @@ export function Dashboard() {
           <div className="rounded-2xl border border-dashed border-terminal-border bg-terminal-surface p-10 text-center">
             <p className="font-display text-lg font-bold text-zinc-100">No edges on the board</p>
             <p className="mx-auto mt-1 max-w-sm text-sm text-zinc-500">
-              No live games or model edges for {LEAGUE_SPORT[league]} in today’s window. This fills in automatically on game day.
+              {query.trim()
+                ? `Nothing in the ${LEAGUE_SPORT[league]} window matches “${query.trim()}”.`
+                : `No live games or model edges for ${LEAGUE_SPORT[league]} in today’s window. This fills in automatically on game day.`}
             </p>
           </div>
         )}
 
-        <p className="pt-1 text-center text-xs text-zinc-500">
-          Lines via {data?.market_source || 'ESPN'} • Model refreshes every 30 sec
-        </p>
+        <section aria-labelledby="faq-preview" className="pt-2">
+          <div className="mb-2 flex items-end justify-between gap-3">
+            <h2 id="faq-preview" className="text-xs font-bold uppercase tracking-widest text-zinc-500">
+              Common questions
+            </h2>
+            <Link to="/faq" className="text-sm font-semibold text-brand hover:underline">
+              All questions ›
+            </Link>
+          </div>
+          <FaqList entries={FAQ.filter(e => FAQ_PREVIEW_IDS.includes(e.id))} />
+        </section>
+
+        <div className="flex flex-wrap items-center justify-center gap-2 pt-1 text-xs text-zinc-500">
+          <span>Lines via {data?.market_source || 'ESPN'}</span>
+          <span aria-hidden="true">•</span>
+          {/* Age comes from the payload's own timestamp — a running poll timer
+              is not evidence that the data on screen is current. */}
+          <DataFreshnessBadge
+            fetchedAt={data?.fetched_at}
+            ok={data?.source_ok !== false && !error}
+            staleAfterSeconds={90}
+          />
+        </div>
       </div>
     </div>
   )

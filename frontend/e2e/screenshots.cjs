@@ -24,9 +24,13 @@ const VIEWPORTS = [[390, 844, 'mobile'], [768, 1024, 'tablet'], [1440, 900, 'des
 const PAGES = [
   ['games', '/'],
   ['game-center', '/game/ncaaf/401752'],
+  ['live', '/live'],
+  ['props', '/props'],
   ['edges', '/best-bets'],
+  ['news', '/news'],
+  ['results', '/results'],
   ['parlay', '/parlay'],
-  ['results', '/track'],
+  ['faq', '/faq'],
   ['about', '/about'],
   ['account', '/account'],
 ]
@@ -39,6 +43,9 @@ async function stub(page) {
   await page.route('**/api/v1/today/**', r =>
     r.fulfill({ json: fx.today(new URL(r.request().url()).pathname.split('/').pop()) }))
   await page.route('**/api/v1/accuracy', r => r.fulfill({ json: fx.accuracy }))
+  await page.route('**/api/v1/news*', r => r.fulfill({ json: fx.news }))
+  await page.route('**/api/v1/entitlements', r => r.fulfill({ json: fx.entitlements }))
+  await page.route('**/api/v1/props*', r => r.fulfill({ json: fx.props }))
   await page.route('**/api/v1/best-bets', r => r.fulfill({ json: fx.bestBets }))
   await page.route('**/api/v1/best-parlay*', r => r.fulfill({ json: fx.bestParlay }))
   await page.route('**/api/v1/live/pbp/**', r =>
@@ -57,7 +64,11 @@ async function stub(page) {
           { grade: '-', min_edge_pp: 0, label: 'No edge' },
         ],
         game: first.game, mapped: true, model: first.model, edges: first.edges,
-        markets: MARKETS, best: MARKETS[1].selections[0],
+        markets: MARKETS,
+        best_edge: {
+          ...MARKETS[1].selections[0], market_key: 'spread', market_label: 'Spread',
+          line: 3, source: 'ESPN BET', assumed_price: true, probability_kind: 'cover',
+        },
       },
     })
   })
@@ -102,14 +113,16 @@ async function main() {
   const browser = await chromium.launch({ executablePath: CHROME, args: ['--no-proxy-server', '--no-sandbox'] })
   const problems = []
   try {
-    for (const [w, h, vp] of VIEWPORTS) {
+    // One page per viewport, all three walking the route list at once — the
+    // sandbox is slow enough that doing this serially dominates the run.
+    await Promise.all(VIEWPORTS.map(async ([w, h, vp]) => {
       const page = await browser.newPage({ viewport: { width: w, height: h } })
       const errors = []
       page.on('pageerror', e => errors.push(e.message))
       await stub(page)
       for (const [name, route] of PAGES) {
         await page.goto(BASE + route, { waitUntil: 'load' })
-        await page.waitForTimeout(900)
+        await page.waitForTimeout(700)
         const file = path.join(OUT, `${name}-${vp}.png`)
         await page.screenshot({ path: file, fullPage: true })
 
@@ -123,7 +136,7 @@ async function main() {
       }
       if (errors.length) problems.push(`${vp}: runtime errors — ${errors.join(' | ')}`)
       await page.close()
-    }
+    }))
   } finally {
     await browser.close()
     stop()

@@ -1,31 +1,59 @@
 import { useEffect, useState } from 'react'
+import { api } from '../api/client'
+import type { EntitlementsOut, FeatureKey } from '../types'
 
-export type Entitlement = 'line_movement_history' | 'model_internals' | 'alerts'
+export type Entitlement = FeatureKey
 
 export interface EntitlementState {
   has: boolean
   loading: boolean
+  /** Why the feature is unavailable, when the server withheld it. */
+  reason: string
 }
 
 /**
- * Entitlement check for premium panels.
+ * Access check for a single feature.
  *
- * Deliberately a seam, not a feature: today it resolves from a build-time flag
- * so nothing is gated during development. When auth lands this becomes a call
- * to the server's entitlement endpoint — the panels using it don't change.
- * Client-side state is never the security boundary; the server must also refuse
- * to serve premium payloads to unentitled callers.
+ * The server decides — this hook only reads `GET /api/v1/entitlements`. Client
+ * state is never the security boundary: an endpoint that would serve a premium
+ * payload refuses it independently, so hiding a panel here is presentation,
+ * not enforcement.
+ *
+ * The whole response is fetched once and shared, so a page asking about three
+ * features makes one request.
  */
-export function useEntitlement(_entitlement: Entitlement): EntitlementState {
-  const [state, setState] = useState<EntitlementState>({ has: false, loading: true })
+
+let cached: Promise<EntitlementsOut> | null = null
+const load = () => (cached ??= api.entitlements())
+
+/** Test seam: drop the shared response so the next read refetches. */
+export function resetEntitlements() {
+  cached = null
+}
+
+export function useEntitlements(): { data: EntitlementsOut | null; loading: boolean } {
+  const [data, setData] = useState<EntitlementsOut | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let alive = true
-    // Placeholder resolution. Replace with GET /api/v1/me/entitlements.
-    const granted = import.meta.env.VITE_PREMIUM_UNLOCKED !== '0'
-    if (alive) setState({ has: granted, loading: false })
+    load()
+      .then(d => { if (alive) setData(d) })
+      .catch(() => { /* treated as "no access", below */ })
+      .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
   }, [])
 
-  return state
+  return { data, loading }
+}
+
+export function useEntitlement(entitlement: Entitlement): EntitlementState {
+  const { data, loading } = useEntitlements()
+  if (loading || !data) return { has: false, loading, reason: '' }
+  return {
+    has: data.features[entitlement] === true,
+    loading: false,
+    // A withheld feature always explains itself; fall back rather than go blank.
+    reason: data.unavailable_reason[entitlement] ?? '',
+  }
 }

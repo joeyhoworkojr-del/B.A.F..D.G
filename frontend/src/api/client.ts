@@ -16,6 +16,10 @@ import type {
   SoccerUpcomingResponse,
   PlayByPlayOut,
   GameDetailOut,
+  FootballLeague,
+  NewsFeedOut,
+  EntitlementsOut,
+  PropsOut,
 } from '../types'
 
 // Strip trailing slashes so VITE_API_BASE="/" (same-origin via nginx proxy)
@@ -128,6 +132,18 @@ export const api = {
 
   // Track record
   accuracy: () => get<AccuracyResponse>('/api/v1/accuracy'),
+
+  // News — attributed headlines, never full articles
+  news: (league: 'all' | FootballLeague = 'all', limit = 30) =>
+    get<NewsFeedOut>(`/api/v1/news?league=${league}&limit=${limit}`),
+
+  // Access, decided server-side
+  entitlements: () => get<EntitlementsOut>('/api/v1/entitlements'),
+
+  // Player props — reports what it would need rather than inventing lines
+  propsStatus: () => get<PropsOut>('/api/v1/props'),
+  gameProps: (league: string, eventId: string) =>
+    get<PropsOut>(`/api/v1/props/${league}/${encodeURIComponent(eventId)}`),
 
   // World Cup spotlight (model pre-run on upcoming fixtures)
   soccerUpcoming: () => get<SoccerUpcomingResponse>('/api/v1/soccer/upcoming'),

@@ -172,4 +172,54 @@ const plays = [
     away_score: 14, home_score: 17, scoring: false, down_distance: '4th & 7 at ALA 33' },
 ]
 
-module.exports = { iso, inHours, mkGame, mkModel, mkEdge, today, accuracy, bestBets, bestParlay, plays }
+const news = {
+  league: 'nfl+ncaaf',
+  fetched_at: iso(),
+  ok: true,
+  source: 'ESPN',
+  attribution: 'Headlines and summaries from ESPN. Follow a link to read the full story at the source.',
+  items: [
+    { league: 'ncaaf', id: 'n1', headline: 'Florida State QB listed as questionable',
+      description: 'The starter is a game-time decision with a shoulder issue.',
+      published: inHours(-1), byline: 'Staff', url: 'https://www.espn.com/story/n1',
+      image: '', category: 'injury', teams: ['FSU'], source: 'ESPN',
+      reflected_in_projection: false },
+    { league: 'nfl', id: 'n2', headline: 'Week 1 takeaways from Sunday’s slate',
+      description: 'What the opening weekend told us about the contenders.',
+      published: inHours(-4), byline: 'Staff', url: 'https://www.espn.com/story/n2',
+      image: '', category: 'recap', teams: ['KC', 'BUF'], source: 'ESPN',
+      reflected_in_projection: false },
+    { league: 'ncaaf', id: 'n3', headline: 'Preview: Clemson at Florida State',
+      description: 'Both teams enter the weekend unbeaten in conference play.',
+      published: inHours(-6), byline: 'Staff', url: 'https://www.espn.com/story/n3',
+      image: '', category: 'preview', teams: ['CLEM', 'FSU'], source: 'ESPN',
+      reflected_in_projection: false },
+  ],
+}
+
+const entitlements = {
+  plan: 'free', authenticated: false, auth_configured: false,
+  features: {
+    line_movement_history: true, model_internals: true,
+    alerts: false, player_props: false, saved_games: false,
+  },
+  unavailable_reason: {
+    alerts: 'Requires a signed-in account and durable storage; neither is configured yet.',
+    player_props: 'Requires a licensed player-props odds provider; none is configured yet.',
+    saved_games: 'Requires a signed-in account and durable storage; neither is configured yet.',
+  },
+  billing_enabled: false,
+  note: 'StatEdge is free during this release. Every implemented feature is available to everyone; nothing is being sold and no payment method is collected.',
+}
+
+const props = {
+  available: false, league: '', event_id: '', props: [],
+  reason: 'StatEdge has no player-props data source. The keyless ESPN feed behind the rest of the site does not publish player-prop lines, and the model does not yet produce player-level projections.',
+  requires: [
+    'A licensed player-props odds provider with player-level markets for NFL and NCAA football.',
+    "The provider's API key supplied as the PROPS_API_KEY environment variable, plus PROPS_PROVIDER naming the integration to use.",
+    'Per-player projections from the model. The gridiron engine currently projects team scores and game totals only.',
+  ],
+}
+
+module.exports = { iso, inHours, mkGame, mkModel, mkEdge, today, accuracy, bestBets, bestParlay, plays, news, entitlements, props }

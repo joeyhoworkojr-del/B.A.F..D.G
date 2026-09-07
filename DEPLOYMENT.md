@@ -99,3 +99,82 @@ make dev        # copies .env.example → .env and runs docker compose up --buil
   `/api/*` paths still 404.
 - Run locally without Docker: `make dev-backend` serves the API alone, or
   set `STATIC_DIR=frontend/dist` after `npm run build` to serve both.
+
+## Configuration still required
+
+Some parts of the product are deliberately switched off rather than faked.
+Each one below names exactly what has to be configured to turn it on. Until
+then the UI states the feature is unavailable and why, and the server refuses
+the payload — nothing is hidden with CSS.
+
+### 1. Durable storage (blocks accounts, alerts, watchlists)
+
+The prediction ledger is SQLite at `STATEDGE_DB` (default: a path on the
+machine's local disk). On Fly that disk is **ephemeral** — every deploy
+replaces the machine and the graded record starts over.
+
+Required:
+
+- A Fly volume mounted at the ledger's directory, or an external Postgres
+  reachable at `DATABASE_URL`.
+- Two previous attempts to attach a volume to this app failed
+  (`insufficient resources to create new machine with existing volume` in
+  `dfw`), and the automated migration took the app down because it destroyed
+  the volume-less machine first. If you retry, **create the new machine
+  before destroying the old one**, and be ready to fall back to a different
+  region or to Postgres.
+
+Nothing that needs to survive a deploy should be built until this is settled.
+
+### 2. Authentication (blocks user accounts)
+
+There is no auth in the app and no mock standing in for it: no sign-in form,
+no password storage, and nothing in `localStorage` pretending to be a session.
+
+Required:
+
+- A provider-managed identity service that owns credentials, sessions and
+  password resets (Auth0, Clerk, WorkOS, Supabase Auth or similar). StatEdge
+  must never store passwords itself.
+- `AUTH_PROVIDER` set to the integration name, plus that provider's issuer,
+  audience and signing-key settings.
+- Durable storage from §1, so an account survives the next release.
+
+Once `AUTH_PROVIDER` is set, `resolve_entitlements()` in
+`backend/src/api/routes/account.py` is the single place that reads the
+caller's session; no route that consumes it needs to change.
+
+### 3. Player-props odds provider (blocks the Props section)
+
+ESPN's keyless feed publishes no player-prop lines, so `GET /api/v1/props`
+reports `available=false` and lists its requirements.
+
+Required:
+
+- A licensed player-props odds provider with NFL and NCAA football player
+  markets (The Odds API, OddsJam, or a sportsbook partner feed).
+- `PROPS_PROVIDER` naming the integration and `PROPS_API_KEY` holding the
+  credential.
+- Player-level projections from the model. The gridiron engine currently
+  projects team scores and game totals only, so props would need new
+  modelling work, not just a feed.
+
+### 4. Push and email alerts
+
+The in-app notification centre works today and lists the graded edges the
+model is currently publishing. Delivering alerts off-site needs an account to
+deliver them to, so this is blocked on §1 and §2.
+
+### 5. Billing
+
+Not implemented, and deliberately so — this release is free. Entitlements
+already resolve server-side with `billing_enabled=false`, so a paid tier can
+be introduced later without changing how features are gated.
+
+## Environment variables added in this release
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `AUTH_PROVIDER` | *(unset)* | Names the identity provider. While unset, `/api/v1/entitlements` reports `auth_configured=false` and every caller is anonymous on the free plan. |
+| `PROPS_PROVIDER` | *(unset)* | Names the player-props odds integration. |
+| `PROPS_API_KEY` | *(unset)* | Credential for that provider. |

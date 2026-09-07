@@ -332,6 +332,10 @@ class SetPlayerStatusRequest(BaseModel):
 
 class BestBetOut(BaseModel):
     fixture_id: str
+    # Split out so the UI can deep-link to /game/{league}/{event_id} without
+    # re-parsing the composite fixture_id.
+    league: str = ""
+    event_id: str = ""
     kickoff: str
     venue: str
     home: str

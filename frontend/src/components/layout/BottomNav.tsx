@@ -1,38 +1,43 @@
 import { NavLink } from 'react-router-dom'
 
-type IconProps = { className?: string }
-
-const Football = (_: IconProps) => (
+const Football = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M3 21c4-.5 14-2.5 18-18C8 3.5 3.5 8 3 21Z" /><path d="M8.5 15.5 15.5 8.5M10 12l2 2M12 10l2 2" />
   </svg>
 )
-const Bars = (_: IconProps) => (
+const Live = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="3" /><path d="M6.3 6.3a8 8 0 0 0 0 11.4M17.7 17.7a8 8 0 0 0 0-11.4" />
+  </svg>
+)
+const Person = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
+  </svg>
+)
+const Bars = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <line x1="6" y1="20" x2="6" y2="12" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="18" y1="20" x2="18" y2="9" />
   </svg>
 )
-const Ticket = (_: IconProps) => (
+const Whistle = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M3 9V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 6v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-6Z" /><path d="M13 5v14" />
-  </svg>
-)
-const Trend = (_: IconProps) => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <polyline points="3 17 9 11 13 15 21 7" /><polyline points="15 7 21 7 21 13" />
+    <path d="M4 7h11a5 5 0 1 1 0 10H9l-5 4V7Z" /><circle cx="15" cy="12" r="2" />
   </svg>
 )
 
 const items = [
   { to: '/', label: 'Games', Icon: Football, end: true },
+  { to: '/live', label: 'Live', Icon: Live, end: false },
+  { to: '/props', label: 'Props', Icon: Whistle, end: false },
   { to: '/best-bets', label: 'Edges', Icon: Bars, end: false },
-  { to: '/parlay', label: 'Parlay', Icon: Ticket, end: false },
-  { to: '/track', label: 'Track', Icon: Trend, end: false },
+  { to: '/account', label: 'Account', Icon: Person, end: false },
 ]
 
 /**
  * Mobile-only primary navigation. Hidden from `md` up, where the top bar takes
  * over — the page reserves matching bottom padding so it never covers content.
+ * News and Results live in the header's More menu at this width.
  */
 export function BottomNav() {
   return (
@@ -47,8 +52,8 @@ export function BottomNav() {
               to={to}
               end={end}
               className={({ isActive }) =>
-                `flex flex-col items-center gap-1 py-2.5 text-xs font-semibold ${
-                  isActive ? 'text-signal-green' : 'text-zinc-400'
+                `tap flex flex-col items-center justify-center gap-0.5 py-2 text-xs font-semibold ${
+                  isActive ? 'text-brand' : 'text-zinc-400'
                 }`
               }
             >
