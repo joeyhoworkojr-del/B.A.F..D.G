@@ -28,6 +28,7 @@ const Register = lazyPage(() => import('./pages/Register'), 'Register')
 const Onboarding = lazyPage(() => import('./pages/Onboarding'), 'Onboarding')
 const MyEdge = lazyPage(() => import('./pages/MyEdge'), 'MyEdge')
 const Analyst = lazyPage(() => import('./pages/Analyst'), 'Analyst')
+const Leaderboard = lazyPage(() => import('./pages/Leaderboard'), 'Leaderboard')
 
 function PageFallback() {
   return (
@@ -65,6 +66,7 @@ export default function App() {
               <Route path="/register" element={<Register />} />
               <Route path="/onboarding" element={<Onboarding />} />
               <Route path="/my-edge" element={<MyEdge />} />
+              <Route path="/leaderboard" element={<Leaderboard />} />
               {/* Analyst handles are the clean public URL: /@username */}
               <Route path="/:username" element={<Analyst />} />
               {/* The SPA fallback serves index.html for any path, so without

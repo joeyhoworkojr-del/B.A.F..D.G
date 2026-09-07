@@ -9,6 +9,7 @@ export const NAV_ITEMS = [
   { to: '/live', label: 'Live', end: false },
   { to: '/props', label: 'Props', end: false },
   { to: '/best-bets', label: 'Edges', end: false },
+  { to: '/leaderboard', label: 'Leaderboard', end: false },
   { to: '/news', label: 'News', end: false },
   { to: '/results', label: 'Results', end: false },
 ]

@@ -27,6 +27,7 @@ import type {
   GameCommunityOut,
   AnalystOut,
   SubmitPickBody,
+  LeaderboardOut,
 } from '../types'
 
 // Same-origin by default. Vite's dev server proxies /api to :8000, the Docker
@@ -183,6 +184,8 @@ export const api = {
     request<{ ok: boolean }>(`/api/v1/picks/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   gameCommunity: (league: string, eventId: string) =>
     get<GameCommunityOut>(`/api/v1/picks/game/${league}/${encodeURIComponent(eventId)}`),
+  leaderboard: (league?: string) =>
+    get<LeaderboardOut>(`/api/v1/leaderboard${league ? `?league=${league}` : ''}`),
   analyst: (username: string) =>
     get<AnalystOut>(`/api/v1/analysts/${encodeURIComponent(username)}`),
 

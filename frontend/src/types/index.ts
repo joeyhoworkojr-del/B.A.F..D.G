@@ -764,3 +764,31 @@ export interface SubmitPickBody {
   confidence: number
   reasoning?: string
 }
+
+// ─── Leaderboard ──────────────────────────────────────────────────────────────
+
+export interface Standing {
+  user_id: string
+  username: string
+  display_name: string
+  badges: string[]
+  edge_rating: number
+  provisional: boolean
+  graded: number
+  wins: number
+  losses: number
+  pushes: number
+  win_rate?: number | null
+  units: number
+  roi_pct?: number | null
+  rank?: number
+  of?: number
+}
+
+export interface LeaderboardOut {
+  league: string
+  min_graded: number
+  count: number
+  standings: Standing[]
+  note: string
+}

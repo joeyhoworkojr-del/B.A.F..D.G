@@ -6,6 +6,7 @@ import { Link } from 'react-router-dom'
  */
 export function MobileMoreLinks() {
   const links = [
+    { to: '/leaderboard', label: 'Leaderboard' },
     { to: '/news', label: 'News' },
     { to: '/results', label: 'Results' },
     { to: '/parlay', label: 'Parlay' },

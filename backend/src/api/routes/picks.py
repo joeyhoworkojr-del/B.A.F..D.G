@@ -17,7 +17,7 @@ from src.accounts.entitlements import entitlements_for
 from src.accounts.models import User
 from src.accounts.service import get_by_username
 from src.api.routes.auth import current_user, require_user
-from src.picks import service
+from src.picks import leaderboard, service
 from src.picks.models import PickError
 
 router = APIRouter()
@@ -141,6 +141,28 @@ async def game_community(league: str, event_id: str, request: Request) -> dict:
     }
 
 
+@router.get("/leaderboard", tags=["Picks"])
+async def get_leaderboard(league: Optional[str] = None, limit: int = 50) -> dict:
+    """
+    Ranked analysts, established first.
+
+    Provisional records are returned but sort below everyone who has cleared
+    the minimum sample, so a hot start cannot outrank a proven one.
+    """
+    table = leaderboard.standings(league)
+    return {
+        "league": league or "all",
+        "min_graded": leaderboard.MIN_GRADED,
+        "count": len(table),
+        "standings": [s.__dict__ for s in table[:max(1, min(limit, 200))]],
+        "note": (
+            "Edge Rating is profit per graded pick, shrunk toward neutral by "
+            "sample size. Followers are not part of it — an audience doesn't "
+            "make a prediction more likely to be right."
+        ),
+    }
+
+
 @router.get("/analysts/{username}", tags=["Picks"])
 async def analyst_profile(username: str) -> dict:
     """A public analyst profile: identity, verified record and locked picks."""
@@ -151,6 +173,7 @@ async def analyst_profile(username: str) -> dict:
     return {
         "profile": user.to_public(),
         "record": service.record_for(user.id),
+        "standing": leaderboard.user_standing(user.id),
         # Open picks stay private until they lock, so nobody can be tailed or
         # front-run before an event starts.
         "picks": [p.to_public() for p in picks if p.is_locked()],

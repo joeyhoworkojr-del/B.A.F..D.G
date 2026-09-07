@@ -237,4 +237,9 @@ const community = {
   recent_analysis: [], your_picks: [],
 }
 
-module.exports = { iso, inHours, mkGame, mkModel, mkEdge, today, accuracy, bestBets, bestParlay, plays, news, entitlements, props, session, community }
+const leaderboard = {
+  league: 'all', min_graded: 10, count: 0, standings: [],
+  note: 'Edge Rating is profit per graded pick, shrunk toward neutral by sample size.',
+}
+
+module.exports = { iso, inHours, mkGame, mkModel, mkEdge, today, accuracy, bestBets, bestParlay, plays, news, entitlements, props, session, community, leaderboard }

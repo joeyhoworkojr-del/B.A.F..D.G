@@ -300,3 +300,53 @@ def test_a_public_analyst_profile_shows_a_verified_record(client):
 
 def test_an_unknown_analyst_is_a_404():
     assert TestClient(app).get("/api/v1/analysts/nobody").status_code == 404
+
+
+# ─── Automatic grading from the live board ───────────────────────────────────
+
+class FakeGame:
+    """The shape grade_board reads off a scoreboard."""
+    def __init__(self, event_id, state, home_score=None, away_score=None):
+        self.event_id = event_id
+        self.state = state
+        self.home_score = home_score
+        self.away_score = away_score
+
+
+def test_a_finished_game_on_the_board_grades_user_picks(client):
+    """
+    The gap that mattered: picks existed and could be graded, but nothing
+    called it. Records would never have settled.
+    """
+    from src.track import ledger
+    client.post("/api/v1/picks", json=pick_body())
+    ledger.grade_board("ncaaf", [FakeGame("401752", "post", 21, 23)])
+    assert service.all_picks()[0].result == "win"
+
+
+def test_an_unfinished_game_leaves_picks_pending(client):
+    from src.track import ledger
+    client.post("/api/v1/picks", json=pick_body())
+    ledger.grade_board("ncaaf", [FakeGame("401752", "in", 14, 10)])
+    assert service.all_picks()[0].result == "pending"
+
+
+def test_board_grading_is_idempotent_for_user_picks(client):
+    from src.track import ledger
+    client.post("/api/v1/picks", json=pick_body())
+    board = [FakeGame("401752", "post", 21, 23)]
+    ledger.grade_board("ncaaf", board)
+    ledger.grade_board("ncaaf", board)
+    pick = service.all_picks()[0]
+    assert pick.result == "win"
+    assert pick.units == pytest.approx(0.909, abs=1e-3)   # counted once
+
+
+def test_a_failure_grading_picks_does_not_break_the_board(client, monkeypatch):
+    """A page showing live scores must not 500 because grading hiccupped."""
+    from src.track import ledger
+    import src.picks.service as picks_service
+    client.post("/api/v1/picks", json=pick_body())
+    monkeypatch.setattr(picks_service, "grade_game",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    assert ledger.grade_board("ncaaf", [FakeGame("401752", "post", 21, 23)]) == 0

@@ -225,8 +225,17 @@ def grade_board(league: str, games) -> int:
     graded = 0
     for g in games:
         if g.state == "post" and g.home_score is not None and g.away_score is not None:
-            if grade(f"{league}:{g.event_id}", g.home_score, g.away_score):
+            game_id = f"{league}:{g.event_id}"
+            if grade(game_id, g.home_score, g.away_score):
                 graded += 1
+            # User predictions settle on the same signal as the model's own.
+            # Imported here rather than at module scope: picks depend on the
+            # document store, which depends on this module.
+            try:
+                from src.picks.service import grade_game
+                grade_game(game_id, g.home_score, g.away_score)
+            except Exception as exc:      # never let grading break a page
+                log.error("user pick grading failed for %s: %s", game_id, exc)
     return graded
 
 
