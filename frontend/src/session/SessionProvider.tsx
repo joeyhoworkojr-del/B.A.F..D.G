@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { api } from '../api/client'
+import { api, setSessionToken } from '../api/client'
 import type { AccountEntitlements, PrivateProfile, SessionOut } from '../types'
 
 const GUEST: AccountEntitlements = {
@@ -38,6 +38,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false)
 
   const applySession = useCallback((next: SessionOut) => {
+    // Keep the token only when one is issued; the cookie remains the primary
+    // credential and the server prefers it whenever it arrives.
+    if (next.session_token) setSessionToken(next.session_token)
     setUser(next.user)
     setEntitlements(next.entitlements ?? GUEST)
   }, [])
@@ -47,6 +50,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       applySession(await api.session())
     } catch {
       // A failed check means "not signed in", not an error worth showing.
+      setSessionToken(null)
       setUser(null)
       setEntitlements(GUEST)
     } finally {
@@ -69,6 +73,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     try { await api.logout() } finally {
+      setSessionToken(null)
       setUser(null)
       setEntitlements(GUEST)
     }

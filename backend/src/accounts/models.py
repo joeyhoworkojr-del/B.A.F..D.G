@@ -12,6 +12,7 @@ a new field cannot leak by being added to the dataclass.
 """
 from __future__ import annotations
 
+import os
 import re
 import uuid
 from dataclasses import asdict, dataclass, field
@@ -32,6 +33,16 @@ RESERVED_USERNAMES = {
     "games", "live", "props", "news", "results", "leaderboard", "discover",
     "account", "settings", "login", "logout", "register", "signup", "faq",
     "me", "my", "null", "undefined", "anonymous", "user", "users",
+}
+
+
+# Usernames promoted to admin on sign-in. An env var rather than a database
+# flag, so admin cannot be granted by anything that can write to storage —
+# only by someone who can change the deployment.
+ADMIN_USERNAMES = {
+    u.strip().lower()
+    for u in (os.getenv("ADMIN_USERNAMES") or "").split(",")
+    if u.strip()
 }
 
 

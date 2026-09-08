@@ -672,6 +672,8 @@ export interface AccountEntitlements {
 export interface SessionOut {
   user: PrivateProfile | null
   entitlements: AccountEntitlements
+  /** Only issued on register/login, for clients behind a cookie-stripping proxy. */
+  session_token?: string
 }
 
 // ─── Picks ────────────────────────────────────────────────────────────────────
@@ -791,4 +793,34 @@ export interface LeaderboardOut {
   count: number
   standings: Standing[]
   note: string
+}
+
+// ─── Staff portal ─────────────────────────────────────────────────────────────
+
+export interface AdminOverview {
+  storage: { backend: string; durable: boolean }
+  accounts: {
+    total: number; onboarded: number; founding: number
+    by_level: Record<string, number>
+  }
+  picks: {
+    total: number; open: number; graded: number
+    by_market: Record<string, number>
+    by_result: Record<string, number>
+    by_league: Record<string, number>
+  }
+  model_record: { graded: number; pending: number }
+  leaderboard_size: number
+}
+
+export interface AdminUserRow {
+  id: string
+  username: string
+  email: string
+  display_name: string
+  level: string
+  badges: string[]
+  onboarded: boolean
+  created_at: string
+  picks: number
 }
