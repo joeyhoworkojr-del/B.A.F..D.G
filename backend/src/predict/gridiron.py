@@ -230,9 +230,14 @@ def live_projection(
             yard_line=int(yard_line), down=down, distance=distance,
         )
         if state.is_usable():
-            drive_value = ep_model.possession_value(state, league) * DRIVE_VALUE_SHRINK
+            # Signed from the home team's point of view, like every other
+            # number in this payload: a good drive by the away team is worth
+            # negative points to the projection. An unsigned magnitude would
+            # render green on a home-centric card while the opponent marched.
+            raw_value = ep_model.possession_value(state, league) * DRIVE_VALUE_SHRINK
+            drive_value = raw_value if possession_home else -raw_value
             drive_note = ep_model.describe(state, league)
-            exp_margin += drive_value if possession_home else -drive_value
+            exp_margin += drive_value
     elif possession_home is not None and frac < 0.25 and abs(cur_margin) <= 8:
         # No field position published. Having the ball late in a close game is
         # still worth something; this is the crude stand-in it always was.

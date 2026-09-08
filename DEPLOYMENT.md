@@ -202,13 +202,70 @@ Not implemented, and deliberately so — this release is free. Entitlements
 already resolve server-side with `billing_enabled=false`, so a paid tier can
 be introduced later without changing how features are gated.
 
-## Environment variables added in this release
+## Environment variables
+
+Everything below is set as a **Fly secret on `statedge-api`**, not in Vercel.
+Vercel serves the SPA; the API process is the only thing that reads these, and
+a variable set on the wrong host is silently empty. Two endpoints will tell you
+which happened rather than leaving you guessing:
+
+* `GET /api/v1/data/sources` — which data feeds are configured, and which have
+  actually returned data. Those are different claims.
+* `GET /api/v1/auth/me` — the `debug.staff_roles_configured` block reports how
+  many names each staff role list holds. Counts only; no names.
+
+```bash
+fly secrets set VARIABLE=value --app statedge-api
+```
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `AUTH_PROVIDER` | *(unset)* | Names the identity provider. While unset, `/api/v1/entitlements` reports `auth_configured=false` and every caller is anonymous on the free plan. |
-| `PROPS_PROVIDER` | *(unset)* | Names the player-props odds integration. |
+| `REDIS_URL` | *(unset)* | Upstash Redis for durable storage. Currently set. |
+| `ADMIN_USERNAMES` | *(unset)* | Comma-separated usernames granted full staff control, including anything destructive. |
+| `STAFF_USERNAMES` | *(unset)* | Comma-separated usernames granted the read-only staff area. |
+| `MODERATOR_USERNAMES` | *(unset)* | Comma-separated usernames granted community and chat moderation. |
+| `CFBD_API_KEY` | *(unset)* | CollegeFootballData key — SP+ and PPA priors for college football. Free, no card, from <https://collegefootballdata.com/key>. Without it NCAAF runs on its static ratings and the staff page says so. |
+| `ANTHROPIC_API_KEY` | *(unset)* | Powers Edge AI. Without it the assistant reports itself unconfigured, the entitlement withholds the feature, and the UI does not offer a button that fails. Never expose this to the browser. |
+| `EDGE_AI_MODEL` | `claude-opus-5` | Overrides the model Edge AI uses, so it can be changed without a deploy. |
+| `AUTH_PROVIDER` | *(unset)* | Legacy. Accounts are now first-party (Argon2id + server-side sessions); this is no longer read for sign-in. |
+| `PROPS_PROVIDER` | *(unset)* | Names a player-props **odds line** integration. Projections work without it; comparing them to a posted line does not. |
 | `PROPS_API_KEY` | *(unset)* | Credential for that provider. |
+
+### Staff roles
+
+Three roles, highest wins if a name appears in more than one list:
+
+| Role | Powers |
+| --- | --- |
+| `admin` | `view_staff`, `manage_users`, `moderate`, `configure` |
+| `staff` | `view_staff`, `moderate` |
+| `moderator` | `moderate` |
+
+Roles come from the environment rather than a database flag, so a write to
+storage cannot promote an account, and removing a name demotes it on the next
+read. The footer's Staff link is a convenience for staff and **not** a security
+measure: every staff route checks the caller's role server-side and returns 404
+to everyone else.
+
+### Edge AI
+
+```bash
+fly secrets set ANTHROPIC_API_KEY=sk-ant-... --app statedge-api
+```
+
+The key is read only inside the API process. It is never returned by an
+endpoint, never logged, and never reaches the browser — there is a test
+asserting the status endpoint contains no credential.
+
+Edge AI does not query the database. It calls a fixed set of functions in
+`src/ai/context.py`, each returning a small record assembled by the same code
+that renders the site. There is no query it can write and no row it can reach
+that a page could not already show the person asking. Its own record lookup
+takes the user id from the session, so it cannot be pointed at another account.
+
+Answers are rate limited to 40 per account per hour. Cost is roughly a cent or
+two per answer at Opus 5 rates; set `EDGE_AI_MODEL=claude-sonnet-5` to cut that
+substantially if volume warrants it.
 
 ## Vercel (frontend) + Fly (API)
 

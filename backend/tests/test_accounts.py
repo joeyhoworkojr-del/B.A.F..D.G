@@ -245,8 +245,40 @@ def test_unimplemented_features_are_withheld_from_every_level():
     user = User.new("joey", "j@e.com", "h")
     user.level = "admin"
     ent = entitlements_for(user)
-    assert ent.has("edge_ai") is False
-    assert ent.unavailable_reason["edge_ai"]
+    assert ent.has("alerts") is False
+    assert ent.unavailable_reason["alerts"]
+
+
+def test_a_built_feature_is_still_withheld_where_it_cannot_run(monkeypatch):
+    """
+    Edge AI is implemented, but a deployment with no model behind it cannot
+    serve it. Listing it on the plan there would advertise something that does
+    not work, which is the same fault as shipping it unimplemented.
+    """
+    from src.ai import provider as provider_mod
+    user = User.new("joey", "j@e.com", "h")
+    user.level = "admin"
+
+    provider_mod.set_provider(provider_mod.UnconfiguredProvider())
+    try:
+        ent = entitlements_for(user)
+        assert ent.has("edge_ai") is False
+        assert "configured" in ent.unavailable_reason["edge_ai"]
+    finally:
+        provider_mod.set_provider(None)
+
+
+def test_edge_ai_is_offered_once_a_model_is_configured(monkeypatch):
+    from src.ai import provider as provider_mod
+    user = User.new("joey", "j@e.com", "h")
+    user.level = "admin"
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    provider_mod.set_provider(provider_mod.AnthropicProvider())
+    try:
+        assert entitlements_for(user).has("edge_ai") is True
+    finally:
+        provider_mod.set_provider(None)
 
 
 def test_no_gate_fires_while_the_beta_is_open(monkeypatch):

@@ -49,11 +49,26 @@ _GRANTS: dict[str, set[str]] = {
 
 # Features not implemented yet. These report False regardless of level, so the
 # UI can never advertise something the backend cannot serve.
-_NOT_IMPLEMENTED = {"alerts", "edge_ai", "edge_ai_unlimited"}
+_NOT_IMPLEMENTED = {"alerts", "edge_ai_unlimited"}
+
+# Features that are built but depend on something the deployment must supply.
+# "Implemented" and "able to run here" are different claims, and a feature the
+# UI offers must satisfy the second one — a plan that lists Edge AI on a
+# deployment with no model behind it is advertising something that cannot be
+# served, which is the same fault as shipping it unimplemented.
+def _edge_ai_ready() -> bool:
+    try:
+        from src.ai.provider import get_provider
+        return get_provider().available()
+    except Exception:                                    # pragma: no cover
+        return False
+
+
+_REQUIRES_CONFIG = {"edge_ai": _edge_ai_ready}
 
 _REASONS = {
     "alerts": "Alerts aren't built yet.",
-    "edge_ai": "Edge AI isn't available yet.",
+    "edge_ai": "Edge AI isn't configured on this deployment yet.",
     "edge_ai_unlimited": "Edge AI isn't available yet.",
 }
 
@@ -89,7 +104,14 @@ def entitlements_for(user: Optional[User]) -> Entitlements:
         # what gives an account a reason to exist.
         granted = set(FEATURES)
 
-    features = {f: (f in granted and f not in _NOT_IMPLEMENTED) for f in FEATURES}
+    features = {
+        f: (
+            f in granted
+            and f not in _NOT_IMPLEMENTED
+            and _REQUIRES_CONFIG.get(f, lambda: True)()
+        )
+        for f in FEATURES
+    }
     unavailable = {
         f: _REASONS.get(f, "Not available on your current plan.")
         for f, ok in features.items() if not ok

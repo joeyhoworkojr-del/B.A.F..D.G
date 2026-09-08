@@ -10,6 +10,7 @@ export function MobileMoreLinks() {
   const { user, entitlements } = useSession()
   const canStaff = can(entitlements, 'view_staff')
   const links = [
+    { to: '/props', label: 'Props' },
     { to: '/upcoming', label: 'Upcoming' },
     // Settings — and with it Log out — must be reachable on a phone without
     // hunting. The top-bar avatar menu is desktop-only.

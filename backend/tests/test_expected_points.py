@@ -289,3 +289,48 @@ def test_recording_never_raises_on_bad_input():
                        home_score=0, away_score=0)
     win_history.record(league="nfl", event_id="y", home_win=0.5,
                        home_score=None, away_score=0)   # type: ignore[arg-type]
+
+
+def test_nobody_in_possession_is_not_read_as_the_away_team_having_the_ball():
+    """
+    Between plays the feed publishes no possession. Passing False there would
+    mean "the away team has it" and would move the projection the wrong way, so
+    the route passes None and the possession term drops out entirely.
+    """
+    none_ball = _live(possession_home=None, yard_line=95, down=1, distance=5)
+    assert none_ball["state_aware"] is False
+    assert none_ball["drive_value"] == 0.0
+
+    away_ball = _live(possession_home=False, yard_line=95, down=1, distance=5)
+    assert away_ball["state_aware"] is True
+    assert none_ball["home_win"] > away_ball["home_win"]
+
+
+def test_drive_value_is_signed_from_the_home_teams_point_of_view():
+    """
+    Every other number in this payload is home-relative. An unsigned magnitude
+    would render as a gain on a home-centric card while the opponent marched.
+    """
+    home_ball = _live(possession_home=True, yard_line=95, down=1, distance=5)
+    away_ball = _live(possession_home=False, yard_line=95, down=1, distance=5)
+    assert home_ball["drive_value"] > 0
+    assert away_ball["drive_value"] < 0
+    assert home_ball["drive_value"] == pytest.approx(-away_ball["drive_value"])
+
+    # A bad spot is negative for whoever is in it.
+    home_pinned = _live(possession_home=True, yard_line=5, down=3, distance=15)
+    assert home_pinned["drive_value"] < 0
+
+
+def test_a_probability_that_is_not_a_probability_is_refused():
+    """
+    NaN and infinity serialise as bare literals that are not valid JSON, so a
+    single bad reading would break the whole timeline endpoint in the browser.
+    Out-of-range values are refused for the same reason they would be wrong.
+    """
+    for bad in (float("nan"), float("inf"), float("-inf"), -0.5, 1.5):
+        _point(event_id="bad", home_win=bad)
+    assert win_history.series("nfl", "bad") == []
+
+    _point(event_id="bad", home_win=0.5)
+    assert len(win_history.series("nfl", "bad")) == 1

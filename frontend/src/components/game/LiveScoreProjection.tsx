@@ -90,13 +90,14 @@ export function LiveScoreProjection({
             <p className="mt-1 text-sm leading-snug text-zinc-300">{model.drive_note}</p>
             {model.drive_value != null && model.drive_value !== 0 && (
               <p className="mt-1.5 text-xs text-zinc-500">
-                That is worth{' '}
+                Worth{' '}
                 <span className={`font-mono font-bold ${
                   model.drive_value > 0 ? 'text-signal-green' : 'text-signal-red'
                 }`}>
                   {model.drive_value > 0 ? '+' : ''}{model.drive_value.toFixed(1)}
                 </span>{' '}
-                points to the projection — counted now, not after the drive ends.
+                to {game.home_abbr}'s projected margin — counted now, not after the
+                drive ends.
               </p>
             )}
           </div>

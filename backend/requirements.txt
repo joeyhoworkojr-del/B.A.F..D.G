@@ -15,3 +15,4 @@ argon2-cffi==25.1.0   # password hashing (Argon2id)
 pytest==8.3.4
 pytest-asyncio==0.24.0
 ruff==0.8.4
+anthropic==1.4.0   # Edge AI (Messages API). Inert without ANTHROPIC_API_KEY.

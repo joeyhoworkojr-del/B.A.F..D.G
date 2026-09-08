@@ -20,6 +20,7 @@ export const MORE_ITEMS = [
   // Kept out of the primary bar deliberately: an eighth item wraps the header
   // at 1440px, and the week-ahead board is a destination people seek out
   // rather than one they need in front of them at all times.
+  { to: '/ask', label: 'Ask Edge' },
   { to: '/upcoming', label: 'Upcoming' },
   { to: '/parlay', label: 'Parlay' },
   { to: '/faq', label: 'FAQ' },
