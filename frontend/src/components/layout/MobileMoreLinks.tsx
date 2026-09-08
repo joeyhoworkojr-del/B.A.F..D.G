@@ -1,14 +1,19 @@
 import { Link } from 'react-router-dom'
 import { useSession } from '../../session/SessionProvider'
+import { can } from '../../session/powers'
 
 /**
  * News, Results, Parlay and FAQ don't fit in the five-slot bottom bar, so below
  * `lg` they get an explicit row rather than being unreachable.
  */
 export function MobileMoreLinks() {
-  const { user } = useSession()
+  const { user, entitlements } = useSession()
+  const canStaff = can(entitlements, 'view_staff')
   const links = [
     { to: '/upcoming', label: 'Upcoming' },
+    // Settings — and with it Log out — must be reachable on a phone without
+    // hunting. The top-bar avatar menu is desktop-only.
+    ...(user ? [{ to: '/account', label: 'Settings' }] : []),
     { to: '/leaderboard', label: 'Leaderboard' },
     { to: '/news', label: 'News' },
     { to: '/results', label: 'Results' },
@@ -16,7 +21,7 @@ export function MobileMoreLinks() {
     { to: '/faq', label: 'FAQ' },
     // The top bar only shows Staff from `lg` up, which left an admin on a
     // phone or a narrow window with no way to reach the portal at all.
-    ...(user?.level === 'admin' ? [{ to: '/staff', label: 'Staff' }] : []),
+    ...(canStaff ? [{ to: '/staff', label: 'Staff' }] : []),
   ]
   return (
     <nav

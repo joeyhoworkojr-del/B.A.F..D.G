@@ -26,7 +26,7 @@ from src.ingest.espn import (
 )
 from src.ingest import cfbd, nflverse
 from src.predict import priors
-from src.track import ledger
+from src.track import ledger, win_history
 import asyncio
 from src.ingest.weather import (
     CFL_INDOOR_TEAMS,
@@ -328,5 +328,28 @@ async def data_sources() -> dict:
             },
         ],
         "model_priors": priors.status(),
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.get("/live/win-history/{league}/{event_id}", tags=["Live"])
+async def win_probability_history(league: str, event_id: str) -> dict:
+    """
+    Every live win-probability reading recorded for one game, oldest first.
+
+    Empty is a valid answer, not an error: a game that has not kicked off, or
+    one the server has not polled since a restart, genuinely has no timeline.
+    The response says which of those it is rather than implying a flat line.
+    """
+    league = league.lower()
+    if league not in FOOTBALL_LEAGUES:
+        raise HTTPException(status_code=404, detail=f"Unknown league: {league!r}")
+    points = win_history.series(league, event_id)
+    return {
+        "league": league,
+        "event_id": event_id,
+        "points": points,
+        "swing": win_history.swing(league, event_id),
+        "note": "" if points else "No readings recorded for this game yet.",
         "fetched_at": datetime.now(timezone.utc).isoformat(),
     }

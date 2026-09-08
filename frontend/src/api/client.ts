@@ -15,6 +15,7 @@ import type {
   AccuracyResponse,
   SoccerUpcomingResponse,
   UpcomingResponse,
+  WinHistoryOut,
   PlayByPlayOut,
   GameDetailOut,
   FootballLeague,
@@ -165,6 +166,11 @@ export const api = {
   // Live data
   liveScores: () => get<AllScoreboardsOut>(`/api/v1/live/scores?_=${Date.now()}`),
   leagueScores: (league: string) => get<ScoreboardOut>(`/api/v1/live/scores/${league}`),
+  /** Every live win-probability reading the server has recorded for a game. */
+  winHistory: (league: string, eventId: string) =>
+    get<WinHistoryOut>(
+      `/api/v1/live/win-history/${league}/${encodeURIComponent(eventId)}?_=${Date.now()}`,
+    ),
   // The cache-buster is not belt-and-braces: a proxy or CDN that ignores a
   // short max-age will happily serve a frozen game clock, and a unique URL is
   // the only thing that cannot be answered from a cache.
@@ -216,6 +222,13 @@ export const api = {
   login: (body: { identifier: string; password: string }) =>
     post<SessionOut>('/api/v1/auth/login', body),
   logout: () => post<{ ok: boolean }>('/api/v1/auth/logout', {}),
+  changePassword: (current_password: string, new_password: string) =>
+    post<SessionOut & { signed_out_other_sessions: boolean }>(
+      '/api/v1/auth/password', { current_password, new_password },
+    ),
+  /** The image is already cropped and resized by the browser. */
+  uploadAvatar: (image: string) => post<SessionOut>('/api/v1/auth/avatar', { image }),
+  removeAvatar: () => request<SessionOut>('/api/v1/auth/avatar', { method: 'DELETE' }),
   usernameAvailable: (username: string) =>
     get<{ username: string; available: boolean }>(
       `/api/v1/auth/username-available?username=${encodeURIComponent(username)}`),

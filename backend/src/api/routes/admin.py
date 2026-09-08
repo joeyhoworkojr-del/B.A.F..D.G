@@ -7,15 +7,18 @@ that can rewrite history. Deliberately absent: any way to edit or delete a
 graded pick. A staff tool that could quietly change a result would undermine
 the one claim the product makes.
 
-Admin is granted by the ADMIN_USERNAMES environment variable, so it cannot be
-obtained by anything that can write to the database.
+Access is granted by the ADMIN_USERNAMES / STAFF_USERNAMES environment
+variables, so it cannot be obtained by anything that can write to the database.
+The footer link is a convenience for staff and is never the control: every
+route here checks the caller's role server-side, and a normal user typing the
+URL gets a 404.
 """
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
 from src.accounts.models import COLLECTION as USERS, User
-from src.api.routes.auth import require_admin
+from src.api.routes.auth import require_staff
 from src.ingest import cfbd, nflverse
 from src.picks import leaderboard, service as picks
 from src.predict import priors
@@ -26,7 +29,7 @@ router = APIRouter()
 
 
 @router.get("/admin/overview", tags=["Admin"])
-async def overview(admin: User = Depends(require_admin)) -> dict:
+async def overview(staff: User = Depends(require_staff)) -> dict:
     """Everything a staff member needs at a glance."""
     users = get_docs().list(USERS)
     all_picks = picks.all_picks()
@@ -69,7 +72,7 @@ async def overview(admin: User = Depends(require_admin)) -> dict:
 
 
 @router.get("/admin/users", tags=["Admin"])
-async def list_users(limit: int = 100, admin: User = Depends(require_admin)) -> dict:
+async def list_users(limit: int = 100, staff: User = Depends(require_staff)) -> dict:
     """
     Registered accounts, newest first.
 
@@ -95,7 +98,7 @@ async def list_users(limit: int = 100, admin: User = Depends(require_admin)) -> 
 
 
 @router.get("/admin/picks", tags=["Admin"])
-async def list_picks(limit: int = 100, admin: User = Depends(require_admin)) -> dict:
+async def list_picks(limit: int = 100, staff: User = Depends(require_staff)) -> dict:
     """Every published pick, newest first — for inspection, not editing."""
     rows = picks.all_picks()
     rows.sort(key=lambda p: p.created_at, reverse=True)

@@ -13,6 +13,7 @@ import { LineMovementChart } from '../components/game/LineMovementChart'
 import { MakeYourPick } from '../components/picks/MakeYourPick'
 import { GameCommunity } from '../components/picks/GameCommunity'
 import { useGameCommunity } from '../hooks/useGameCommunity'
+import { useWinHistory } from '../hooks/useWinHistory'
 import { oddsSourceLabel } from '../components/OddsSource'
 import { LiveWinProbabilityChart } from '../components/game/LiveWinProbabilityChart'
 import { LiveScoreProjection } from '../components/game/LiveScoreProjection'
@@ -88,7 +89,10 @@ export function GameDetail() {
     }
   }, [data, location.hash])
 
-  // Sample live win probability while the page is open (no server history yet).
+  // The server records the timeline; these local samples are only a fallback
+  // for a game the server has not polled yet (a restart, or a brand-new game).
+  const { history: winHistory } = useWinHistory(league, eventId, live)
+  // Sample live win probability while the page is open (fallback).
   const [wpPoints, setWpPoints] = useState<Point[]>([])
   const homeWin = data?.model?.live_home_win ?? data?.model?.calibrated_home_win ?? data?.model?.home_win_prob
   useEffect(() => {
@@ -229,7 +233,7 @@ export function GameDetail() {
                     <span className="text-sm text-zinc-300">{game.home_abbr} (home)</span>
                     <span className="font-mono text-2xl font-black tabular-nums text-signal-green">{pct1(homeWin)}</span>
                   </div>
-                  <LiveWinProbabilityChart points={wpPoints} teamLabel={game.home_abbr} />
+                  <LiveWinProbabilityChart history={winHistory} teamLabel={game.home_abbr} fallback={wpPoints} />
                   <FieldTracker game={game} />
                 </div>
               </Panel>

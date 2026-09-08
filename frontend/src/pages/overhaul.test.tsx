@@ -8,9 +8,10 @@ import { NewsCard } from '../components/news/NewsCard'
 import { FaqList } from '../components/faq/FaqList'
 import { FAQ, FAQ_PREVIEW_IDS } from '../content/faq'
 import { Account } from './Account'
-import { resetEntitlements } from '../hooks/useEntitlement'
+import { api } from '../api/client'
+import { SessionProvider } from '../session/SessionProvider'
 import { PropsTable } from '../components/props/PropsTable'
-import type { EntitlementsOut, NewsItemOut, PropProjectionOut } from '../types'
+import type { NewsItemOut, PropProjectionOut } from '../types'
 
 const newsItem: NewsItemOut = {
   league: 'ncaaf', id: 'n1',
@@ -22,20 +23,6 @@ const newsItem: NewsItemOut = {
   reflected_in_projection: false,
 }
 
-const entitlements: EntitlementsOut = {
-  plan: 'free', authenticated: false, auth_configured: false,
-  features: {
-    line_movement_history: true, model_internals: true,
-    alerts: false, player_props: false, saved_games: false,
-  },
-  unavailable_reason: {
-    alerts: 'Requires a signed-in account and durable storage; neither is configured yet.',
-    player_props: 'Requires a licensed player-props odds provider; none is configured yet.',
-    saved_games: 'Requires a signed-in account and durable storage; neither is configured yet.',
-  },
-  billing_enabled: false,
-  note: 'StatEdge is free during this release.',
-}
 
 const wrap = (ui: React.ReactNode) => render(<MemoryRouter>{ui}</MemoryRouter>)
 
@@ -108,38 +95,70 @@ describe('FAQ content', () => {
   })
 })
 
-describe('Account — access comes from the server', () => {
+describe('Account settings', () => {
+  const user = {
+    id: 'u1', username: 'analyst', display_name: 'Analyst', bio: '', avatar_url: '',
+    favourite_sports: [], favourite_teams: [], badges: [], created_at: '2026-01-01T00:00:00Z',
+    email: 'a@example.com', email_verified: false, level: 'beta', interests: [],
+    onboarded: true, profile_public: true,
+  }
+  const session = {
+    user,
+    entitlements: {
+      level: 'beta', powers: [], authenticated: true, beta_open: true,
+      features: { player_props: true, alerts: false },
+      unavailable_reason: { alerts: 'Alerts are not built yet.' },
+      billing_enabled: false, note: '',
+    },
+  }
+
   beforeEach(() => {
-    resetEntitlements()
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(entitlements), {
-      status: 200, headers: { 'content-type': 'application/json' },
-    })))
+    vi.spyOn(api, 'session').mockResolvedValue(session as never)
   })
-  afterEach(() => { vi.unstubAllGlobals(); resetEntitlements() })
+  afterEach(() => vi.restoreAllMocks())
 
-  it('shows the plan the server reported', async () => {
-    wrap(<Account />)
-    expect(await screen.findByText('free')).toBeInTheDocument()
-  })
+  const renderAccount = () =>
+    render(
+      <SessionProvider>
+        <MemoryRouter><Account /></MemoryRouter>
+      </SessionProvider>,
+    )
 
-  it('offers no sign-in form when no identity provider is configured', async () => {
-    wrap(<Account />)
-    await screen.findByText('free')
-    expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /sign in|log in|create account/i })).not.toBeInTheDocument()
+  it('offers an unmissable way to log out', async () => {
+    renderAccount()
+    expect(await screen.findByRole('button', { name: /^log out$/i })).toBeInTheDocument()
   })
 
-  it('explains every feature the server withheld', async () => {
-    wrap(<Account />)
-    await screen.findByText('free')
-    expect(screen.getByText(entitlements.unavailable_reason.player_props)).toBeInTheDocument()
-    expect(screen.getAllByText(entitlements.unavailable_reason.alerts).length).toBeGreaterThan(0)
+  it('lets the account holder change their password', async () => {
+    renderAccount()
+    await screen.findByRole('button', { name: /^log out$/i })
+    expect(screen.getByLabelText(/current password/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/new password/i)).toBeInTheDocument()
   })
 
-  it('never shows a checkout or price', async () => {
-    wrap(<Account />)
-    await screen.findByText('free')
-    expect(screen.queryByText(/\$|upgrade|subscribe|checkout/i)).not.toBeInTheDocument()
+  it('says the email is unverified rather than implying it is verified', async () => {
+    renderAccount()
+    await screen.findByText('a@example.com')
+    expect(screen.getByText(/not verified/i)).toBeInTheDocument()
+  })
+
+  it('explains a feature the server withheld instead of hiding it', async () => {
+    renderAccount()
+    await screen.findByRole('button', { name: /^log out$/i })
+    // Appears in the Notifications section and against the feature itself.
+    expect(screen.getAllByText(/Alerts are not built yet/).length).toBeGreaterThan(0)
+  })
+
+  it('never shows a checkout or a price while billing is off', async () => {
+    renderAccount()
+    await screen.findByRole('button', { name: /^log out$/i })
+    expect(screen.queryByText(/\$\d|upgrade now|subscribe|checkout/i)).not.toBeInTheDocument()
+  })
+
+  it('shows no staff link to an account without the power', async () => {
+    renderAccount()
+    await screen.findByRole('button', { name: /^log out$/i })
+    expect(screen.queryByRole('link', { name: /staff/i })).not.toBeInTheDocument()
   })
 })
 

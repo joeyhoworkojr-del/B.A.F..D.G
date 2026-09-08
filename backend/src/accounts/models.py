@@ -36,14 +36,72 @@ RESERVED_USERNAMES = {
 }
 
 
-# Usernames promoted to admin on sign-in. An env var rather than a database
-# flag, so admin cannot be granted by anything that can write to storage —
-# only by someone who can change the deployment.
-ADMIN_USERNAMES = {
-    u.strip().lower()
-    for u in (os.getenv("ADMIN_USERNAMES") or "").split(",")
-    if u.strip()
+def _username_set(env_var: str) -> set[str]:
+    return {
+        u.strip().lower()
+        for u in (os.getenv(env_var) or "").split(",")
+        if u.strip()
+    }
+
+
+# Staff roles come from environment variables rather than a database flag, so
+# they cannot be granted by anything that can write to storage — only by
+# someone who can change the deployment. Removing a name demotes the account on
+# its next read rather than leaving stale power behind.
+#
+#   ADMIN      everything, including anything destructive
+#   STAFF      operational visibility: users, games, predictions, feed health
+#   MODERATOR  chat and community moderation only
+#
+# A name in more than one list gets the highest role it appears in.
+ADMIN_USERNAMES = _username_set("ADMIN_USERNAMES")
+STAFF_USERNAMES = _username_set("STAFF_USERNAMES")
+MODERATOR_USERNAMES = _username_set("MODERATOR_USERNAMES")
+
+# Highest first — role_for walks this in order.
+STAFF_ROLES: tuple[str, ...] = ("admin", "staff", "moderator")
+
+# What each staff role is allowed to do. Checked server-side on every request;
+# the UI hiding a link is a convenience, never the control.
+ROLE_POWERS: dict[str, frozenset[str]] = {
+    "admin": frozenset({"view_staff", "manage_users", "moderate", "configure"}),
+    "staff": frozenset({"view_staff", "moderate"}),
+    "moderator": frozenset({"moderate"}),
 }
+
+
+def role_for(username: str) -> Optional[str]:
+    """The staff role this username holds, or None. Highest role wins."""
+    name = (username or "").strip().lower()
+    for role, names in (
+        ("admin", ADMIN_USERNAMES),
+        ("staff", STAFF_USERNAMES),
+        ("moderator", MODERATOR_USERNAMES),
+    ):
+        if name in names:
+            return role
+    return None
+
+
+def has_power(level: str, power: str) -> bool:
+    """Whether an account level carries a given staff power."""
+    return power in ROLE_POWERS.get(level, frozenset())
+
+
+def staff_config_report() -> dict:
+    """
+    Which staff roles this process can see, by count only.
+
+    Set on the wrong host the variables are silently empty, and a missing Staff
+    link looks identical to a username that did not match. Counts tell those
+    apart; the names stay private.
+    """
+    return {
+        "admin": len(ADMIN_USERNAMES),
+        "staff": len(STAFF_USERNAMES),
+        "moderator": len(MODERATOR_USERNAMES),
+        "any_configured": bool(ADMIN_USERNAMES or STAFF_USERNAMES or MODERATOR_USERNAMES),
+    }
 
 
 def _now() -> str:

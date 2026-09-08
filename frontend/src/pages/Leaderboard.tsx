@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { Avatar } from '../components/Avatar'
 import { api } from '../api/client'
 import type { LeaderboardOut, Standing } from '../types'
 
@@ -147,6 +148,7 @@ export function Leaderboard() {
 function AnalystCell({ s }: { s: Standing }) {
   return (
     <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <Avatar user={s} size={24} />
       <Link to={`/@${s.username}`} className="font-semibold text-zinc-100 hover:text-brand hover:underline">
         {s.display_name}
       </Link>

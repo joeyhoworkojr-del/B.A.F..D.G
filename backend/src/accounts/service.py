@@ -12,7 +12,8 @@ from typing import Optional
 
 from src.accounts import passwords
 from src.accounts.models import (
-    ADMIN_USERNAMES, COLLECTION, InvalidUsername, User, normalise_email,
+    ADMIN_USERNAMES, COLLECTION, STAFF_ROLES, InvalidUsername, User,
+    normalise_email, role_for,
     normalise_username,
 )
 from src.store.documents import UniqueViolation, get_docs
@@ -31,19 +32,20 @@ def _save(user: User) -> User:
 
 def _apply_admin(user: Optional[User]) -> Optional[User]:
     """
-    Reconcile the stored level with the deployment's admin list.
+    Reconcile the stored level with the deployment's staff lists.
 
-    Admin is granted by ADMIN_USERNAMES and nothing else, so a compromised
-    write to storage cannot promote an account — and removing a name from the
-    list demotes it on the next read rather than leaving stale power behind.
+    A staff role is granted by ADMIN_USERNAMES / STAFF_USERNAMES /
+    MODERATOR_USERNAMES and nothing else, so a compromised write to storage
+    cannot promote an account — and removing a name demotes it on the next read
+    rather than leaving stale power behind.
     """
     if user is None:
         return None
-    should_be_admin = user.username in ADMIN_USERNAMES
-    if should_be_admin and user.level != "admin":
-        user.level = "admin"
+    role = role_for(user.username)
+    if role is not None and user.level != role:
+        user.level = role
         _save(user)
-    elif not should_be_admin and user.level == "admin":
+    elif role is None and user.level in STAFF_ROLES:
         user.level = "beta"
         _save(user)
     return user
@@ -138,6 +140,19 @@ def update_profile(user: User, **changes) -> User:
     for key, clean in editable.items():
         if key in changes and changes[key] is not None:
             setattr(user, key, clean(changes[key]))
+    from src.accounts.models import _now
+    user.updated_at = _now()
+    return _save(user)
+
+
+def set_password(user: User, new_password: str) -> User:
+    """
+    Replace the stored hash.
+
+    The caller is responsible for having proved the account is theirs, and for
+    ending the other sessions — this function only writes the hash.
+    """
+    user.password_hash = passwords.hash_password(new_password)
     from src.accounts.models import _now
     user.updated_at = _now()
     return _save(user)

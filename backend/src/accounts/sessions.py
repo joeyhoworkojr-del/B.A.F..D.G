@@ -68,7 +68,11 @@ def create(user_id: str, *, user_agent: str = "") -> tuple[str, str]:
     """Start a session. Returns (token for the cookie, expiry as ISO-8601)."""
     token = secrets.token_urlsafe(32)
     expires = _now() + timedelta(days=SESSION_DAYS)
-    get_docs().put(COLLECTION, _digest(token), {
+    digest = _digest(token)
+    get_docs().put(COLLECTION, digest, {
+        # The row carries its own key so a user's sessions can be found without
+        # the tokens, which is what destroy_all needs on a password change.
+        "id": digest,
         "user_id": user_id,
         "created_at": _now().isoformat(timespec="seconds"),
         "expires_at": expires.isoformat(timespec="seconds"),
@@ -100,6 +104,30 @@ def destroy(token: Optional[str]) -> None:
     """Log out. Idempotent — an unknown token is not an error."""
     if token:
         get_docs().delete(COLLECTION, _digest(token))
+
+
+def destroy_all(user_id: str) -> int:
+    """
+    End every session this account holds, on every device.
+
+    What a password change is for. Changing a password that leaves the
+    attacker's existing session alive has not actually locked anyone out, so
+    this is the half of the operation that does the work.
+
+    Returns the number of sessions ended. Sessions are keyed by a hash of their
+    token, so finding a user's own requires scanning; the store is small (one
+    row per signed-in device) and this runs only on a password change.
+    """
+    docs = get_docs()
+    ended = 0
+    for row in docs.list(COLLECTION) or []:
+        if row.get("user_id") != user_id:
+            continue
+        token_digest = row.get("id") or row.get("_id")
+        if token_digest:
+            docs.delete(COLLECTION, token_digest)
+            ended += 1
+    return ended
 
 
 def cookie_kwargs(expires_iso: str) -> dict:
