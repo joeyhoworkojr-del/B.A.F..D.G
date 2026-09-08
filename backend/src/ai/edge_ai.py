@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
 from src.ai import context
+from src.ai import budget
 from src.ai.provider import LlmProvider, ProviderUnavailable, get_provider
 
 log = logging.getLogger(__name__)
@@ -327,6 +328,14 @@ async def ask(
     provider = provider or get_provider()
     if not provider.available():
         raise ProviderUnavailable("Edge AI is not configured")
+    # Checked before the request, so the daily cap is a gate rather than a
+    # report. A per-user rate limit bounds one person's questions; it does not
+    # bound the bill, because the number of people is not bounded.
+    if not budget.within_budget():
+        raise ProviderUnavailable(
+            "Edge AI has reached its spending limit for today. It will be back "
+            "tomorrow."
+        )
 
     question = (question or "").strip()[:MAX_QUESTION_CHARS]
     if not question:
@@ -351,6 +360,8 @@ async def ask(
 
         if not reply.wants_tools:
             answer.text = reply.text
+            budget.record(getattr(provider, "model", ""),
+                          answer.input_tokens, answer.output_tokens)
             return answer
 
         messages.append({
@@ -383,6 +394,8 @@ async def ask(
     answer.input_tokens += final.input_tokens
     answer.output_tokens += final.output_tokens
     answer.truncated = True
+    budget.record(getattr(provider, "model", ""),
+                  answer.input_tokens, answer.output_tokens)
     return answer
 
 
@@ -390,9 +403,14 @@ def status() -> dict:
     """What Edge AI is, and whether it can run. No credentials, ever."""
     provider = get_provider()
     report = provider.status()
+    spend = budget.status()
     return {
         **report,
-        "available": provider.available(),
+        # Configured and able to answer are different claims: a key can be set
+        # and the day's budget still spent.
+        "available": provider.available() and spend["within_budget"],
+        "configured": provider.available(),
+        "budget": spend,
         "tools": sorted(TOOL_NAMES),
         "max_tool_rounds": MAX_TOOL_ROUNDS,
     }

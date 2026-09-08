@@ -27,9 +27,11 @@ log = logging.getLogger(__name__)
 KEY_ENV_VAR = "ANTHROPIC_API_KEY"
 MODEL_ENV_VAR = "EDGE_AI_MODEL"
 
-# Opus 5 is the default. Overridable by environment so the model can be changed
-# without a code deploy — including to a cheaper one if volume warrants it.
-DEFAULT_MODEL = "claude-opus-5"
+# Haiku 4.5 is the default: the cheapest model available, and the job here is
+# reading structured tool results and writing a tight paragraph rather than
+# solving anything hard. Overridable by environment, so moving up to Sonnet or
+# Opus is one secret and no deploy — worth doing if the answers read flat.
+DEFAULT_MODEL = "claude-haiku-4-5"
 
 # Long enough for a considered paragraph or two with a table, short enough that
 # a runaway generation cannot run up a bill.
@@ -46,6 +48,9 @@ class LlmReply:
     stop_reason: str = ""
     input_tokens: int = 0
     output_tokens: int = 0
+    # Input served from cache rather than charged in full. Reported so the
+    # staff page can show whether caching is actually working.
+    cached_tokens: int = 0
 
     @property
     def wants_tools(self) -> bool:
@@ -135,7 +140,20 @@ class AnthropicProvider:
             response = await client.messages.create(
                 model=self._model,
                 max_tokens=MAX_OUTPUT_TOKENS,
-                system=system,
+                # The system prompt and the tool schemas are identical on every
+                # request and every round within one, and together they are the
+                # larger half of the input. Marking the end of that prefix lets
+                # the repeats be read from cache at a tenth of the price.
+                #
+                # The breakpoint goes on the system block because the render
+                # order is tools → system → messages: caching here covers both,
+                # and the volatile part (the conversation) sits after it where
+                # a change cannot invalidate the prefix.
+                system=[{
+                    "type": "text",
+                    "text": system,
+                    "cache_control": {"type": "ephemeral"},
+                }],
                 messages=messages,
                 tools=tools or [],
             )
@@ -159,12 +177,18 @@ class AnthropicProvider:
                 ))
 
         usage = getattr(response, "usage", None)
+        # Cache writes and reads are billed differently from fresh input, but
+        # they are all input the budget has to account for. Counting them keeps
+        # the spend estimate from silently under-reporting once caching is on.
+        cache_write = getattr(usage, "cache_creation_input_tokens", 0) or 0
+        cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
         return LlmReply(
             text="\n".join(t for t in text_parts if t).strip(),
             tool_calls=calls,
             stop_reason=getattr(response, "stop_reason", "") or "",
-            input_tokens=getattr(usage, "input_tokens", 0) or 0,
+            input_tokens=(getattr(usage, "input_tokens", 0) or 0) + cache_write + cache_read,
             output_tokens=getattr(usage, "output_tokens", 0) or 0,
+            cached_tokens=cache_read,
         )
 
 

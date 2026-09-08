@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends
 
 from src.accounts.models import COLLECTION as USERS, User
 from src.api.routes.auth import require_staff
+from src.ai import budget as ai_budget
 from src.ingest import cfbd, nflverse
 from src.picks import leaderboard, service as picks
 from src.predict import priors
@@ -68,6 +69,10 @@ async def overview(staff: User = Depends(require_staff)) -> dict:
             "cfbd": cfbd.status(),
             "model_priors": priors.status(),
         },
+        # What Edge AI has cost today, against its cap. An estimate priced from
+        # token counts, not a bill — said plainly on the page too.
+        "edge_ai": ai_budget.status(),
+        "edge_ai_history": ai_budget.history(14),
     }
 
 
