@@ -1,4 +1,7 @@
-import type { GameDetailOut, LiveGameOut, MarketOut, TodayResponse } from '../types'
+import type {
+  BoardEntry, BoardResponse, FootballLeague,
+  GameDetailOut, LiveGameOut, MarketOut, TodayResponse,
+} from '../types'
 
 export const pregameGame: LiveGameOut = {
   league: 'ncaaf', event_id: '401752',
@@ -109,5 +112,54 @@ export function todayBoard(league = 'ncaaf'): TodayResponse {
       edges: [],
       polymarket: null,
     }],
+  }
+}
+
+
+/** One entry on the merged board. */
+export function boardEntry(
+  league: FootballLeague,
+  overrides: Partial<LiveGameOut> = {},
+): BoardEntry {
+  const detail = gameDetail()
+  return {
+    league,
+    projected: true,
+    game: { ...pregameGame, league, ...overrides },
+    mapped: true,
+    model: detail.model,
+    edges: [],
+    polymarket: null,
+  }
+}
+
+/**
+ * A merged board across both leagues.
+ *
+ * The default has today empty and tomorrow carrying both an NFL and a college
+ * game, which is the case the homepage exists to handle: a midweek visitor
+ * should see the next day that has football on it rather than an empty board.
+ */
+export function mergedBoard(days: BoardResponse['days'] | null = null): BoardResponse {
+  const list = days ?? [{
+    date: '2026-09-10',
+    label: 'Tomorrow',
+    games: [
+      boardEntry('nfl', { event_id: 'n1', home: 'Chiefs', away: 'Ravens', home_abbr: 'KC', away_abbr: 'BAL' }),
+      boardEntry('ncaaf', { event_id: 'c1' }),
+    ],
+    live: 0,
+    by_league: { nfl: 1, ncaaf: 1 },
+  }]
+  return {
+    days: list,
+    live_count: list.reduce((n, d) => n + d.live, 0),
+    total_games: list.reduce((n, d) => n + d.games.length, 0),
+    predicted: list.reduce((n, d) => n + d.games.length, 0),
+    leagues: ['nfl', 'ncaaf'],
+    source_ok: true,
+    fetched_at: new Date().toISOString(),
+    market_source: 'ESPN BET',
+    note: '',
   }
 }

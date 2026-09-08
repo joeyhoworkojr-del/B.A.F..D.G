@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -40,7 +41,9 @@ from src.data.world_cup import (
     get_scorers_for_team,
     get_team,
 )
-from src.ingest.espn import LiveGame, fetch_scoreboard, fetch_upcoming, is_current
+from src.ingest.espn import (
+    _ET, LiveGame, fetch_scoreboard, fetch_upcoming, is_current,
+)
 from src.ingest.polymarket import fetch_league_markets, match_game
 from src.ingest.weather import WeatherReport, fetch_gridiron_weather, fetch_weather
 from src.predict.adjustments import (
@@ -1259,6 +1262,140 @@ async def upcoming(league: str, days: int = 7) -> dict:
             (g.market_provider for g in predicted if g.market_provider), "",
         ),
         "games": out_games,
+    }
+
+
+# How far forward the board will look for something to show. A Wednesday in
+# September has no college football and one NFL game; a Tuesday has neither. The
+# board rolls forward rather than rendering an empty page, because "nothing on"
+# is almost never true — it just is not true *today*.
+BOARD_LOOKAHEAD_DAYS = 8
+
+# Games carrying a full projection. Beyond this they still appear with teams,
+# kickoff and line; a schedule that stops is not a schedule.
+BOARD_MAX_PREDICTED = 60
+
+
+def _et_day(kickoff: str) -> str:
+    """The ET calendar day a kickoff belongs to, which is the sports day."""
+    try:
+        when = datetime.fromisoformat((kickoff or "").replace("Z", "+00:00"))
+    except ValueError:
+        return ""
+    return when.astimezone(_ET).strftime("%Y-%m-%d")
+
+
+def _day_label(day: str, today: str, tomorrow: str) -> str:
+    if day == today:
+        return "Today"
+    if day == tomorrow:
+        return "Tomorrow"
+    try:
+        return datetime.strptime(day, "%Y-%m-%d").strftime("%A %-d %b")
+    except ValueError:
+        return day
+
+
+@router.get("/board", tags=["Predictions"])
+async def board(days: int = BOARD_LOOKAHEAD_DAYS) -> dict:
+    """
+    One board across both leagues, grouped by the day a game is played.
+
+    Replaces asking for NFL and college separately. A person opening StatEdge
+    on a Wednesday wants to know what is on — not to discover that one of two
+    tabs is empty and guess which. Live games sort to the top of their day,
+    then kickoff order.
+    """
+    days = max(1, min(int(days), 14))
+
+    boards = await asyncio.gather(*(
+        asyncio.gather(fetch_scoreboard(lg), fetch_upcoming(lg, days))
+        for lg in FOCUS_LEAGUES
+    ))
+
+    seen: set[tuple[str, str]] = set()
+    collected: list[tuple[str, LiveGame]] = []
+    ok = True
+    for league, (live_board, ahead) in zip(FOCUS_LEAGUES, boards):
+        ok = ok and live_board.ok
+        # Today's board first: it carries scores and clocks that the schedule
+        # endpoint does not.
+        for game in list(live_board.games) + list(ahead.games):
+            key = (league, str(game.event_id))
+            if key in seen:
+                continue
+            seen.add(key)
+            collected.append((league, game))
+
+    # Anything already finished belongs on the results page, not on a board
+    # about what to watch — except a game that finished today, which people are
+    # still looking for.
+    today = datetime.now(_ET).strftime("%Y-%m-%d")
+    tomorrow = (datetime.now(_ET) + timedelta(days=1)).strftime("%Y-%m-%d")
+    collected = [
+        (lg, g) for lg, g in collected
+        if g.state != "post" or _et_day(g.kickoff) == today
+    ]
+
+    def sort_key(item):
+        _, g = item
+        # Live first, then by kickoff. A game in progress is the reason someone
+        # opened the page.
+        return (0 if g.state == "in" else 1, g.kickoff or "")
+
+    collected.sort(key=sort_key)
+
+    poly = {lg: await fetch_league_markets(lg) for lg in FOCUS_LEAGUES}
+
+    grouped: dict[str, list[dict]] = {}
+    predicted = 0
+    for league, game in collected:
+        day = _et_day(game.kickoff) or today
+        if day < today:
+            continue
+        if predicted < BOARD_MAX_PREDICTED:
+            entry = await _slate_entry(league, game, poly[league])
+            entry["projected"] = True
+            predicted += 1
+        else:
+            entry = {
+                "game": LiveGameOut(**game.__dict__).model_dump(),
+                "mapped": False, "model": None, "edges": [],
+                "polymarket": None, "projected": False,
+            }
+        entry["league"] = league
+        grouped.setdefault(day, []).append(entry)
+
+    day_list = [
+        {
+            "date": day,
+            "label": _day_label(day, today, tomorrow),
+            "games": grouped[day],
+            "live": sum(1 for e in grouped[day] if e["game"].get("state") == "in"),
+            "by_league": {
+                lg: sum(1 for e in grouped[day] if e["league"] == lg)
+                for lg in FOCUS_LEAGUES
+            },
+        }
+        for day in sorted(grouped)
+    ]
+
+    return {
+        "days": day_list,
+        "live_count": sum(d["live"] for d in day_list),
+        "total_games": sum(len(d["games"]) for d in day_list),
+        "predicted": predicted,
+        "leagues": list(FOCUS_LEAGUES),
+        "source_ok": ok,
+        # Named so the page can attribute the lines it shows rather than
+        # presenting a price as if StatEdge set it.
+        "market_source": next(
+            (g.market_provider for _, g in collected if g.market_provider), ""
+        ),
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+        # Said plainly rather than implied by an empty page: there is a
+        # difference between "no games" and "no games today".
+        "note": "" if day_list else f"No games scheduled in the next {days} days.",
     }
 
 

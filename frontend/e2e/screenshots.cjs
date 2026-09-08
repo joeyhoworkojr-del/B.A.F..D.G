@@ -51,6 +51,8 @@ async function stub(page) {
   await page.route('**/api/v1/**', r => r.fulfill({ json: {} }))
   await page.route('**/api/v1/today/**', r =>
     r.fulfill({ json: fx.today(new URL(r.request().url()).pathname.split('/').pop()) }))
+  await page.route('**/api/v1/board*', r => r.fulfill({ json: fx.board() }))
+  await page.route('**/api/v1/props/**', r => r.fulfill({ json: fx.gameProps }))
   await page.route('**/api/v1/accuracy', r => r.fulfill({ json: fx.accuracy }))
   await page.route('**/api/v1/news*', r => r.fulfill({ json: fx.news }))
   await page.route('**/api/v1/entitlements', r => r.fulfill({ json: fx.entitlements }))

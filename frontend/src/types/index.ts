@@ -333,6 +333,43 @@ export interface UpcomingResponse {
   games: TodayGameOut[]
 }
 
+/**
+ * One board across both leagues, grouped by the day a game is played.
+ *
+ * The homepage asks for this rather than for NFL and college separately: a
+ * Wednesday in September has one NFL game and no college football, and two
+ * tabs where one is empty makes the reader guess which. `projected` marks the
+ * games carrying a full model run — beyond the server's cap a game still
+ * appears with its teams, kickoff and line rather than being dropped.
+ */
+export interface BoardEntry extends TodayGameOut {
+  league: FootballLeague
+  projected: boolean
+}
+
+export interface BoardDay {
+  /** ET calendar day, `YYYY-MM-DD`. The day a game is played, not UTC. */
+  date: string
+  /** "Today", "Tomorrow", or a weekday and date. */
+  label: string
+  games: BoardEntry[]
+  live: number
+  by_league: Record<string, number>
+}
+
+export interface BoardResponse {
+  days: BoardDay[]
+  live_count: number
+  total_games: number
+  predicted: number
+  leagues: string[]
+  source_ok: boolean
+  fetched_at: string
+  market_source: string
+  /** Non-empty only when there is genuinely nothing scheduled in the window. */
+  note: string
+}
+
 export type GridironLeague = 'nfl' | 'cfl' | 'mlb'
 export type FootballLeague = 'nfl' | 'ncaaf'
 
@@ -944,6 +981,18 @@ export interface EdgeAiStatus {
   level: string
   model: string
   tools: string[]
+  /**
+   * The provider's own last failure, scrubbed of anything key-shaped by the
+   * server. Empty when nothing has failed. Surfaced under a failed answer
+   * because "temporarily unreachable" with no detail leaves no way to tell a
+   * five-minute blip from a misconfiguration nobody has noticed for a week.
+   */
+  last_error?: string
+  budget?: {
+    within_budget: boolean
+    spent_usd: number
+    daily_limit_usd: number
+  }
 }
 
 export interface EdgeAiAnswer {
