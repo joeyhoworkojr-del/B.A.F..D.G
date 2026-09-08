@@ -161,7 +161,8 @@ export const api = {
     }),
 
   soccerTeams: () => get<TeamInfo[]>('/api/v1/teams/soccer'),
-  leagueTeams: (league: GridironLeague) => get<TeamInfo[]>(`/api/v1/teams/${league}`),
+  leagueTeams: (league: GridironLeague | 'ncaaf') =>
+    get<TeamInfo[]>(`/api/v1/teams/${league}`),
   soccerRankings: () => get<RankingsResponse>('/api/v1/rankings/soccer'),
   leagueRankings: (league: GridironLeague) => get<RankingsResponse>(`/api/v1/rankings/${league}`),
   r16Fixtures: () => get<unknown[]>('/api/v1/fixtures/r16'),

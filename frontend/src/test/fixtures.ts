@@ -1,4 +1,4 @@
-import type { GameDetailOut, LiveGameOut, MarketOut } from '../types'
+import type { GameDetailOut, LiveGameOut, MarketOut, TodayResponse } from '../types'
 
 export const pregameGame: LiveGameOut = {
   league: 'ncaaf', event_id: '401752',
@@ -90,5 +90,24 @@ export function gameDetail(overrides: Partial<GameDetailOut> = {}): GameDetailOu
     },
     polymarket: null, snapshot: null,
     ...overrides,
+  }
+}
+
+
+/** A minimal today-board response for the homepage. */
+export function todayBoard(league = 'ncaaf'): TodayResponse {
+  const detail = gameDetail()
+  return {
+    league,
+    fetched_at: new Date().toISOString(),
+    source_ok: true,
+    market_source: 'ESPN BET',
+    games: [{
+      game: { ...pregameGame, league },
+      mapped: true,
+      model: detail.model,
+      edges: [],
+      polymarket: null,
+    }],
   }
 }
