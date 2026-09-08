@@ -5,6 +5,7 @@ import { FaqList } from '../components/faq/FaqList'
 import { oddsSourceSentence } from '../components/OddsSource'
 import { FAQ, FAQ_PREVIEW_IDS } from '../content/faq'
 import { api } from '../api/client'
+import { useSession } from '../session/SessionProvider'
 import type { TodayResponse, TodayGameOut, EdgeOut, AccuracyResponse, FootballLeague } from '../types'
 
 const LEAGUES: { id: FootballLeague; label: string }[] = [
@@ -186,14 +187,23 @@ function bestEdge(edges: EdgeOut[]): EdgeOut | null {
   return ab.length ? ab.reduce((x, y) => (y.edge_pp > x.edge_pp ? y : x)) : null
 }
 
+function marketKey(market: string): string {
+  const m = market.toLowerCase()
+  return m.includes('total') ? 'total' : m.includes('spread') ? 'spread' : 'moneyline'
+}
+
 function EdgeCard({ league, entry }: { league: FootballLeague; entry: TodayGameOut }) {
   const g = entry.game
-  const m = entry.model!
-  const e = bestEdge(entry.edges)!
+  const m = entry.model
+  // Not every game has an edge worth naming, and a followed team's game is
+  // shown whether it does or not. The non-null assertions here used to crash
+  // the whole board on the first game without one.
+  const e = bestEdge(entry.edges)
   const spread = g.market_spread
   const ou = g.market_over_under
-  const [sprTop, sprBot] = pair(m.home_cover_prob, false) // top=away
-  const [ouTop, ouBot] = pair(m.over_prob, true)          // top=Over
+  // An unmapped game has no model at all, which is a real state on the board.
+  const [sprTop, sprBot] = pair(m?.home_cover_prob ?? null, false) // top=away
+  const [ouTop, ouBot] = pair(m?.over_prob ?? null, true)          // top=Over
 
   const Pill = ({ v, verdict }: { v: string; verdict: Verdict }) => (
     <div className={`grid h-9 w-[68px] place-items-center rounded-lg border text-[13px] font-bold tabular-nums ${pillCls(verdict)}`}>{v}</div>
@@ -224,16 +234,29 @@ function EdgeCard({ league, entry }: { league: FootballLeague; entry: TodayGameO
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-terminal-border/70 pt-3">
-        <Stat label="Model" value={pct(e.model_prob)} />
-        <Stat label="Market" value={pct(e.market_prob)} />
-        <Stat label="Edge" value={`+${e.edge_pp.toFixed(0)}%`} green />
-        <Link to={`/game/${league}/${g.event_id}?market=${e.market.toLowerCase().includes("total") ? "total" : e.market.toLowerCase().includes("spread") ? "spread" : "moneyline"}`} state={{ game: g }}
-          className="rounded-lg border border-signal-amber/50 bg-signal-amber/15 px-3 py-1.5 text-[13px] font-bold text-signal-amber">
-          {e.rating} · {e.selection} ›
-        </Link>
-        <Link to={`/game/${league}/${g.event_id}?market=${e.market.toLowerCase().includes("total") ? "total" : e.market.toLowerCase().includes("spread") ? "spread" : "moneyline"}#why`} state={{ game: g }} className="ml-auto whitespace-nowrap text-xs font-semibold text-zinc-400 hover:text-zinc-200">
-          Why this edge? ›
-        </Link>
+        {e ? (
+          <>
+            <Stat label="Model" value={pct(e.model_prob)} />
+            <Stat label="Market" value={pct(e.market_prob)} />
+            <Stat label="Edge" value={`+${e.edge_pp.toFixed(0)}%`} green />
+            <Link to={`/game/${league}/${g.event_id}?market=${marketKey(e.market)}`} state={{ game: g }}
+              className="rounded-lg border border-signal-amber/50 bg-signal-amber/15 px-3 py-1.5 text-[13px] font-bold text-signal-amber">
+              {e.rating} · {e.selection} ›
+            </Link>
+            <Link to={`/game/${league}/${g.event_id}?market=${marketKey(e.market)}#why`} state={{ game: g }} className="ml-auto whitespace-nowrap text-xs font-semibold text-zinc-400 hover:text-zinc-200">
+              Why this edge? ›
+            </Link>
+          </>
+        ) : (
+          <>
+            <span className="text-xs text-zinc-500">
+              The model and the market agree on this one — no edge is claimed.
+            </span>
+            <Link to={`/game/${league}/${g.event_id}`} state={{ game: g }} className="ml-auto whitespace-nowrap text-xs font-semibold text-zinc-400 hover:text-zinc-200">
+              View game ›
+            </Link>
+          </>
+        )}
       </div>
     </div>
   )
@@ -251,7 +274,12 @@ function Stat({ label, value, green }: { label: string; value: string; green?: b
 export function Dashboard() {
   const [params, setParams] = useSearchParams()
   const query = params.get('q') ?? ''
+  const { user } = useSession()
   const [league, setLeague] = useState<FootballLeague>('ncaaf')
+  // Open on the league this person actually follows, once — after that the tab
+  // is theirs. Re-applying it on every session refresh would fight anyone who
+  // switched away.
+  const appliedPreference = useRef(false)
   const [data, setData] = useState<TodayResponse | null>(null)
   const [acc, setAcc] = useState<AccuracyResponse | null>(null)
   const [error, setError] = useState('')
@@ -263,6 +291,18 @@ export function Dashboard() {
   }, [])
 
   useEffect(() => { api.accuracy().then(setAcc).catch(() => {}) }, [])
+
+  useEffect(() => {
+    if (appliedPreference.current || !user) return
+    const sports = user.favourite_sports ?? []
+    // Only when they follow one and not the other; following both says nothing
+    // about which board to open.
+    const prefers = sports.includes('nfl') !== sports.includes('ncaaf')
+      ? (sports.includes('nfl') ? 'nfl' : 'ncaaf')
+      : null
+    appliedPreference.current = true
+    if (prefers) setLeague(prefers as FootballLeague)
+  }, [user])
   useEffect(() => {
     setLoading(true); setData(null); load(league)
     // A running clock needs refreshing near the rate it changes; a board with
@@ -283,6 +323,20 @@ export function Dashboard() {
 
   const liveGames = games.filter(x => x.game.state === 'in')
   hasLive.current = liveGames.length > 0
+
+  // Games involving a team this person follows, pulled to the top. Stored as
+  // `league:CODE` so a college and an NFL team sharing an abbreviation stay
+  // distinct — several do.
+  const followed = useMemo(() => {
+    const codes = new Set(
+      (user?.favourite_teams ?? [])
+        .filter(k => k.startsWith(`${league}:`))
+        .map(k => k.slice(league.length + 1).toUpperCase()),
+    )
+    if (codes.size === 0) return []
+    return games.filter(({ game: g }) =>
+      codes.has((g.home_abbr || '').toUpperCase()) || codes.has((g.away_abbr || '').toUpperCase()))
+  }, [games, user, league])
   const edgeGames = games
     .filter(x => x.game.state === 'pre' && x.mapped && x.model && bestEdge(x.edges))
     .sort((a, b) => (bestEdge(b.edges)!.edge_pp) - (bestEdge(a.edges)!.edge_pp))
@@ -339,6 +393,29 @@ export function Dashboard() {
 
         {error && <div className="rounded-2xl border border-signal-red/40 bg-terminal-surface p-4 text-sm text-signal-red">Couldn’t load games: {error}</div>}
         {loading && !data && <div className="space-y-4"><div className="skeleton h-40 rounded-2xl" /><div className="skeleton h-44 rounded-2xl" /></div>}
+
+        {followed.length > 0 && (
+          <div className="space-y-3">
+            <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-500">
+              Your teams
+            </h2>
+            <div className="grid gap-3 lg:grid-cols-2">
+              {followed.map(entry => (
+                entry.game.state === 'in'
+                  ? <LiveCard key={`fav-${entry.game.event_id}`} league={league} entry={entry} />
+                  : <EdgeCard key={`fav-${entry.game.event_id}`} league={league} entry={entry} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Signed in, teams chosen, none playing today — worth saying, because
+            an absent section reads as a broken setting. */}
+        {user && (user.favourite_teams?.length ?? 0) > 0 && followed.length === 0 && !loading && (
+          <p className="text-sm text-zinc-500">
+            None of the teams you follow are on today’s {league === 'nfl' ? 'NFL' : 'college'} board.
+          </p>
+        )}
 
         {liveGames.length > 0 && (
           <div className="space-y-3">

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import { AvatarUpload } from '../components/account/AvatarUpload'
+import { FavouriteTeams } from '../components/account/FavouriteTeams'
 import { useSession } from '../session/SessionProvider'
 import { can } from '../session/powers'
 
@@ -208,6 +209,13 @@ export function Account() {
       <div className="mt-6 space-y-4">
         <Section title="Profile" description="Your photo, name and bio, as they appear across StatEdge.">
           <EditProfile />
+        </Section>
+
+        <Section
+          title="Teams you follow"
+          description="Their games are pulled to the top of your homepage."
+        >
+          <FavouriteTeams />
         </Section>
 
         <Section title="Email">
