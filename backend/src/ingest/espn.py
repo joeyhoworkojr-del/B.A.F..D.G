@@ -47,8 +47,18 @@ LEAGUE_PARAMS: dict[str, dict[str, str]] = {
     "ncaaf": {"groups": "80", "limit": "200"},
 }
 
-CACHE_TTL_SECONDS = 60.0
+# A board with a game in progress carries a running clock, so it has to be
+# refetched at something close to the rate that clock changes. A quiet board
+# does not, and caching it longer keeps load off the upstream feed on the six
+# days a week when nothing is playing.
+CACHE_TTL_SECONDS = 60.0        # no game in progress
+LIVE_CACHE_TTL_SECONDS = 10.0   # at least one game in progress
+
 _cache: dict[str, tuple[float, list["LiveGame"]]] = {}
+
+
+def _board_ttl(games: list["LiveGame"]) -> float:
+    return LIVE_CACHE_TTL_SECONDS if any(g.state == "in" for g in games) else CACHE_TTL_SECONDS
 
 
 @dataclass
@@ -214,7 +224,7 @@ async def fetch_scoreboard(league: str) -> Scoreboard:
                           source=f"unknown league {league!r}")
 
     cached = _cache.get(league)
-    if cached and time.monotonic() - cached[0] < CACHE_TTL_SECONDS:
+    if cached and time.monotonic() - cached[0] < _board_ttl(cached[1]):
         return Scoreboard(league=league, games=cached[1], fetched_at=now_iso)
 
     try:

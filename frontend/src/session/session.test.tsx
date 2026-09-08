@@ -214,3 +214,38 @@ describe('Odds attribution', () => {
     expect(oddsSourceSentence('DraftKings')).toContain('no relationship')
   })
 })
+
+describe('Header layout', () => {
+  it('keeps the auth controls on one line', async () => {
+    // "Log in" was wrapping to two lines at 1440px once the nav grew to eight
+    // items — the kind of fault only a rendered screenshot catches.
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+    const src = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/components/layout/TopBar.tsx'), 'utf8')
+    const loginLink = src.slice(src.indexOf('Log in') - 700, src.indexOf('Log in'))
+    expect(loginLink).toContain('whitespace-nowrap')
+  })
+})
+
+describe('Live data freshness', () => {
+  it('live endpoints carry a cache-buster', async () => {
+    // A proxy or CDN that ignores a short max-age will serve a frozen game
+    // clock. A unique URL is the only thing that cannot be answered from cache.
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+    const src = fs.readFileSync(path.resolve(process.cwd(), 'src/api/client.ts'), 'utf8')
+    for (const route of ['/api/v1/today/', '/api/v1/live/scores', '/api/v1/live/pbp/', '/api/v1/game/']) {
+      const line = src.split('\n').find(l => l.includes(route) && l.includes('get<'))
+      expect(line, `${route} should exist`).toBeTruthy()
+      expect(line, `${route} needs a cache-buster`).toContain('Date.now()')
+    }
+  })
+
+  it('polls the board faster while something is in progress', async () => {
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+    const src = fs.readFileSync(path.resolve(process.cwd(), 'src/pages/Dashboard.tsx'), 'utf8')
+    expect(src).toContain('hasLive.current ? 12_000 : 30_000')
+  })
+})

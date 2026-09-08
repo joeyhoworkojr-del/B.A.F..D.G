@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { DataFreshnessBadge } from '../components/game/DataFreshnessBadge'
 import { FaqList } from '../components/faq/FaqList'
@@ -239,6 +239,7 @@ export function Dashboard() {
   const [acc, setAcc] = useState<AccuracyResponse | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const hasLive = useRef(false)
 
   const load = useCallback((lg: FootballLeague) => {
     api.today(lg).then(d => { setData(d); setError('') }).catch(e => setError(e.message)).finally(() => setLoading(false))
@@ -247,7 +248,9 @@ export function Dashboard() {
   useEffect(() => { api.accuracy().then(setAcc).catch(() => {}) }, [])
   useEffect(() => {
     setLoading(true); setData(null); load(league)
-    const iv = setInterval(() => load(league), 30_000)
+    // A running clock needs refreshing near the rate it changes; a board with
+    // nothing in progress does not.
+    const iv = setInterval(() => load(league), hasLive.current ? 12_000 : 30_000)
     return () => clearInterval(iv)
   }, [league, load])
 
@@ -262,6 +265,7 @@ export function Dashboard() {
   }, [data, query])
 
   const liveGames = games.filter(x => x.game.state === 'in')
+  hasLive.current = liveGames.length > 0
   const edgeGames = games
     .filter(x => x.game.state === 'pre' && x.mapped && x.model && bestEdge(x.edges))
     .sort((a, b) => (bestEdge(b.edges)!.edge_pp) - (bestEdge(a.edges)!.edge_pp))

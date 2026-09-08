@@ -22,7 +22,7 @@ export const MORE_ITEMS = [
 ]
 
 const linkCls = ({ isActive }: { isActive: boolean }) =>
-  `tap inline-flex items-center rounded-lg px-3 text-sm font-semibold transition ${
+  `tap inline-flex items-center whitespace-nowrap rounded-lg px-2.5 text-sm font-semibold transition ${
     isActive ? 'bg-brand-soft text-brand' : 'text-zinc-400 hover:bg-terminal-muted hover:text-zinc-100'
   }`
 
@@ -130,7 +130,7 @@ function AccountArea() {
       <div className="flex items-center gap-1">
         <Link
           to="/login"
-          className="tap hidden items-center rounded-lg px-3 text-sm font-semibold text-zinc-400 hover:bg-terminal-muted hover:text-zinc-100 sm:inline-flex"
+          className="tap hidden items-center whitespace-nowrap rounded-lg px-3 text-sm font-semibold text-zinc-400 hover:bg-terminal-muted hover:text-zinc-100 sm:inline-flex"
         >
           Log in
         </Link>
@@ -183,7 +183,7 @@ export function TopBar() {
   return (
     <header className="sticky top-0 z-40 border-b border-terminal-border bg-terminal-bg/95 backdrop-blur">
       <div className="mx-auto flex w-full max-w-app items-center gap-3 px-4 py-2.5">
-        <Link to="/" className="shrink-0 font-display text-2xl font-black leading-none tracking-tight">
+        <Link to="/" className="shrink-0 whitespace-nowrap font-display text-2xl font-black leading-none tracking-tight">
           <span className="text-zinc-100">Stat</span>
           <span className="text-brand"> Edge</span>
         </Link>
@@ -202,14 +202,14 @@ export function TopBar() {
         </nav>
 
         <div className="ml-auto flex items-center gap-1">
-          <SearchBox className="hidden w-56 lg:block" />
+          <SearchBox className="hidden w-52 xl:block" />
           <NotificationCentre />
           <AccountArea />
         </div>
       </div>
 
       {/* Mobile search sits on its own row so the header stays compact. */}
-      <div className="border-t border-terminal-border/60 px-4 py-2 lg:hidden">
+      <div className="border-t border-terminal-border/60 px-4 py-2 xl:hidden">
         <SearchBox />
       </div>
     </header>

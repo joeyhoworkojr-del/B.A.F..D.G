@@ -162,15 +162,19 @@ export const api = {
   r16Fixtures: () => get<unknown[]>('/api/v1/fixtures/r16'),
 
   // Live data
-  liveScores: () => get<AllScoreboardsOut>('/api/v1/live/scores'),
+  liveScores: () => get<AllScoreboardsOut>(`/api/v1/live/scores?_=${Date.now()}`),
   leagueScores: (league: string) => get<ScoreboardOut>(`/api/v1/live/scores/${league}`),
-  today: (league: GridironLeague | 'ncaaf') => get<TodayResponse>(`/api/v1/today/${league}`),
+  // The cache-buster is not belt-and-braces: a proxy or CDN that ignores a
+  // short max-age will happily serve a frozen game clock, and a unique URL is
+  // the only thing that cannot be answered from a cache.
+  today: (league: GridironLeague | 'ncaaf') =>
+    get<TodayResponse>(`/api/v1/today/${league}?_=${Date.now()}`),
   /** One fully-modelled game — the Game Center. Scoped to a single event so
    *  the page never pays for modelling the whole slate. */
   gameDetail: (league: string, eventId: string) =>
-    get<GameDetailOut>(`/api/v1/game/${league}/${encodeURIComponent(eventId)}`),
+    get<GameDetailOut>(`/api/v1/game/${league}/${encodeURIComponent(eventId)}?_=${Date.now()}`),
   playByPlay: (league: string, eventId: string) =>
-    get<PlayByPlayOut>(`/api/v1/live/pbp/${league}/${encodeURIComponent(eventId)}`),
+    get<PlayByPlayOut>(`/api/v1/live/pbp/${league}/${encodeURIComponent(eventId)}?_=${Date.now()}`),
 
   // Live lineups
   lineup: (sport: 'soccer' | 'nfl' | 'cfl' | 'mlb', team: string) =>
