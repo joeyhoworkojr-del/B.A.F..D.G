@@ -869,7 +869,13 @@ async def _slate_entry(
                 pregame_margin=pred.predicted_spread,
                 total_estimate=pred.total_points_estimate,
                 home_share=share,
-                possession_home=(has_ball and g.possession_abbr == g.home_abbr),
+                # None, not False, when nobody has the ball. False means "the
+                # away team has it", and between plays or at a break the feed
+                # publishes no possession — crediting the drive to the away
+                # side there would move the projection the wrong way.
+                possession_home=(
+                    (g.possession_abbr == g.home_abbr) if has_ball else None
+                ),
                 # Field position makes the projection predictive rather than
                 # reactive. Absent from the feed, live_projection falls back to
                 # the scoreboard-only model on its own.
