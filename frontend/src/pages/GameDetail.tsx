@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useSearchParams, Link, useLocation } from 'react-router-dom'
-import type { LiveGameOut, MarketKey, PlayOut } from '../types'
+import type { LiveGameOut, MarketKey } from '../types'
 import { useGameDetail } from '../hooks/useGameDetail'
 import { GameHeader } from '../components/game/GameHeader'
 import { Panel } from '../components/game/Panel'
@@ -19,6 +19,8 @@ import { LiveWinProbabilityChart } from '../components/game/LiveWinProbabilityCh
 import { LiveScoreProjection } from '../components/game/LiveScoreProjection'
 import { FieldTracker } from '../components/game/FieldTracker'
 import { AskEdge } from '../components/ai/AskEdge'
+import { GameChat } from '../components/chat/GameChat'
+import { DriveFeed } from '../components/game/DriveFeed'
 import { LockedPremiumPanel } from '../components/game/LockedPremiumPanel'
 import type { Point } from '../components/game/MiniChart'
 
@@ -26,24 +28,6 @@ const LEAGUE_LABEL: Record<string, string> = { ncaaf: 'College Football', nfl: '
 const MARKET_PANEL_ID = 'market-panel'
 const pct1 = (v?: number | null) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`)
 
-function PlayRow({ p }: { p: PlayOut }) {
-  return (
-    <li className={`flex gap-3 border-b border-terminal-border/60 py-2.5 last:border-0 ${p.scoring ? 'bg-signal-green/5' : ''}`}>
-      <div className="w-14 shrink-0 text-right">
-        <div className="font-mono text-xs font-semibold text-zinc-300">{p.period ? `Q${p.period}` : ''}</div>
-        <div className="font-mono text-xs text-zinc-500">{p.clock}</div>
-      </div>
-      <p className={`min-w-0 flex-1 text-sm leading-snug ${p.scoring ? 'font-semibold text-signal-green' : 'text-zinc-200'}`}>
-        {p.text}
-      </p>
-      {(p.home_score != null || p.away_score != null) && (
-        <span className="w-12 shrink-0 text-right font-mono text-xs font-bold tabular-nums text-zinc-400">
-          {p.away_score}-{p.home_score}
-        </span>
-      )}
-    </li>
-  )
-}
 
 
 export function GameDetail() {
@@ -221,6 +205,8 @@ export function GameDetail() {
 
             {/* Opened from here, Edge AI already knows which game this is. */}
             <AskEdge league={league} eventId={eventId} live={live} compact />
+
+            {eventId && <GameChat league={league} eventId={eventId} live={live} />}
           </div>
 
           <div className="min-w-0 space-y-4">
@@ -343,9 +329,7 @@ export function GameDetail() {
               sourceOk={pbp?.ok ?? true}
               staleAfterSeconds={45}
             >
-              <ul className="max-h-[28rem] overflow-y-auto">
-                {(pbp?.plays ?? []).map((p, i) => <PlayRow key={i} p={p} />)}
-              </ul>
+              <DriveFeed plays={pbp?.plays ?? []} />
             </Panel>
           </div>
         </div>

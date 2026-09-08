@@ -66,6 +66,13 @@ async function stub(page) {
     r.fulfill({ json: { username: 'x', available: true } }))
   await page.route('**/api/v1/props*', r => r.fulfill({ json: fx.props }))
   await page.route('**/api/v1/best-bets', r => r.fulfill({ json: fx.bestBets }))
+  await page.route('**/api/v1/chat/**', r => r.fulfill({
+    json: {
+      game_id: 'ncaaf:401752', messages: [], cursor: 0, count: 0,
+      signed_in: false, may_post: false, blocked_reason: '',
+      reactions_available: ['\u{1F44D}', '\u{1F525}'],
+    },
+  }))
   await page.route('**/api/v1/ai/status', r => r.fulfill({
     json: {
       available: true, signed_in: true, may_ask: true, reason: '',
