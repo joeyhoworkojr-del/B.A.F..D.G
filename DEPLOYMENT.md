@@ -226,7 +226,8 @@ fly secrets set VARIABLE=value --app statedge-api
 | `MODERATOR_USERNAMES` | *(unset)* | Comma-separated usernames granted community and chat moderation. |
 | `CFBD_API_KEY` | *(unset)* | CollegeFootballData key — SP+ and PPA priors for college football. Free, no card, from <https://collegefootballdata.com/key>. Without it NCAAF runs on its static ratings and the staff page says so. |
 | `ANTHROPIC_API_KEY` | *(unset)* | Powers Edge AI. Without it the assistant reports itself unconfigured, the entitlement withholds the feature, and the UI does not offer a button that fails. Never expose this to the browser. |
-| `EDGE_AI_MODEL` | `claude-opus-5` | Overrides the model Edge AI uses, so it can be changed without a deploy. |
+| `EDGE_AI_MODEL` | `claude-haiku-4-5` | The model Edge AI uses. Haiku 4.5 is the cheapest available; move up with one secret and no deploy if answers read flat. |
+| `EDGE_AI_DAILY_USD` | `2` | Daily spending ceiling. Edge AI stops answering when reached and resumes the next day. `0` switches it off with the key still in place. |
 | `AUTH_PROVIDER` | *(unset)* | Legacy. Accounts are now first-party (Argon2id + server-side sessions); this is no longer read for sign-in. |
 | `PROPS_PROVIDER` | *(unset)* | Names a player-props **odds line** integration. Projections work without it; comparing them to a posted line does not. |
 | `PROPS_API_KEY` | *(unset)* | Credential for that provider. |
@@ -263,9 +264,33 @@ that renders the site. There is no query it can write and no row it can reach
 that a page could not already show the person asking. Its own record lookup
 takes the user id from the session, so it cannot be pointed at another account.
 
-Answers are rate limited to 40 per account per hour. Cost is roughly a cent or
-two per answer at Opus 5 rates; set `EDGE_AI_MODEL=claude-sonnet-5` to cut that
-substantially if volume warrants it.
+### What it costs, and what stops it
+
+Measured from the real prompt — about 3,450 input and 520 output tokens per
+answer, with the stable prefix cached:
+
+| Model | Per answer | 100/day | 500/day |
+| --- | --- | --- | --- |
+| `claude-haiku-4-5` (default) | $0.006 | ~$18/mo | ~$91/mo |
+| `claude-sonnet-5` | $0.010 | ~$29/mo | ~$144/mo |
+| `claude-opus-5` | $0.024 | ~$72/mo | ~$362/mo |
+
+Haiku 4.5 is the cheapest model available; there is nothing below it. Trimming
+the prompt further would save about a tenth of a cent an answer and would cost
+the accuracy guardrails that make the assistant safe to publish, so the cap is
+the control, not the prompt.
+
+**Two limits, doing different jobs.** Forty questions per account per hour
+bounds one person. It does not bound the bill, because the number of people is
+not bounded — a hundred users at their limit is 96,000 answers a day.
+`EDGE_AI_DAILY_USD` is what actually caps spend: usage is priced from the token
+counts the API returns, stored durably per UTC day, and checked *before* each
+request. A cap that reset on deploy would not be a cap, since the busiest day
+is when a deploy is most likely.
+
+When the cap is reached, Edge AI reports that it has reached its spending limit
+for today and answers nothing. The staff page shows today's spend and the last
+fortnight against the cap.
 
 ## Vercel (frontend) + Fly (API)
 

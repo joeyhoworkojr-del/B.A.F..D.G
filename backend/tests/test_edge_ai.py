@@ -295,3 +295,114 @@ def test_the_rate_limiter_counts_per_account_and_then_stops():
     ok, remaining = ai_routes._rate_check("user-2")
     assert ok is True
     assert remaining == ai_routes.RATE_LIMIT_PER_HOUR - 1
+
+
+# ── the daily spending cap ───────────────────────────────────────────────────
+
+@pytest.fixture
+def _budget(tmp_path, monkeypatch):
+    monkeypatch.setenv("LEDGER_PATH", str(tmp_path / "budget.db"))
+    from src.store import documents
+    documents.reset_docs()
+    yield
+    documents.reset_docs()
+
+
+def test_a_per_user_rate_limit_does_not_bound_the_bill(_budget, monkeypatch):
+    """
+    The gap this cap exists to close. Forty questions per user per hour says
+    nothing about total spend, because the number of users is not bounded.
+    """
+    from src.ai import budget
+    monkeypatch.setenv("EDGE_AI_DAILY_USD", "1")
+    # Many different people, each well inside their own rate limit.
+    for _ in range(200):
+        budget.record("claude-opus-5", 3448, 520)
+    assert budget.within_budget() is False
+
+
+def test_spending_is_refused_once_the_day_is_spent(_budget, monkeypatch):
+    from src.ai import budget
+    monkeypatch.setenv("EDGE_AI_DAILY_USD", "0.05")
+    assert budget.within_budget() is True
+    for _ in range(10):
+        budget.record("claude-opus-5", 3448, 520)
+    assert budget.within_budget() is False
+
+    fake = FakeProvider(replies=[LlmReply(text="should not happen")])
+    with pytest.raises(ProviderUnavailable) as exc:
+        run(edge_ai.ask("Who wins?", provider=fake))
+    assert "spending limit" in str(exc.value)
+    # And nothing was actually asked of the model.
+    assert fake.calls == []
+
+
+def test_a_zero_limit_switches_edge_ai_off_without_removing_the_key(_budget, monkeypatch):
+    from src.ai import budget
+    monkeypatch.setenv("EDGE_AI_DAILY_USD", "0")
+    assert budget.within_budget() is False
+
+
+def test_a_negative_limit_is_read_as_zero_not_as_unlimited(_budget, monkeypatch):
+    """The safe reading of a typo."""
+    from src.ai import budget
+    monkeypatch.setenv("EDGE_AI_DAILY_USD", "-100")
+    assert budget.daily_limit() == 0.0
+
+
+def test_an_unparseable_limit_falls_back_to_the_default(_budget, monkeypatch):
+    from src.ai import budget
+    monkeypatch.setenv("EDGE_AI_DAILY_USD", "five dollars")
+    assert budget.daily_limit() == budget.DEFAULT_DAILY_USD
+
+
+def test_an_unknown_model_is_priced_at_the_dearest_one_known(_budget):
+    """An unrecognised name must not quietly buy an unlimited budget."""
+    from src.ai import budget
+    unknown = budget.estimate_cost("claude-something-new", 1_000_000, 0)
+    dearest = max(p[0] for p in budget.PRICING.values())
+    assert unknown == pytest.approx(dearest)
+
+
+def test_usage_survives_the_process_that_recorded_it(_budget, monkeypatch):
+    """
+    A cap that reset on deploy would not be a cap — the busiest day is exactly
+    when a deploy is most likely.
+    """
+    from src.ai import budget
+    from src.store import documents
+    monkeypatch.setenv("EDGE_AI_DAILY_USD", "1")
+    for _ in range(5):
+        budget.record("claude-opus-5", 3448, 520)
+    spent = budget.spent_today()
+
+    documents.reset_docs()          # as a restart would
+    assert budget.spent_today() == pytest.approx(spent)
+
+
+def test_cached_input_still_counts_toward_the_budget(_budget):
+    """
+    Cache reads are cheaper, not free. Counting them keeps the estimate from
+    silently under-reporting once caching is on.
+    """
+    from src.ai import budget
+    before = budget.spent_today()
+    budget.record("claude-sonnet-5", 3448, 520)
+    assert budget.spent_today() > before
+
+
+def test_status_reports_configured_and_available_separately(_budget, monkeypatch):
+    """A key can be set and the day's budget still spent — different claims."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    monkeypatch.setenv("EDGE_AI_DAILY_USD", "0")
+    provider_mod.set_provider(None)
+    report = edge_ai.status()
+    assert report["configured"] is True
+    assert report["available"] is False
+    assert report["budget"]["within_budget"] is False
+
+
+def test_the_budget_is_reported_without_any_credential(_budget, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-a-real-looking-secret")
+    provider_mod.set_provider(None)
+    assert "sk-ant-a-real-looking-secret" not in json.dumps(edge_ai.status())

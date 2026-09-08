@@ -79,9 +79,13 @@ async def ai_status(request: Request) -> dict:
         "may_ask": report["available"] and user is not None,
         "reason": (
             "" if report["available"] and user is not None
-            else "Edge AI is not configured on this deployment yet." if not report["available"]
+            else "Edge AI is not configured on this deployment yet."
+            if not report.get("configured", report["available"])
+            else "Edge AI has reached its spending limit for today."
+            if not report["budget"]["within_budget"]
             else "Sign in to ask Edge AI."
         ),
+        "budget": report["budget"],
         "rate_limit_per_hour": RATE_LIMIT_PER_HOUR,
         "level": ent.level,
         # The model name is product information, not a secret. The key is never
