@@ -40,6 +40,8 @@ const PAGES = [
   ['faq', '/faq'],
   ['about', '/about'],
   ['account', '/account'],
+  ['ask-edge', '/ask'],
+  ['upcoming', '/upcoming'],
 ]
 
 async function stub(page) {
@@ -64,6 +66,22 @@ async function stub(page) {
     r.fulfill({ json: { username: 'x', available: true } }))
   await page.route('**/api/v1/props*', r => r.fulfill({ json: fx.props }))
   await page.route('**/api/v1/best-bets', r => r.fulfill({ json: fx.bestBets }))
+  await page.route('**/api/v1/ai/status', r => r.fulfill({
+    json: {
+      available: true, signed_in: true, may_ask: true, reason: '',
+      rate_limit_per_hour: 40, level: 'beta', model: 'claude-opus-5', tools: [],
+    },
+  }))
+  await page.route('**/api/v1/upcoming/**', r => r.fulfill({
+    json: {
+      league: 'ncaaf', days: 7, fetched_at: fx.iso(), source_ok: true,
+      total_scheduled: 2, predicted: 2, truncated: false, market_source: 'ESPN BET',
+      games: fx.today('ncaaf').games,
+    },
+  }))
+  await page.route('**/api/v1/live/win-history/**', r => r.fulfill({
+    json: { league: 'ncaaf', event_id: '401752', points: [], swing: null, note: '', fetched_at: fx.iso() },
+  }))
   await page.route('**/api/v1/best-parlay*', r => r.fulfill({ json: fx.bestParlay }))
   await page.route('**/api/v1/live/pbp/**', r =>
     r.fulfill({ json: { league: 'ncaaf', event_id: '401752', ok: true, fetched_at: fx.iso(), plays: fx.plays } }))

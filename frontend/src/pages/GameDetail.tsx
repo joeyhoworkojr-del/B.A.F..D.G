@@ -18,6 +18,7 @@ import { oddsSourceLabel } from '../components/OddsSource'
 import { LiveWinProbabilityChart } from '../components/game/LiveWinProbabilityChart'
 import { LiveScoreProjection } from '../components/game/LiveScoreProjection'
 import { FieldTracker } from '../components/game/FieldTracker'
+import { AskEdge } from '../components/ai/AskEdge'
 import { LockedPremiumPanel } from '../components/game/LockedPremiumPanel'
 import type { Point } from '../components/game/MiniChart'
 
@@ -217,6 +218,9 @@ export function GameDetail() {
               homeAbbr={game?.home_abbr ?? 'HOME'}
               awayAbbr={game?.away_abbr ?? 'AWAY'}
             />
+
+            {/* Opened from here, Edge AI already knows which game this is. */}
+            <AskEdge league={league} eventId={eventId} live={live} compact />
           </div>
 
           <div className="min-w-0 space-y-4">

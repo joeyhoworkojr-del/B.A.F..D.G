@@ -151,6 +151,23 @@ function LiveCard({ league, entry }: { league: FootballLeague; entry: TodayGameO
           </div>
         )}
       </div>
+      {/* Who has it and where. The live projection reads this, so showing it
+          here is what makes a probability move legible from the board. */}
+      {(g.possession_abbr || g.down_distance) && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-terminal-border px-4 py-2 text-xs">
+          {g.possession_abbr && (
+            <span className="rounded-full bg-signal-green/15 px-2 py-0.5 font-bold text-signal-green">
+              {g.possession_abbr} ball
+            </span>
+          )}
+          {g.down_distance && <span className="text-zinc-400">{g.down_distance}</span>}
+          {m?.red_zone && (
+            <span className="rounded-full bg-signal-red-dim px-2 py-0.5 font-bold text-signal-red">
+              Red zone
+            </span>
+          )}
+        </div>
+      )}
     </div>
   )
 }

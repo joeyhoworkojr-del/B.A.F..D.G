@@ -21,16 +21,20 @@ const Bars = () => (
     <line x1="6" y1="20" x2="6" y2="12" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="18" y1="20" x2="18" y2="9" />
   </svg>
 )
-const Whistle = () => (
+
+const Spark = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M4 7h11a5 5 0 1 1 0 10H9l-5 4V7Z" /><circle cx="15" cy="12" r="2" />
+    <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3Z" /><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7.7-1.8Z" />
   </svg>
 )
 
 const baseItems = [
   { to: '/', label: 'Games', Icon: Football, end: true },
   { to: '/live', label: 'Live', Icon: Live, end: false },
-  { to: '/props', label: 'Props', Icon: Whistle, end: false },
+  // Ask Edge takes the middle slot rather than Props: it is the feature people
+  // reach for repeatedly, and one-handed reach matters most in the centre.
+  // Props keeps its own page and sits in the row under the header.
+  { to: '/ask', label: 'Ask Edge', Icon: Spark, end: false },
   { to: '/best-bets', label: 'Edges', Icon: Bars, end: false },
 ]
 

@@ -14,6 +14,9 @@ import type {
   GridironLeague,
   AccuracyResponse,
   SoccerUpcomingResponse,
+  EdgeAiAnswer,
+  EdgeAiStatus,
+  EdgeAiTurn,
   UpcomingResponse,
   WinHistoryOut,
   PlayByPlayOut,
@@ -222,6 +225,16 @@ export const api = {
   login: (body: { identifier: string; password: string }) =>
     post<SessionOut>('/api/v1/auth/login', body),
   logout: () => post<{ ok: boolean }>('/api/v1/auth/logout', {}),
+
+  /** Whether Edge AI can answer on this deployment, and for this caller. */
+  aiStatus: () => get<EdgeAiStatus>('/api/v1/ai/status'),
+  /** Ask Edge AI. The game being viewed travels with the question so
+   *  "why did we move to 64%" resolves without naming the teams. */
+  askEdge: (
+    question: string,
+    ctx?: { league?: string; event_id?: string },
+    history: EdgeAiTurn[] = [],
+  ) => post<EdgeAiAnswer>('/api/v1/ai/ask', { question, ...ctx, history }),
   changePassword: (current_password: string, new_password: string) =>
     post<SessionOut & { signed_out_other_sessions: boolean }>(
       '/api/v1/auth/password', { current_password, new_password },

@@ -920,3 +920,31 @@ export interface AdminUserRow {
   created_at: string
   picks: number
 }
+
+
+// ─── Edge AI ──────────────────────────────────────────────────────────────────
+
+export interface EdgeAiStatus {
+  available: boolean
+  signed_in: boolean
+  may_ask: boolean
+  /** Why not, when may_ask is false. Shown to the user verbatim. */
+  reason: string
+  rate_limit_per_hour: number
+  level: string
+  model: string
+  tools: string[]
+}
+
+export interface EdgeAiAnswer {
+  answer: string
+  /** Which StatEdge lookups the answer rests on. */
+  sources_used: string[]
+  truncated: boolean
+  questions_remaining_this_hour: number
+}
+
+export interface EdgeAiTurn {
+  role: 'user' | 'assistant'
+  content: string
+}
