@@ -16,6 +16,10 @@ export const NAV_ITEMS = [
 
 /** Secondary destinations — the "More" menu on both breakpoints. */
 export const MORE_ITEMS = [
+  // Kept out of the primary bar deliberately: an eighth item wraps the header
+  // at 1440px, and the week-ahead board is a destination people seek out
+  // rather than one they need in front of them at all times.
+  { to: '/upcoming', label: 'Upcoming' },
   { to: '/parlay', label: 'Parlay' },
   { to: '/faq', label: 'FAQ' },
   { to: '/about', label: 'About & methodology' },

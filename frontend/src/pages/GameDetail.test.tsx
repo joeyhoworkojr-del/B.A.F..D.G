@@ -118,8 +118,37 @@ describe('Game Center — live', () => {
     }))
     renderAt('/game/ncaaf/401752')
     expect(await screen.findByText('Live win probability')).toBeInTheDocument()
-    expect(screen.getByText('72.0%')).toBeInTheDocument()
-    expect(screen.getByText('FSU has the ball')).toBeInTheDocument()
+    // Shown twice on purpose: once in the win-probability panel, once beside
+    // the live projected final.
+    expect(screen.getAllByText('72.0%').length).toBeGreaterThan(0)
+    // The field view places the ball and says which way the offence is going.
+    expect(screen.getByRole('img', { name: /FSU on the own 42 yard line/i })).toBeInTheDocument()
+    expect(screen.getByText(/58 yards from the CLEM end zone/i)).toBeInTheDocument()
+  })
+
+  it('says so rather than guessing when the feed omits field position', async () => {
+    vi.spyOn(api, 'gameDetail').mockResolvedValue(gameDetail({
+      status: 'in',
+      game: { ...liveGame, yard_line: null, distance: null },
+      model: { ...gameDetail().model!, live: true, live_home_win: 0.72 },
+    }))
+    renderAt('/game/ncaaf/401752')
+    expect(await screen.findByText(/field position not published/i)).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: /yard line/i })).not.toBeInTheDocument()
+  })
+
+  it('projects a live final score, flagged as ungraded', async () => {
+    vi.spyOn(api, 'gameDetail').mockResolvedValue(gameDetail({
+      status: 'in', game: liveGame,
+      model: {
+        ...gameDetail().model!, live: true, live_home_win: 0.72,
+        live_proj_home: 31.4, live_proj_away: 24.1, time_remaining_pct: 40,
+      },
+    }))
+    renderAt('/game/ncaaf/401752')
+    expect(await screen.findByText('Projected final')).toBeInTheDocument()
+    expect(screen.getByText('24.1 – 31.4')).toBeInTheDocument()
+    expect(screen.getByText(/never graded/)).toBeInTheDocument()
   })
 })
 

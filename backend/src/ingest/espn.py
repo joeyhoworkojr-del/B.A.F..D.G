@@ -80,6 +80,12 @@ class LiveGame:
     down_distance: str = ""                    # "1st & 10 at HAW 42"
     possession_abbr: str = ""                  # team abbr with the ball
     is_red_zone: bool = False
+    # Ball position as yards from the possessing team's own goal line: 25 means
+    # their own 25, 75 means the opponent's 25. None when the feed does not
+    # publish it — the field view then says so instead of drawing a guess.
+    yard_line: Optional[int] = None
+    down: Optional[int] = None
+    distance: Optional[int] = None
     last_play: str = ""                        # most recent play text
     home_logo: str = ""                        # team logo URL
     away_logo: str = ""
@@ -100,6 +106,50 @@ class Scoreboard:
     fetched_at: str = ""   # ISO timestamp — freshness stamp for the UI
     source: str = "ESPN"
     ok: bool = True
+
+
+def _as_int(value) -> Optional[int]:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _own_yard_line(
+    possession_text: str, possession_abbr: str, raw_yard_line=None,
+) -> Optional[int]:
+    """
+    Ball position as yards gained from the possessing team's own goal line.
+
+    ESPN gives field position as text — "OSU 42" — which is ambiguous on its
+    own: the 42 is a spot on somebody's half, and which half decides whether
+    the offence has 58 yards to go or 42. Pairing it with the team that has the
+    ball resolves it: their own side counts up from zero, the opponent's side
+    counts down from a hundred.
+
+    `situation.yardLine` is used only as a fallback, because ESPN measures it
+    from a fixed end of the field rather than from the offence, and reading it
+    as though it were possession-relative would draw the ball on the wrong half
+    for one team every drive.
+    """
+    text = (possession_text or "").strip()
+    abbr = (possession_abbr or "").strip().upper()
+    if text and abbr:
+        side, _, spot = text.rpartition(" ")
+        yards = _as_int(spot)
+        side = side.strip().upper()
+        if yards is not None and 0 <= yards <= 50:
+            if not side:
+                # ESPN writes midfield as a bare "50", which needs no side to
+                # place. Any other bare number is genuinely ambiguous, and
+                # picking a half would put the ball in the wrong place half the
+                # time — better to draw nothing.
+                return 50 if yards == 50 else None
+            return max(0, min(100, yards if side == abbr else 100 - yards))
+    fallback = _as_int(raw_yard_line)
+    if fallback is not None and 0 <= fallback <= 100:
+        return fallback
+    return None
 
 
 def _parse_event(league: str, ev: dict) -> Optional[LiveGame]:
@@ -156,6 +206,7 @@ def _parse_event(league: str, ev: dict) -> Optional[LiveGame]:
         if down_distance and possession_txt:
             down_distance = f"{down_distance} at {possession_txt}"
         last_play = (sit.get("lastPlay") or {}).get("text", "") or ""
+        yard_line = _own_yard_line(possession_txt, poss_abbr, sit.get("yardLine"))
 
         return LiveGame(
             league=league,
@@ -174,6 +225,9 @@ def _parse_event(league: str, ev: dict) -> Optional[LiveGame]:
             down_distance=down_distance,
             possession_abbr=poss_abbr,
             is_red_zone=bool(sit.get("isRedZone", False)),
+            yard_line=yard_line,
+            down=_as_int(sit.get("down")),
+            distance=_as_int(sit.get("distance")),
             last_play=last_play,
             home_logo=home.get("team", {}).get("logo", "") or "",
             away_logo=away.get("team", {}).get("logo", "") or "",
@@ -240,6 +294,63 @@ async def fetch_scoreboard(league: str) -> Scoreboard:
         return Scoreboard(league=league, games=games, fetched_at=now_iso)
     except Exception as exc:
         log.error("ESPN scoreboard fetch failed for %s: %s", league, exc)
+        return Scoreboard(league=league, ok=False, fetched_at=now_iso,
+                          source="ESPN (temporarily unreachable)")
+
+
+# The week-ahead board is a different question from "what is on today", so it
+# gets its own cache: a schedule days out does not change minute to minute, and
+# refetching a full college slate on every page load would be wasteful.
+UPCOMING_TTL_SECONDS = 300.0
+MAX_UPCOMING_DAYS = 14
+
+_upcoming_cache: dict[str, tuple[float, list["LiveGame"]]] = {}
+
+
+def _upcoming_window(days: int) -> str:
+    """Today through `days` ahead, in ET, as ESPN's date-range parameter."""
+    today = datetime.now(_ET).date()
+    return f"{today:%Y%m%d}-{today + timedelta(days=days):%Y%m%d}"
+
+
+async def fetch_upcoming(league: str, days: int = 7) -> Scoreboard:
+    """
+    Games scheduled over the next `days`, kickoff order.
+
+    Finished and in-progress games are dropped: this board answers "what is
+    coming", and a result already on today's board would only confuse it.
+    Never raises — an unreachable feed comes back as ok=False with no games.
+    """
+    league = league.lower()
+    days = max(1, min(int(days), MAX_UPCOMING_DAYS))
+    path = LEAGUE_PATHS.get(league)
+    now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    if path is None:
+        return Scoreboard(league=league, ok=False, fetched_at=now_iso,
+                          source=f"unknown league {league!r}")
+
+    key = f"{league}:{days}"
+    cached = _upcoming_cache.get(key)
+    if cached and time.monotonic() - cached[0] < UPCOMING_TTL_SECONDS:
+        return Scoreboard(league=league, games=cached[1], fetched_at=now_iso)
+
+    try:
+        async with httpx.AsyncClient(timeout=12.0) as client:
+            resp = await client.get(
+                f"{ESPN_BASE}/{path}/scoreboard",
+                params={"dates": _upcoming_window(days), **LEAGUE_PARAMS.get(league, {})},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        games = [g for g in (_parse_event(league, ev) for ev in data.get("events", [])) if g]
+        games = sorted(
+            (g for g in games if g.state == "pre"),
+            key=lambda g: g.kickoff or "",
+        )
+        _upcoming_cache[key] = (time.monotonic(), games)
+        return Scoreboard(league=league, games=games, fetched_at=now_iso)
+    except Exception as exc:
+        log.error("ESPN upcoming fetch failed for %s: %s", league, exc)
         return Scoreboard(league=league, ok=False, fetched_at=now_iso,
                           source="ESPN (temporarily unreachable)")
 

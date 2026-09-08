@@ -30,6 +30,7 @@ const MyEdge = lazyPage(() => import('./pages/MyEdge'), 'MyEdge')
 const Analyst = lazyPage(() => import('./pages/Analyst'), 'Analyst')
 const Leaderboard = lazyPage(() => import('./pages/Leaderboard'), 'Leaderboard')
 const Staff = lazyPage(() => import('./pages/Staff'), 'Staff')
+const Upcoming = lazyPage(() => import('./pages/Upcoming'), 'Upcoming')
 
 function PageFallback() {
   return (
@@ -53,6 +54,7 @@ export default function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/game/:league/:eventId" element={<GameDetail />} />
               <Route path="/live" element={<Live />} />
+              <Route path="/upcoming" element={<Upcoming />} />
               <Route path="/props" element={<Props />} />
               <Route path="/best-bets" element={<BestBets />} />
               <Route path="/news" element={<News />} />

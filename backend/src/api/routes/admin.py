@@ -16,7 +16,9 @@ from fastapi import APIRouter, Depends
 
 from src.accounts.models import COLLECTION as USERS, User
 from src.api.routes.auth import require_admin
+from src.ingest import cfbd, nflverse
 from src.picks import leaderboard, service as picks
+from src.predict import priors
 from src.store.documents import get_docs
 from src.track import ledger
 
@@ -55,6 +57,14 @@ async def overview(admin: User = Depends(require_admin)) -> dict:
             "pending": ledger.accuracy_summary()["pending"],
         },
         "leaderboard_size": len(leaderboard.standings()),
+        # Which upstream feeds are actually returning data. "Configured" and
+        # "working" are reported separately on purpose — a key that is set but
+        # rejected is the failure mode that otherwise goes unnoticed for weeks.
+        "data_feeds": {
+            "nflverse": nflverse.status(),
+            "cfbd": cfbd.status(),
+            "model_priors": priors.status(),
+        },
     }
 
 

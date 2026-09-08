@@ -27,6 +27,7 @@ from src.api.routes.admin import router as admin_router
 from src.api.routes.live import router as live_router
 from src.api.schemas import HealthResponse
 from src.config import settings
+from src.predict import priors
 
 # Built frontend (Vite dist). Absent in dev → API-only, unchanged behavior.
 STATIC_DIR = Path(
@@ -61,12 +62,17 @@ async def _snapshot_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
-    task: asyncio.Task | None = None
+    tasks: list[asyncio.Task] = []
     if SNAPSHOTS_ENABLED:
-        task = asyncio.create_task(_snapshot_loop())
+        tasks.append(asyncio.create_task(_snapshot_loop()))
+    # Team priors refresh in the background rather than on the first request:
+    # a cold start would otherwise pay a multi-megabyte download inside
+    # someone's page load, and a feed outage would stall it entirely.
+    tasks.append(asyncio.create_task(priors.refresh_forever()))
     yield
-    if task is not None:
+    for task in tasks:
         task.cancel()
+    for task in tasks:
         try:
             await task
         except (asyncio.CancelledError, Exception):

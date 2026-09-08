@@ -174,6 +174,10 @@ export interface LiveGameOut {
   down_distance?: string
   possession_abbr?: string
   is_red_zone?: boolean
+  /** Yards from the possessing team's own goal line, 0-100; null when the feed omits it. */
+  yard_line?: number | null
+  down?: number | null
+  distance?: number | null
   last_play?: string
   home_logo?: string
   away_logo?: string
@@ -260,6 +264,23 @@ export interface TodayResponse {
   league: string
   fetched_at: string
   source_ok: boolean
+  market_source: string
+  games: TodayGameOut[]
+}
+
+/**
+ * The week-ahead board. `truncated` is part of the contract: a capped
+ * response is a partial answer, and the page says so rather than presenting
+ * an incomplete slate as the whole schedule.
+ */
+export interface UpcomingResponse {
+  league: string
+  days: number
+  fetched_at: string
+  source_ok: boolean
+  total_scheduled: number
+  predicted: number
+  truncated: boolean
   market_source: string
   games: TodayGameOut[]
 }
@@ -811,6 +832,37 @@ export interface AdminOverview {
   }
   model_record: { graded: number; pending: number }
   leaderboard_size: number
+  data_feeds?: {
+    nflverse: FeedStatus
+    cfbd: FeedStatus
+    model_priors: ModelPriorStatus
+  }
+}
+
+/**
+ * A provider's health. `configured` and `last_success` are separate on
+ * purpose: a key that is set but rejected is configured and not working, and
+ * collapsing the two would hide exactly the failure worth seeing.
+ */
+export interface FeedStatus {
+  provider: string
+  requires_key: boolean
+  configured: boolean
+  leagues: string[]
+  note?: string
+  key_env_var?: string
+  last_success?: string
+  last_error?: string
+  cached_datasets?: number
+  loaded?: { season: number | null; players: number; teams: number; fetched_at: string }[]
+  used_for?: string
+}
+
+export interface ModelPriorStatus {
+  max_shift_points: number
+  leagues: Record<string, {
+    ok: boolean; source: string; teams: number; note: string; fetched_at: string
+  }>
 }
 
 export interface AdminUserRow {

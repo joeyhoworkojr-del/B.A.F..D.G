@@ -38,7 +38,7 @@ from src.data.world_cup import (
     get_scorers_for_team,
     get_team,
 )
-from src.ingest.espn import LiveGame, fetch_scoreboard, is_current
+from src.ingest.espn import LiveGame, fetch_scoreboard, fetch_upcoming, is_current
 from src.ingest.polymarket import fetch_league_markets, match_game
 from src.ingest.weather import WeatherReport, fetch_gridiron_weather, fetch_weather
 from src.predict.adjustments import (
@@ -54,12 +54,13 @@ from src.predict.baseball import predict_mlb_game
 from src.predict.gridiron import LEAGUE_PARAMS as GRIDIRON_PARAMS
 from src.predict.gridiron import live_projection, predict_nfl_game, win_probability
 from src.predict.soccer import predict_match
+from src.predict import priors
 from src.track import ledger, ratings
 from src.value.edge import american_to_decimal
 from src.simulate.monte_carlo import simulate_soccer
 from src.value.edge import BetEdge, edge_rating, evaluate_market
 from src.model_version import MODEL_VERSION
-from src.ingest.player_stats import fetch_player_pool
+from src.ingest.player_stats import enrich_with_nflverse, fetch_player_pool
 from src.predict.player_props import project_game
 
 router = APIRouter()
@@ -294,6 +295,13 @@ _TEAM_GETTERS = {
 }
 
 
+def _effective_elo(league: str, code: str) -> float:
+    """Static prior → feed-derived prior → self-correcting delta."""
+    static = _TEAM_GETTERS[league](code).elo
+    shifted, _ = priors.prior_elo(league, code, static)
+    return ratings.adjust(league, code, shifted)
+
+
 async def _predict_gridiron(req: NFLPredictRequest, league: str) -> NFLPredictResponse:
     home_code = req.home.upper()
     away_code = req.away.upper()
@@ -305,9 +313,13 @@ async def _predict_gridiron(req: NFLPredictRequest, league: str) -> NFLPredictRe
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    # Self-correcting ratings: base prior + whatever recent results have taught us.
-    home_elo = ratings.adjust(league, home_code, home_t.elo)
-    away_elo = ratings.adjust(league, away_code, away_t.elo)
+    # Two layers on top of the static rating: the feed-derived prior (nflverse
+    # EPA / CFBD SP+), then whatever recent graded results have taught us. Each
+    # falls back cleanly to the layer beneath when its data is unavailable.
+    home_prior, _ = priors.prior_elo(league, home_code, home_t.elo)
+    away_prior, _ = priors.prior_elo(league, away_code, away_t.elo)
+    home_elo = ratings.adjust(league, home_code, home_prior)
+    away_elo = ratings.adjust(league, away_code, away_prior)
 
     # ── Live conditions ──
     # College football has no per-team stadium/roster data here, so it runs
@@ -936,8 +948,8 @@ async def _slate_entry(
                 market_total=g.market_over_under,
                 home_code=home,
                 away_code=away,
-                home_elo=ratings.adjust(league, home, _TEAM_GETTERS[league](home).elo),
-                away_elo=ratings.adjust(league, away, _TEAM_GETTERS[league](away).elo),
+                home_elo=_effective_elo(league, home),
+                away_elo=_effective_elo(league, away),
                 consensus_home_prob=cal_home,
                 model_version=MODEL_VERSION,
                 book_source=g.market_provider or None,
@@ -1023,6 +1035,9 @@ async def game_player_props(league: str, event_id: str) -> dict:
         fetch_league_markets(league),
         fetch_player_pool(league, event_id),
     )
+    # ESPN publishes three leaders per team; nflverse has every player's week.
+    # A no-op for NCAAF and whenever the feed is unavailable.
+    pool = await enrich_with_nflverse(pool)
     game = next((g for g in board.games if str(g.event_id) == str(event_id)), None)
     if game is None:
         raise HTTPException(
@@ -1134,6 +1149,54 @@ async def today(league: str) -> dict:
         "source_ok": board.ok,
         "market_source": next(
             (g.market_provider for g in current if g.market_provider), "",
+        ),
+        "games": out_games,
+    }
+
+
+# A week of college football is several hundred games, and each entry runs the
+# model. Predicting the whole board on request would be slow and would hammer
+# the upstream feeds for games nobody scrolled to, so the response is capped
+# and the rest is reported as "not predicted yet" rather than quietly dropped.
+MAX_UPCOMING_PREDICTIONS = 60
+
+
+@router.get("/upcoming/{league}", tags=["Predictions"])
+async def upcoming(league: str, days: int = 7) -> dict:
+    """
+    The week ahead, already predicted.
+
+    Every scheduled game in the next `days` (default 7) with a model
+    projection, in kickoff order. Games in progress and finished games are not
+    here — this board is only what has yet to start.
+    """
+    league = league.lower()
+    if league not in FOCUS_LEAGUES:
+        raise HTTPException(
+            status_code=404,
+            detail=f"league must be one of: {', '.join(FOCUS_LEAGUES)}",
+        )
+    days = max(1, min(int(days), 14))
+
+    board, poly_markets = await asyncio.gather(
+        fetch_upcoming(league, days),
+        fetch_league_markets(league),
+    )
+    predicted = board.games[:MAX_UPCOMING_PREDICTIONS]
+    out_games = [await _slate_entry(league, g, poly_markets) for g in predicted]
+
+    return {
+        "league": league,
+        "days": days,
+        "fetched_at": board.fetched_at,
+        "source_ok": board.ok,
+        "total_scheduled": len(board.games),
+        "predicted": len(out_games),
+        # Stated rather than implied: a capped board is a partial answer, and
+        # the caller should be able to tell that from the response.
+        "truncated": len(board.games) > len(out_games),
+        "market_source": next(
+            (g.market_provider for g in predicted if g.market_provider), "",
         ),
         "games": out_games,
     }

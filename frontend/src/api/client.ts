@@ -14,6 +14,7 @@ import type {
   GridironLeague,
   AccuracyResponse,
   SoccerUpcomingResponse,
+  UpcomingResponse,
   PlayByPlayOut,
   GameDetailOut,
   FootballLeague,
@@ -169,6 +170,10 @@ export const api = {
   // the only thing that cannot be answered from a cache.
   today: (league: GridironLeague | 'ncaaf') =>
     get<TodayResponse>(`/api/v1/today/${league}?_=${Date.now()}`),
+  /** The week ahead, already predicted. A schedule days out is stable, so no
+   *  cache-buster here — unlike a running clock, it can safely be cached. */
+  upcoming: (league: GridironLeague | 'ncaaf', days = 7) =>
+    get<UpcomingResponse>(`/api/v1/upcoming/${league}?days=${days}`),
   /** One fully-modelled game — the Game Center. Scoped to a single event so
    *  the page never pays for modelling the whole slate. */
   gameDetail: (league: string, eventId: string) =>
