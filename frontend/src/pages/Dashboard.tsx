@@ -279,14 +279,61 @@ function Stat({ label, value, green }: { label: string; value: string; green?: b
   )
 }
 
+/**
+ * A game that has already been played.
+ *
+ * Deliberately not the pre-game card: spread and total pills read as picks,
+ * and offering a pick on a game that finished two hours ago is a claim about
+ * something already decided. The graded result lives on Results; here it is
+ * the score and a way in.
+ */
+function FinalCard({ entry }: { entry: BoardEntry }) {
+  const { game: g, league } = entry
+  const homeWon = (g.home_score ?? 0) > (g.away_score ?? 0)
+  return (
+    <Link
+      to={`/game/${league}/${g.event_id}`}
+      state={{ game: g }}
+      className="block rounded-2xl border border-terminal-border bg-terminal-surface p-4 hover:border-zinc-500"
+    >
+      <div className="mb-3 flex items-center justify-between gap-2 text-xs text-zinc-500">
+        <span className="font-semibold uppercase tracking-wide">Final</span>
+        <LeagueTag league={league} />
+      </div>
+      <div className="space-y-3">
+        {[[g.away, g.away_abbr, g.away_logo, g.away_score, !homeWon],
+          [g.home, g.home_abbr, g.home_logo, g.home_score, homeWon]].map(
+          ([name, abbr, logo, score, won]) => (
+            <div key={abbr as string} className="flex items-center gap-2.5">
+              <TeamLogo url={logo as string} abbr={abbr as string} />
+              <span className={`truncate text-[15px] font-bold ${won ? 'text-zinc-100' : 'text-zinc-500'}`}>
+                {name}
+              </span>
+              <span className={`ml-auto font-mono text-2xl font-black tabular-nums ${won ? 'text-zinc-100' : 'text-zinc-500'}`}>
+                {score ?? 0}
+              </span>
+            </div>
+          ),
+        )}
+      </div>
+    </Link>
+  )
+}
+
 function GameCard({ entry }: { entry: BoardEntry }) {
-  return entry.game.state === 'in' ? <LiveCard entry={entry} /> : <EdgeCard entry={entry} />
+  if (entry.game.state === 'in') return <LiveCard entry={entry} />
+  if (entry.game.state === 'post') return <FinalCard entry={entry} />
+  return <EdgeCard entry={entry} />
 }
 
 /** Live first, then the biggest claimed edge, then kickoff order. */
 function boardOrder(a: BoardEntry, b: BoardEntry): number {
-  const liveA = a.game.state === 'in' ? 0 : 1
-  const liveB = b.game.state === 'in' ? 0 : 1
+  // In progress, then still to come, then already played. A finished game is
+  // the least useful thing on a board about what to watch, but it is what
+  // someone looking for this afternoon's score came for, so it stays.
+  const rank = (e: BoardEntry) => (e.game.state === 'in' ? 0 : e.game.state === 'pre' ? 1 : 2)
+  const liveA = rank(a)
+  const liveB = rank(b)
   if (liveA !== liveB) return liveA - liveB
   const ea = bestEdge(a.edges)?.edge_pp ?? -1
   const eb = bestEdge(b.edges)?.edge_pp ?? -1
@@ -498,12 +545,7 @@ export function Dashboard() {
         )}
 
         {featured && (
-          <PropsStrip
-            league={featured.league}
-            eventId={featured.game.event_id}
-            away={featured.game.away_abbr}
-            home={featured.game.home_abbr}
-          />
+          <PropsStrip league={featured.league} eventId={featured.game.event_id} />
         )}
 
         <section aria-labelledby="faq-preview" className="pt-2">

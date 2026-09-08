@@ -37,9 +37,7 @@ function ranked(projections: PropProjectionOut[]): PropProjectionOut[] {
  * to. Nothing renders at all if this game has no projections, rather than
  * leaving an empty heading behind.
  */
-export function PropsStrip({
-  league, eventId, away, home,
-}: { league: string; eventId: string; away: string; home: string }) {
+export function PropsStrip({ league, eventId }: { league: string; eventId: string }) {
   const [data, setData] = useState<GamePropsOut | null>(null)
 
   useEffect(() => {
@@ -64,7 +62,10 @@ export function PropsStrip({
             Player projections
           </h2>
           <p className="mt-0.5 text-xs text-zinc-500">
-            {away} @ {home} — {data?.status === 'pre' ? 'projected' : 'actual'} numbers, not posted lines
+            {/* Named from the response rather than from what was asked for: if
+              the two ever disagree, the wrong label is worse than none. */}
+          {data?.away_abbr} @ {data?.home_abbr} —{' '}
+          {data?.status === 'pre' ? 'projected' : 'actual'} numbers, not posted lines
           </p>
         </div>
         <Link
