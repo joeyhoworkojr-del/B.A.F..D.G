@@ -15,6 +15,7 @@ import { GameCommunity } from '../components/picks/GameCommunity'
 import { useGameCommunity } from '../hooks/useGameCommunity'
 import { oddsSourceLabel } from '../components/OddsSource'
 import { LiveWinProbabilityChart } from '../components/game/LiveWinProbabilityChart'
+import { LiveScoreProjection } from '../components/game/LiveScoreProjection'
 import { LockedPremiumPanel } from '../components/game/LockedPremiumPanel'
 import type { Point } from '../components/game/MiniChart'
 
@@ -235,6 +236,10 @@ export function GameDetail() {
           </div>
 
           <div className="min-w-0 space-y-4">
+            {live && game && data?.model && (
+              <LiveScoreProjection game={game} model={data.model} />
+            )}
+
             {live && (
               <Panel title="Live win probability" refreshing={refreshing}
                      fetchedAt={data?.fetched_at} source={oddsSourceLabel(data?.source)} sourceOk={data?.source_ok}
