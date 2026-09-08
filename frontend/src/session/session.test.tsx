@@ -214,3 +214,16 @@ describe('Odds attribution', () => {
     expect(oddsSourceSentence('DraftKings')).toContain('no relationship')
   })
 })
+
+describe('Header layout', () => {
+  it('keeps the auth controls on one line', async () => {
+    // "Log in" was wrapping to two lines at 1440px once the nav grew to eight
+    // items — the kind of fault only a rendered screenshot catches.
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+    const src = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/components/layout/TopBar.tsx'), 'utf8')
+    const loginLink = src.slice(src.indexOf('Log in') - 700, src.indexOf('Log in'))
+    expect(loginLink).toContain('whitespace-nowrap')
+  })
+})

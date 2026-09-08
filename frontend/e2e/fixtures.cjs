@@ -242,4 +242,12 @@ const leaderboard = {
   note: 'Edge Rating is profit per graded pick, shrunk toward neutral by sample size.',
 }
 
-module.exports = { iso, inHours, mkGame, mkModel, mkEdge, today, accuracy, bestBets, bestParlay, plays, news, entitlements, props, session, community, leaderboard }
+const myPicks = {
+  record: {
+    picks: 0, pending: 0, graded: 0, wins: 0, losses: 0, pushes: 0,
+    win_rate: null, units: 0, roi_pct: null, avg_confidence: null,
+  },
+  picks: [],
+}
+
+module.exports = { iso, inHours, mkGame, mkModel, mkEdge, today, accuracy, bestBets, bestParlay, plays, news, entitlements, props, session, community, leaderboard, myPicks }

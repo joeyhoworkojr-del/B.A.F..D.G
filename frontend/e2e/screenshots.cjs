@@ -28,6 +28,12 @@ const PAGES = [
   ['props', '/props'],
   ['edges', '/best-bets'],
   ['leaderboard', '/leaderboard'],
+  ['login', '/login'],
+  ['register', '/register'],
+  ['my-edge', '/my-edge'],
+  ['staff', '/staff'],
+  ['analyst', '/@someone'],
+  ['notfound', '/no-such-page'],
   ['news', '/news'],
   ['results', '/results'],
   ['parlay', '/parlay'],
@@ -49,6 +55,13 @@ async function stub(page) {
   await page.route('**/api/v1/auth/me', r => r.fulfill({ json: fx.session }))
   await page.route('**/api/v1/picks/game/**', r => r.fulfill({ json: fx.community }))
   await page.route('**/api/v1/leaderboard*', r => r.fulfill({ json: fx.leaderboard }))
+  await page.route('**/api/v1/picks/mine', r => r.fulfill({ json: fx.myPicks }))
+  await page.route('**/api/v1/analysts/**', r =>
+    r.fulfill({ status: 404, json: { detail: 'Analyst not found.' } }))
+  await page.route('**/api/v1/admin/**', r =>
+    r.fulfill({ status: 404, json: { detail: 'Not found' } }))
+  await page.route('**/api/v1/auth/username-available*', r =>
+    r.fulfill({ json: { username: 'x', available: true } }))
   await page.route('**/api/v1/props*', r => r.fulfill({ json: fx.props }))
   await page.route('**/api/v1/best-bets', r => r.fulfill({ json: fx.bestBets }))
   await page.route('**/api/v1/best-parlay*', r => r.fulfill({ json: fx.bestParlay }))
