@@ -16,6 +16,7 @@ import { useGameCommunity } from '../hooks/useGameCommunity'
 import { oddsSourceLabel } from '../components/OddsSource'
 import { LiveWinProbabilityChart } from '../components/game/LiveWinProbabilityChart'
 import { LiveScoreProjection } from '../components/game/LiveScoreProjection'
+import { FieldTracker } from '../components/game/FieldTracker'
 import { LockedPremiumPanel } from '../components/game/LockedPremiumPanel'
 import type { Point } from '../components/game/MiniChart'
 
@@ -42,27 +43,6 @@ function PlayRow({ p }: { p: PlayOut }) {
   )
 }
 
-/** Field position — only meaningful while a game is actually being played. */
-function FieldPosition({ game }: { game: LiveGameOut }) {
-  const possHome = !!game.possession_abbr && game.possession_abbr === game.home_abbr
-  const possAway = !!game.possession_abbr && game.possession_abbr === game.away_abbr
-  return (
-    <div className="relative overflow-hidden rounded-lg border border-terminal-border">
-      <div className="flex h-24 w-full" aria-hidden="true">
-        <div className={`w-1/2 ${possAway ? 'bg-signal-green/20' : 'bg-terminal-muted'}`} />
-        <div className={`w-1/2 ${possHome ? 'bg-signal-green/20' : 'bg-terminal-muted'}`} />
-      </div>
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 px-3 text-center">
-        <span className="font-display text-lg font-black text-zinc-100">
-          {game.down_distance || `Q${game.period ?? ''} ${game.clock ?? ''}`}
-        </span>
-        <span className="text-xs font-semibold text-signal-green">
-          {game.possession_abbr ? `${game.possession_abbr} has the ball` : 'In progress'}
-        </span>
-      </div>
-    </div>
-  )
-}
 
 export function GameDetail() {
   const { league = 'nfl', eventId } = useParams<{ league: string; eventId: string }>()
@@ -250,7 +230,7 @@ export function GameDetail() {
                     <span className="font-mono text-2xl font-black tabular-nums text-signal-green">{pct1(homeWin)}</span>
                   </div>
                   <LiveWinProbabilityChart points={wpPoints} teamLabel={game.home_abbr} />
-                  <FieldPosition game={game} />
+                  <FieldTracker game={game} />
                 </div>
               </Panel>
             )}

@@ -242,6 +242,11 @@ class LiveGameOut(BaseModel):
     down_distance: str = ""
     possession_abbr: str = ""
     is_red_zone: bool = False
+    # Yards from the possessing team's own goal line, 0-100. None whenever the
+    # feed does not publish a position the offence can be placed on.
+    yard_line: Optional[int] = None
+    down: Optional[int] = None
+    distance: Optional[int] = None
     last_play: str = ""
     home_logo: str = ""
     away_logo: str = ""

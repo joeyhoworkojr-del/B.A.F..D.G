@@ -24,6 +24,8 @@ from src.ingest.espn import (
     fetch_playbyplay,
     fetch_scoreboard,
 )
+from src.ingest import cfbd, nflverse
+from src.predict import priors
 from src.track import ledger
 import asyncio
 from src.ingest.weather import (
@@ -293,3 +295,38 @@ def reset_team_lineup(sport: str, team_code: str) -> dict:
     """Reset all availability overrides for a team back to fit."""
     lineups.reset_team(sport, team_code)
     return {"status": "reset", "team": team_code.upper(), "sport": sport}
+
+
+@router.get("/data/sources", tags=["Data"])
+async def data_sources() -> dict:
+    """
+    Which upstream feeds are configured, and which have actually returned data.
+
+    Public on purpose: the site claims to be model-driven, and this is the
+    receipt. It reports provider names, configuration presence and the time of
+    the last successful fetch — never a key, and never "configured" dressed up
+    as "working". A provider with a key set but no successful call reads as
+    exactly that.
+    """
+    return {
+        "providers": [
+            {
+                "provider": "ESPN site API",
+                "requires_key": False,
+                "configured": True,
+                "leagues": ["nfl", "ncaaf"],
+                "used_for": "live scores, clock, play-by-play, box scores, news",
+            },
+            {**nflverse.status(), "used_for": "NFL team EPA priors and player form"},
+            {**cfbd.status(), "used_for": "NCAAF SP+/PPA priors and player game logs"},
+            {
+                "provider": "Open-Meteo",
+                "requires_key": False,
+                "configured": True,
+                "leagues": ["nfl"],
+                "used_for": "stadium weather adjustments",
+            },
+        ],
+        "model_priors": priors.status(),
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+    }

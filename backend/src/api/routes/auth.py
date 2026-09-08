@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from src.accounts import sessions
 from src.accounts.entitlements import Entitlements, entitlements_for
-from src.accounts.models import User
+from src.accounts.models import ADMIN_USERNAMES, User
 from src.accounts.service import (
     AccountError, authenticate, change_username, get_by_id, register,
     update_profile, username_available,
@@ -180,6 +180,12 @@ def _request_diagnostics(request: Request) -> dict:
         "bearer_present": request.headers.get("authorization", "").lower().startswith("bearer "),
         "secure_cookies": sessions.SECURE_COOKIES,
         "origin": request.headers.get("origin", ""),
+        # Whether ADMIN_USERNAMES reached *this* process. Set on the wrong
+        # host (the SPA's env instead of the API's) it is silently empty, and
+        # a missing Staff link looks identical to a username that did not
+        # match. The count answers that; the names stay private.
+        "admin_list_configured": bool(ADMIN_USERNAMES),
+        "admin_list_size": len(ADMIN_USERNAMES),
     }
 
 

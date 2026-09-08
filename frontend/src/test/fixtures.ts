@@ -17,6 +17,7 @@ export const liveGame: LiveGameOut = {
   state: 'in', home_score: 14, away_score: 10,
   period: 3, clock: '6:59', detail: 'Q3 6:59',
   possession_abbr: 'FSU', down_distance: '1st & 10 at FSU 42',
+  yard_line: 42, down: 1, distance: 10,
   last_play: 'Rush for 6 yards',
 }
 

@@ -3,7 +3,7 @@ import { Link, Navigate } from 'react-router-dom'
 import { api } from '../api/client'
 import { PickRow } from '../components/record/RecordSummary'
 import { useSession } from '../session/SessionProvider'
-import type { AdminOverview, AdminUserRow, PickOut } from '../types'
+import type { AdminOverview, AdminUserRow, FeedStatus, ModelPriorStatus, PickOut } from '../types'
 
 /**
  * Staff portal.
@@ -97,6 +97,23 @@ export function Staff() {
             <Breakdown title="By league" data={overview.picks.by_league} />
           </div>
 
+          {overview.data_feeds && (
+            <section className="mt-8">
+              <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-500">
+                Data feeds
+              </h2>
+              <p className="mt-1 text-sm text-zinc-400">
+                A feed that is configured but has never returned data is the failure that
+                goes unnoticed, so the two are reported separately.
+              </p>
+              <div className="mt-3 grid gap-4 lg:grid-cols-2">
+                <FeedCard feed={overview.data_feeds.nflverse} />
+                <FeedCard feed={overview.data_feeds.cfbd} />
+              </div>
+              <PriorsCard priors={overview.data_feeds.model_priors} />
+            </section>
+          )}
+
           <section className="mt-8">
             <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-500">
               Accounts ({users.length})
@@ -150,6 +167,91 @@ export function Staff() {
             )}
           </section>
         </>
+      )}
+    </div>
+  )
+}
+
+function when(iso?: string): string {
+  if (!iso) return 'never'
+  const t = new Date(iso)
+  return Number.isNaN(t.getTime()) ? 'never' : t.toLocaleString()
+}
+
+/** One provider: whether it is set up, and whether it has actually delivered. */
+function FeedCard({ feed }: { feed: FeedStatus }) {
+  const working = feed.configured && (!feed.requires_key || !!feed.last_success)
+  const rows = feed.loaded ?? []
+  return (
+    <div className="rounded-card border border-terminal-border bg-terminal-surface p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-sm font-bold text-zinc-100">{feed.provider}</h3>
+        <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+          working ? 'bg-signal-green-dim text-signal-green' : 'bg-signal-amber-dim text-signal-amber'
+        }`}>
+          {feed.configured ? (working ? 'live' : 'configured, no data yet') : 'not configured'}
+        </span>
+      </div>
+      {feed.used_for && <p className="mt-1 text-xs text-zinc-500">{feed.used_for}</p>}
+      <dl className="mt-3 space-y-1 text-sm">
+        <div className="flex justify-between gap-3">
+          <dt className="text-zinc-400">Needs a key</dt>
+          <dd className="text-zinc-100">{feed.requires_key ? feed.key_env_var ?? 'yes' : 'no'}</dd>
+        </div>
+        {feed.requires_key && (
+          <div className="flex justify-between gap-3">
+            <dt className="text-zinc-400">Last success</dt>
+            <dd className="font-mono text-xs text-zinc-100">{when(feed.last_success)}</dd>
+          </div>
+        )}
+        {rows.map(r => (
+          <div key={String(r.season)} className="flex justify-between gap-3">
+            <dt className="text-zinc-400">Season {r.season}</dt>
+            <dd className="font-mono text-xs text-zinc-100">
+              {r.players} player rows · {r.teams} team rows
+            </dd>
+          </div>
+        ))}
+        {feed.last_error && (
+          <div className="flex justify-between gap-3">
+            <dt className="text-zinc-400">Last error</dt>
+            <dd className="text-xs text-signal-red">{feed.last_error}</dd>
+          </div>
+        )}
+      </dl>
+      {feed.note && <p className="mt-2 text-xs text-zinc-500">{feed.note}</p>}
+    </div>
+  )
+}
+
+/** What the feeds are doing to the model, or that they are doing nothing. */
+function PriorsCard({ priors }: { priors: ModelPriorStatus }) {
+  const leagues = Object.entries(priors.leagues ?? {})
+  return (
+    <div className="mt-4 rounded-card border border-terminal-border bg-terminal-surface p-4">
+      <h3 className="text-sm font-bold text-zinc-100">Model priors</h3>
+      <p className="mt-1 text-xs text-zinc-500">
+        Feeds shift a team rating by at most {priors.max_shift_points} points of expected
+        margin. A league with no feed runs on its static rating, unchanged.
+      </p>
+      {leagues.length === 0 ? (
+        <p className="mt-2 text-sm text-zinc-400">No refresh has completed yet.</p>
+      ) : (
+        <dl className="mt-3 space-y-1 text-sm">
+          {leagues.map(([league, l]) => (
+            <div key={league} className="flex flex-wrap justify-between gap-3">
+              <dt className="text-zinc-400">{league.toUpperCase()}</dt>
+              <dd className="text-right">
+                <span className={l.ok ? 'font-semibold text-signal-green' : 'text-zinc-400'}>
+                  {l.ok ? `${l.source} · ${l.teams} teams` : 'static ratings only'}
+                </span>
+                <span className="block font-mono text-xs text-zinc-500">
+                  {l.ok ? when(l.fetched_at) : l.note}
+                </span>
+              </dd>
+            </div>
+          ))}
+        </dl>
       )}
     </div>
   )

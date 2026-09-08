@@ -306,3 +306,98 @@ async def fetch_player_pool(league: str, event_id: str) -> PlayerPool:
     except Exception as exc:
         log.error("player pool fetch failed for %s %s: %s", league, event_id, exc)
         return PlayerPool(league=league, event_id=event_id, ok=False, fetched_at=now_iso)
+
+
+# ── nflverse enrichment (NFL only) ───────────────────────────────────────────
+
+# nflverse position → the single role this app projects a player in. A QB does
+# rush and a back does catch, but the prop set is chosen per role, and picking
+# the player's primary one keeps a projection from claiming a market their
+# usage does not support.
+_ROLE_BY_POSITION = {
+    "QB": "passer",
+    "RB": "rusher", "FB": "rusher", "HB": "rusher",
+    "WR": "receiver", "TE": "receiver",
+}
+
+# nflverse abbreviations match ESPN's except for Washington.
+_NFLVERSE_TEAM_ALIASES = {"WAS": "WSH", "LAR": "LA", "OAK": "LV", "SD": "LAC", "STL": "LA"}
+# The same map read backwards, to ask nflverse for a team by the code it uses.
+_ESPN_TO_NFLVERSE = {"WSH": "WAS"}
+
+# Recent form beats a season average diluted by a role a player no longer has.
+FORM_GAMES = 6
+
+
+def _usage_from_form(form) -> Optional[PlayerUsage]:
+    role = _ROLE_BY_POSITION.get(form.position)
+    if role is None:
+        return None
+    team = _NFLVERSE_TEAM_ALIASES.get(form.team, form.team)
+    return PlayerUsage(
+        athlete_id=f"nflverse:{form.player_id}",
+        name=form.name,
+        short_name=form.name,
+        position=form.position,
+        team_abbr=team,
+        role=role,
+        actual=False,
+        games_played=form.games,
+        pass_attempts_pg=form.pass_attempts_pg,
+        pass_yards_pg=form.pass_yards_pg,
+        pass_tds_pg=form.pass_tds_pg,
+        carries_pg=form.carries_pg,
+        rush_yards_pg=form.rush_yards_pg,
+        rush_tds_pg=form.rush_tds_pg,
+        targets_pg=form.targets_pg,
+        receptions_pg=form.receptions_pg,
+        rec_yards_pg=form.rec_yards_pg,
+        rec_tds_pg=form.rec_tds_pg,
+    )
+
+
+async def enrich_with_nflverse(pool: PlayerPool) -> PlayerPool:
+    """
+    Widen an NFL pool from ESPN's three leaders per team to everyone who has
+    actually been playing.
+
+    ESPN's summary carries the season's leading passer, rusher and receiver —
+    six players for a game. nflverse carries every player's week. Both are kept:
+    an ESPN row flagged `actual` is this game's real box score and always wins,
+    and nflverse fills in the rest of the roster behind it.
+
+    A failure here is not a failure of the pool. The ESPN players are returned
+    untouched and the caller is none the wiser.
+    """
+    if pool.league != "nfl" or not (pool.home_abbr or pool.away_abbr):
+        return pool
+
+    try:
+        from src.ingest import nflverse
+
+        data = await nflverse.load_season()
+        if not data.ok:
+            return pool
+
+        wanted = {a for a in (pool.home_abbr, pool.away_abbr) if a}
+        existing = {(p.name.lower(), p.role) for p in pool.players}
+        added: list[PlayerUsage] = []
+        for team in wanted:
+            source_code = _ESPN_TO_NFLVERSE.get(team, team)
+            for form in nflverse.player_form(data, team=source_code, last_n=FORM_GAMES):
+                usage = _usage_from_form(form)
+                if usage is None or usage.team_abbr not in wanted:
+                    continue
+                if (usage.name.lower(), usage.role) in existing:
+                    continue
+                existing.add((usage.name.lower(), usage.role))
+                added.append(usage)
+
+        if not added:
+            return pool
+        pool.players = pool.players + added
+        pool.source = f"{pool.source} + nflverse {data.season}"
+        return pool
+    except Exception as exc:
+        log.warning("nflverse enrichment skipped: %s", exc)
+        return pool
