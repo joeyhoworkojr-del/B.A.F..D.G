@@ -53,3 +53,66 @@ jobs:
         run: flyctl deploy --remote-only --ha=false
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN || secrets.ORG || secrets.FLY_ORG || secrets.ORG_TOKEN || secrets.FLY_ORG_TOKEN }}
+
+      # Which optional keys the running app can actually see, reported after
+      # every deploy. The endpoints below return names and booleans only — no
+      # credential value is ever in their output, which is what makes it safe
+      # to print in a build log.
+      #
+      # This exists because neither of us can check otherwise: the assistant's
+      # sandbox cannot reach the API host, and reading a JSON blob by hand is a
+      # poor way to find out that a key was pasted with a stray quote on it.
+      - name: Report which optional keys are live
+        continue-on-error: true          # never fail a good deploy over a report
+        run: |
+          sleep 15   # let the new machine finish starting
+          echo "### Optional integrations" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          ai=$(curl -sS --max-time 20 https://statedge-api.fly.dev/api/v1/ai/status || echo '{}')
+          sources=$(curl -sS --max-time 20 https://statedge-api.fly.dev/api/v1/data/sources || echo '{}')
+
+          python3 - "$ai" "$sources" >> "$GITHUB_STEP_SUMMARY" <<'PY'
+          import json, sys
+
+          def load(raw):
+              try:
+                  return json.loads(raw)
+              except Exception:
+                  return {}
+
+          ai, sources = load(sys.argv[1]), load(sys.argv[2])
+
+          print("| Integration | Configured | Working | Note |")
+          print("| --- | --- | --- | --- |")
+
+          def row(name, configured, working, note):
+              tick = lambda v: "yes" if v else "no"
+              print(f"| {name} | {tick(configured)} | {tick(working)} | {note} |")
+
+          budget = ai.get("budget") or {}
+          row(
+              "Edge AI (ANTHROPIC_API_KEY)",
+              ai.get("available") is not None and ai.get("model"),
+              ai.get("available"),
+              ai.get("reason") or f"${budget.get('remaining_usd', '?')} of "
+                                  f"${budget.get('daily_limit_usd', '?')} left today",
+          )
+
+          for provider in sources.get("providers") or []:
+              if not provider.get("requires_key"):
+                  continue
+              row(
+                  f"{provider.get('provider')} ({provider.get('key_env_var')})",
+                  provider.get("configured"),
+                  # Configured means a key is present. Only a successful fetch
+                  # means it works — a rejected key looks identical otherwise.
+                  bool(provider.get("last_success")),
+                  provider.get("last_error") or provider.get("note") or "ok",
+              )
+
+          if not ai and not sources:
+              print("")
+              print("The API did not answer in time. Not necessarily broken — "
+                    "check the endpoints directly.")
+          PY
