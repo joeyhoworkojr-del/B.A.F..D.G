@@ -53,7 +53,14 @@ export function AskEdge({
     return () => { alive = false }
   }, [])
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [turns, busy])
+  // Only once there is a conversation to follow, and scoped to the panel.
+  // Scrolling the whole page the moment someone opens Ask Edge yanks them away
+  // from whatever they were reading — and an animation running on an otherwise
+  // idle page is enough to stall a full-page screenshot indefinitely.
+  useEffect(() => {
+    if (turns.length === 0) return
+    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [turns, busy])
 
   const send = async (text: string) => {
     const q = text.trim()
