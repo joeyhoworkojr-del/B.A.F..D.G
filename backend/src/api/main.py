@@ -115,10 +115,13 @@ _CACHE_RULES: tuple[tuple[str, str], ...] = (
     # Browser cache and server cache stack: an 8s max-age on top of an 8s
     # server TTL meant a play could be 16s old before anything refetched.
     # Two seconds keeps a burst of tabs cheap without adding visible lag.
-    ("/api/v1/live/pbp/", "public, max-age=2, stale-while-revalidate=10"),
-    ("/api/v1/live/scores", "public, max-age=15, stale-while-revalidate=45"),
-    ("/api/v1/game/", "public, max-age=10, stale-while-revalidate=30"),
-    ("/api/v1/today/", "public, max-age=15, stale-while-revalidate=45"),
+    ("/api/v1/live/pbp/", "public, max-age=2"),
+    # No stale-while-revalidate on anything carrying a game clock: it lets a
+    # CDN keep serving a frozen score while it revalidates in the background,
+    # which is how a live game ends up stuck on the same time for minutes.
+    ("/api/v1/live/scores", "public, max-age=5"),
+    ("/api/v1/game/", "public, max-age=5"),
+    ("/api/v1/today/", "public, max-age=5"),
     ("/api/v1/best-bets", "public, max-age=30, stale-while-revalidate=90"),
     ("/api/v1/best-parlay", "public, max-age=30, stale-while-revalidate=90"),
     ("/api/v1/accuracy", "public, max-age=60, stale-while-revalidate=300"),

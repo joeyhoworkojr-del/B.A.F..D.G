@@ -155,3 +155,53 @@ def test_venues_list_endpoint() -> None:
     venues = resp.json()
     assert isinstance(venues, list)
     assert len(venues) >= 10
+
+
+# ─── Live boards must not go stale ───────────────────────────────────────────
+
+def test_a_board_with_a_live_game_is_cached_briefly():
+    """
+    A running clock has to be refetched near the rate it changes. A 60s cache
+    is what left a live game frozen on the same time for minutes.
+    """
+    from src.ingest import espn
+    live = espn.LiveGame(league="ncaaf", event_id="1", home="A", away="B",
+                         home_abbr="A", away_abbr="B", home_score=14, away_score=10,
+                         state="in", detail="Q3 3:20",
+                         kickoff="2026-09-08T00:00:00+00:00")
+    assert espn._board_ttl([live]) == espn.LIVE_CACHE_TTL_SECONDS
+    assert espn._board_ttl([live]) <= 15
+
+
+def test_a_quiet_board_keeps_the_longer_cache():
+    """Nothing is moving, so there is no reason to hammer the upstream feed."""
+    from src.ingest import espn
+    pre = espn.LiveGame(league="ncaaf", event_id="1", home="A", away="B",
+                        home_abbr="A", away_abbr="B", home_score=None, away_score=None,
+                        state="pre", detail="Sat 3:30",
+                        kickoff="2026-09-08T00:00:00+00:00")
+    assert espn._board_ttl([pre]) == espn.CACHE_TTL_SECONDS
+    assert espn._board_ttl([]) == espn.CACHE_TTL_SECONDS
+
+
+def test_one_live_game_shortens_the_whole_board():
+    from src.ingest import espn
+    mk = lambda state: espn.LiveGame(
+        league="ncaaf", event_id="x", home="A", away="B", home_abbr="A",
+        away_abbr="B", home_score=0, away_score=0, state=state, detail="",
+        kickoff="2026-09-08T00:00:00+00:00")
+    assert espn._board_ttl([mk("post"), mk("pre"), mk("in")]) == espn.LIVE_CACHE_TTL_SECONDS
+
+
+def test_no_live_endpoint_allows_a_cdn_to_serve_a_stale_clock():
+    """
+    stale-while-revalidate lets a CDN keep serving a frozen score while it
+    revalidates behind the scenes — invisible, and exactly the reported fault.
+    """
+    from src.api.main import _CACHE_RULES
+    live_paths = ("/api/v1/live/scores", "/api/v1/live/pbp/",
+                  "/api/v1/today/", "/api/v1/game/")
+    for prefix, policy in _CACHE_RULES:
+        if prefix in live_paths:
+            assert "stale-while-revalidate" not in policy, prefix
+            assert "max-age=5" in policy or "max-age=2" in policy, f"{prefix}: {policy}"

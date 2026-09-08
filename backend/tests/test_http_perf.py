@@ -35,7 +35,10 @@ def test_live_endpoints_are_briefly_cacheable() -> None:
         r = client.get("/api/v1/game/ncaaf/401752")
     assert r.status_code == 200
     cc = r.headers["cache-control"]
-    assert "public" in cc and "max-age=10" in cc and "stale-while-revalidate" in cc
+    # Short and without stale-while-revalidate: a CDN allowed to serve a
+    # frozen score while revalidating is what left a live clock stuck.
+    assert "public" in cc and "max-age=5" in cc
+    assert "stale-while-revalidate" not in cc
 
 
 def test_reference_data_is_cached_longer_than_live_data() -> None:

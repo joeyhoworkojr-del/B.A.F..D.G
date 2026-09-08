@@ -5,7 +5,7 @@ import { DataFreshnessBadge } from '../components/game/DataFreshnessBadge'
 import type { FootballLeague, TodayGameOut, TodayResponse } from '../types'
 
 const LEAGUES: FootballLeague[] = ['ncaaf', 'nfl']
-const POLL_MS = 20_000
+const POLL_MS = 12_000
 
 const pct = (v?: number | null) => (v == null ? '—' : `${Math.round(v * 100)}%`)
 
