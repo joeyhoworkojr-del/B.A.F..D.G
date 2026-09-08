@@ -6,6 +6,7 @@ import type { FootballLeague, TodayGameOut, UpcomingResponse } from '../types'
 
 const LEAGUES: FootballLeague[] = ['ncaaf', 'nfl']
 const DAY_CHOICES = [3, 7, 14] as const
+const LEAGUE_LABEL: Record<FootballLeague, string> = { ncaaf: 'College', nfl: 'NFL' }
 
 const pct = (v?: number | null) => (v == null ? '—' : `${Math.round(v * 100)}%`)
 
@@ -102,6 +103,11 @@ function UpcomingRow({ league, entry }: Entry) {
  */
 export function Upcoming() {
   const [days, setDays] = useState<number>(7)
+  // Which leagues to show. Both by default; a filter narrows what is already
+  // fetched rather than refetching, so switching it is instant.
+  const [leagues, setLeagues] = useState<FootballLeague[]>(LEAGUES)
+  // A specific day, or null for the whole window.
+  const [day, setDay] = useState<string | null>(null)
   const [feeds, setFeeds] = useState<Record<string, UpcomingResponse>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -126,7 +132,7 @@ export function Upcoming() {
   }, [days])
 
   const byDay = useMemo(() => {
-    const all: Entry[] = LEAGUES.flatMap(lg =>
+    const all: Entry[] = leagues.flatMap(lg =>
       (feeds[lg]?.games ?? []).map(entry => ({ league: lg, entry })))
     all.sort((a, b) => (a.entry.game.kickoff || '').localeCompare(b.entry.game.kickoff || ''))
     const groups = new Map<string, Entry[]>()
@@ -135,7 +141,21 @@ export function Upcoming() {
       groups.set(key, [...(groups.get(key) ?? []), row])
     }
     return [...groups.entries()]
-  }, [feeds])
+  }, [feeds, leagues])
+
+  // Every day that actually has a game, so the picker never offers an empty one.
+  const availableDays = byDay.map(([key, rows]) => ({
+    key, label: dayLabel(rows[0].entry.game.kickoff), count: rows.length,
+  }))
+  const visibleDays = day ? byDay.filter(([key]) => key === day) : byDay
+
+  const toggleLeague = (lg: FootballLeague) => {
+    setLeagues(prev => {
+      const next = prev.includes(lg) ? prev.filter(l => l !== lg) : [...prev, lg]
+      // Turning the last one off would leave an empty page with no way back.
+      return next.length ? next : prev
+    })
+  }
 
   const responses = Object.values(feeds)
   const oldest = responses.map(f => f.fetched_at).filter(Boolean).sort()[0]
@@ -158,6 +178,25 @@ export function Upcoming() {
       </header>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
+        <span className="text-xs font-bold uppercase tracking-wide text-zinc-500">League</span>
+        {LEAGUES.map(lg => (
+          <button
+            key={lg}
+            type="button"
+            onClick={() => toggleLeague(lg)}
+            aria-pressed={leagues.includes(lg)}
+            className={`tap rounded-full border px-3 text-sm font-semibold transition ${
+              leagues.includes(lg)
+                ? 'border-brand bg-brand-soft text-brand'
+                : 'border-terminal-border bg-terminal-surface text-zinc-500 hover:text-zinc-100'
+            }`}
+          >
+            {LEAGUE_LABEL[lg]}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         <span className="text-xs font-bold uppercase tracking-wide text-zinc-500">Window</span>
         {DAY_CHOICES.map(d => (
           <button
@@ -198,7 +237,39 @@ export function Upcoming() {
         </p>
       )}
 
-      {byDay.map(([key, rows]) => (
+      {availableDays.length > 1 && (
+        <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+          <button
+            type="button"
+            onClick={() => setDay(null)}
+            aria-pressed={day === null}
+            className={`tap shrink-0 rounded-lg border px-3 text-sm font-semibold transition ${
+              day === null
+                ? 'border-brand bg-brand-soft text-brand'
+                : 'border-terminal-border bg-terminal-surface text-zinc-400 hover:text-zinc-100'
+            }`}
+          >
+            All {days} days
+          </button>
+          {availableDays.map(d => (
+            <button
+              key={d.key}
+              type="button"
+              onClick={() => setDay(d.key === day ? null : d.key)}
+              aria-pressed={day === d.key}
+              className={`tap shrink-0 whitespace-nowrap rounded-lg border px-3 text-sm font-semibold transition ${
+                day === d.key
+                  ? 'border-brand bg-brand-soft text-brand'
+                  : 'border-terminal-border bg-terminal-surface text-zinc-400 hover:text-zinc-100'
+              }`}
+            >
+              {d.label} <span className="text-zinc-500">({d.count})</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {visibleDays.map(([key, rows]) => (
         <section key={key} className="mt-8">
           <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-500">
             {dayLabel(rows[0].entry.game.kickoff)} · {rows.length} game{rows.length === 1 ? '' : 's'}
