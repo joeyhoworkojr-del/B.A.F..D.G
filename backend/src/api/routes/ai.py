@@ -86,6 +86,11 @@ async def ai_status(request: Request) -> dict:
             else "Sign in to ask Edge AI."
         ),
         "budget": report["budget"],
+        # The last failure, scrubbed of anything key-shaped by the provider.
+        # Public because the alternative is a user seeing "unreachable" with no
+        # way to tell whether that is a five-minute blip or a misconfiguration
+        # nobody has noticed for a week.
+        "last_error": report.get("last_error", ""),
         "rate_limit_per_hour": RATE_LIMIT_PER_HOUR,
         "level": ent.level,
         # The model name is product information, not a secret. The key is never

@@ -406,3 +406,111 @@ def test_the_budget_is_reported_without_any_credential(_budget, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-a-real-looking-secret")
     provider_mod.set_provider(None)
     assert "sk-ant-a-real-looking-secret" not in json.dumps(edge_ai.status())
+
+
+# ── failures have to be diagnosable ─────────────────────────────────────────
+
+def test_a_failure_records_the_reason_not_just_the_exception_type():
+    """
+    The first version stored only `type(exc).__name__`, so a misconfigured
+    model, an empty account and a network blip all read as "temporarily
+    unreachable" — true, useless, and impossible to act on from outside.
+    """
+    from src.ai.provider import _describe
+
+    class ApiError(Exception):
+        def __init__(self, message, status=None):
+            super().__init__(message)
+            self.status_code = status
+
+    described = _describe(ApiError("model: claude-x not found", 404), "claude-x")
+    assert "404" in described
+    assert "not found" in described
+    assert "claude-x" in described      # names what was not found
+
+
+def test_an_error_never_carries_a_key_even_if_the_provider_echoes_one():
+    from src.ai.provider import _describe
+    leaky = Exception("invalid x-api-key sk-ant-api03-REALSECRETVALUE provided")
+    described = _describe(leaky, "claude-haiku-4-5")
+    assert "REALSECRETVALUE" not in described
+    assert "sk-***" in described
+
+
+@pytest.mark.parametrize("message,status,expected", [
+    ("model not found", 404, "cannot use"),
+    ("invalid x-api-key", 401, "rejected"),
+    ("credit balance is too low", 400, "out of credit"),
+    ("rate_limit_error", 429, "rate limited"),
+    ("connection reset", None, "temporarily unreachable"),
+])
+def test_the_person_asking_is_told_what_kind_of_problem_it_is(message, status, expected):
+    from src.ai.provider import _user_message
+
+    class ApiError(Exception):
+        def __init__(self, m, s):
+            super().__init__(m)
+            self.status_code = s
+
+    assert expected in _user_message(ApiError(message, status)).lower()
+
+
+def test_a_missing_model_is_retried_on_its_other_name_and_remembered():
+    """
+    Model ids come in a bare and a dated form, and which one an account can
+    address is not knowable from here. A naming difference should self-correct
+    rather than being a silent outage.
+    """
+    from src.ai import provider as pm
+
+    class ApiError(Exception):
+        def __init__(self, m, s):
+            super().__init__(m)
+            self.status_code = s
+
+    tried: list[str] = []
+
+    class FakeResponse:
+        content = []
+        stop_reason = "end_turn"
+        usage = None
+
+    p = pm.AnthropicProvider(api_key="k", model="claude-haiku-4-5")
+    p._client = object()
+
+    async def call(client, model, system, messages, tools):
+        tried.append(model)
+        if model == "claude-haiku-4-5":
+            raise ApiError("model: claude-haiku-4-5 not found", 404)
+        return FakeResponse()
+
+    p._call = call
+    run(p.complete(system="s", messages=[], tools=[]))
+
+    assert tried == ["claude-haiku-4-5", "claude-haiku-4-5-20251001"]
+    assert p.model == "claude-haiku-4-5-20251001"    # remembered
+
+
+def test_a_rejected_key_is_not_retried_on_every_candidate():
+    """Retrying an auth failure just spends the time twice."""
+    from src.ai import provider as pm
+
+    class ApiError(Exception):
+        def __init__(self, m, s):
+            super().__init__(m)
+            self.status_code = s
+
+    tried: list[str] = []
+    p = pm.AnthropicProvider(api_key="k", model="claude-haiku-4-5")
+    p._client = object()
+
+    async def call(client, model, system, messages, tools):
+        tried.append(model)
+        raise ApiError("invalid x-api-key", 401)
+
+    p._call = call
+    with pytest.raises(ProviderUnavailable):
+        run(p.complete(system="s", messages=[], tools=[]))
+
+    assert len(tried) == 1
+    assert "401" in p.status()["last_error"]
