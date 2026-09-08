@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Any, Optional, Protocol
 
@@ -32,6 +33,28 @@ MODEL_ENV_VAR = "EDGE_AI_MODEL"
 # solving anything hard. Overridable by environment, so moving up to Sonnet or
 # Opus is one secret and no deploy — worth doing if the answers read flat.
 DEFAULT_MODEL = "claude-haiku-4-5"
+
+# Model ids come in two shapes — a bare alias and a dated snapshot — and which
+# ones an account can address is not something this code can find out without
+# asking. So it asks: if the configured id comes back "not found", the next
+# candidate is tried once and the one that worked is remembered for the life of
+# the process.
+#
+# This is not a fallback to a different *tier* — every candidate here is the
+# same model. It only exists so a naming difference is self-correcting instead
+# of being a silent outage nobody can diagnose from the outside.
+_ALIASES: dict[str, tuple[str, ...]] = {
+    "claude-haiku-4-5": ("claude-haiku-4-5", "claude-haiku-4-5-20251001"),
+    "claude-haiku-4-5-20251001": ("claude-haiku-4-5-20251001", "claude-haiku-4-5"),
+}
+
+
+def _is_missing_model(exc: Exception) -> bool:
+    status = getattr(exc, "status_code", None)
+    text = str(exc).lower()
+    return status == 404 or "not_found" in text or (
+        "model" in text and ("not found" in text or "does not exist" in text)
+    )
 
 # Long enough for a considered paragraph or two with a table, short enough that
 # a runaway generation cannot run up a bill.
@@ -86,6 +109,44 @@ class LlmProvider(Protocol):
     ) -> LlmReply: ...
 
 
+# Anything shaped like a key, scrubbed before an error is stored or logged.
+_KEYISH = re.compile(r"sk-[A-Za-z0-9_\-]{8,}")
+
+
+def _describe(exc: Exception, model: str) -> str:
+    """
+    A diagnosable one-liner for staff. Never a credential.
+
+    Includes the model name because the most common cause of a hard failure is
+    a model id this deployment cannot use, and "not found" without saying what
+    was not found sends people looking in the wrong place.
+    """
+    status = getattr(exc, "status_code", None)
+    detail = str(exc).strip() or type(exc).__name__
+    detail = _KEYISH.sub("sk-***", detail)[:300]
+    prefix = f"HTTP {status}: " if status else f"{type(exc).__name__}: "
+    return f"{prefix}{detail} (model: {model})"
+
+
+def _user_message(exc: Exception) -> str:
+    """
+    What the person asking sees. Actionable where the cause is known, vague
+    only where it genuinely is.
+    """
+    status = getattr(exc, "status_code", None)
+    text = str(exc).lower()
+    if status == 404 or "not_found" in text or "model" in text and "not" in text:
+        return ("Edge AI is configured with a model this account cannot use. "
+                "Staff can see the exact error on the staff page.")
+    if status in (401, 403):
+        return "Edge AI's API key was rejected."
+    if status == 429:
+        return "Edge AI is being rate limited by the provider. Try again shortly."
+    if "credit" in text or "balance" in text or "billing" in text:
+        return "Edge AI's account is out of credit."
+    return "The assistant is temporarily unreachable."
+
+
 class AnthropicProvider:
     """Claude, via the Messages API."""
 
@@ -136,35 +197,56 @@ class AnthropicProvider:
         self, *, system: str, messages: list[dict], tools: list[dict],
     ) -> LlmReply:
         client = self._ensure_client()
-        try:
-            response = await client.messages.create(
-                model=self._model,
-                max_tokens=MAX_OUTPUT_TOKENS,
-                # The system prompt and the tool schemas are identical on every
-                # request and every round within one, and together they are the
-                # larger half of the input. Marking the end of that prefix lets
-                # the repeats be read from cache at a tenth of the price.
-                #
-                # The breakpoint goes on the system block because the render
-                # order is tools → system → messages: caching here covers both,
-                # and the volatile part (the conversation) sits after it where
-                # a change cannot invalidate the prefix.
-                system=[{
-                    "type": "text",
-                    "text": system,
-                    "cache_control": {"type": "ephemeral"},
-                }],
-                messages=messages,
-                tools=tools or [],
-            )
-        except Exception as exc:
-            # The message may carry request detail; the type alone is enough to
-            # act on and cannot leak a key or a prompt into a log.
-            self._last_error = type(exc).__name__
-            log.warning("Edge AI request failed: %s", type(exc).__name__)
-            raise ProviderUnavailable("the assistant is temporarily unreachable") from exc
+        last: Optional[Exception] = None
 
-        self._last_error = ""
+        for candidate in _ALIASES.get(self._model, (self._model,)):
+            try:
+                response = await self._call(client, candidate, system, messages, tools)
+            except Exception as exc:
+                last = exc
+                # Only a naming problem is worth another attempt. A rejected key
+                # or an empty account fails identically on every candidate, and
+                # retrying would only spend the time twice.
+                if _is_missing_model(exc):
+                    continue
+                break
+            else:
+                if candidate != self._model:
+                    log.info("Edge AI: %s unavailable, using %s", self._model, candidate)
+                    self._model = candidate
+                self._last_error = ""
+                return self._to_reply(response)
+
+        exc = last or RuntimeError("no model could be reached")
+        self._last_error = _describe(exc, self._model)
+        log.warning("Edge AI request failed: %s", self._last_error)
+        raise ProviderUnavailable(_user_message(exc)) from exc
+
+    async def _call(self, client, model: str, system: str,
+                    messages: list[dict], tools: list[dict]):
+        return await client.messages.create(
+            model=model,
+            max_tokens=MAX_OUTPUT_TOKENS,
+            # The system prompt and the tool schemas are identical on every
+            # request and every round within one, and together they are the
+            # larger half of the input. Marking the end of that prefix lets the
+            # repeats be read from cache at a tenth of the price.
+            #
+            # The breakpoint goes on the system block because the render order
+            # is tools then system then messages: caching here covers both, and
+            # the conversation sits after it where a change cannot invalidate
+            # the prefix.
+            system=[{
+                "type": "text",
+                "text": system,
+                "cache_control": {"type": "ephemeral"},
+            }],
+            messages=messages,
+            tools=tools or [],
+        )
+
+    @staticmethod
+    def _to_reply(response) -> LlmReply:
         text_parts: list[str] = []
         calls: list[ToolCall] = []
         for block in response.content:
