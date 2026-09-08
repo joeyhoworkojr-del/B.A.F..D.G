@@ -19,6 +19,7 @@ would produce a flat line made of thousands of samples.
 """
 from __future__ import annotations
 
+import math
 import threading
 import time
 from dataclasses import asdict, dataclass
@@ -82,6 +83,15 @@ def record(
     live game, and a bookkeeping failure must not take that page down.
     """
     try:
+        # A non-finite probability would be stored, returned, and serialised as
+        # a bare NaN literal — which is not valid JSON, so the whole timeline
+        # endpoint would fail to parse in the browser. It cannot come out of
+        # the model, but a value that would break a page must not be admitted
+        # on the strength of that.
+        probability = float(home_win)
+        if not math.isfinite(probability) or not 0.0 <= probability <= 1.0:
+            return
+
         key = _key(league, event_id)
         now = time.monotonic()
         with _LOCK:
@@ -102,7 +112,7 @@ def record(
 
             points.append(WinPoint(
                 at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                home_win=round(float(home_win), 4),
+                home_win=round(probability, 4),
                 home_score=int(home_score), away_score=int(away_score),
                 period=period, clock=clock, possession=possession,
                 note=note, scored=scored,

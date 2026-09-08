@@ -320,3 +320,17 @@ def test_drive_value_is_signed_from_the_home_teams_point_of_view():
     # A bad spot is negative for whoever is in it.
     home_pinned = _live(possession_home=True, yard_line=5, down=3, distance=15)
     assert home_pinned["drive_value"] < 0
+
+
+def test_a_probability_that_is_not_a_probability_is_refused():
+    """
+    NaN and infinity serialise as bare literals that are not valid JSON, so a
+    single bad reading would break the whole timeline endpoint in the browser.
+    Out-of-range values are refused for the same reason they would be wrong.
+    """
+    for bad in (float("nan"), float("inf"), float("-inf"), -0.5, 1.5):
+        _point(event_id="bad", home_win=bad)
+    assert win_history.series("nfl", "bad") == []
+
+    _point(event_id="bad", home_win=0.5)
+    assert len(win_history.series("nfl", "bad")) == 1
