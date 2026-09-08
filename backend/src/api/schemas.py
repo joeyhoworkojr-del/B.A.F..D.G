@@ -267,6 +267,16 @@ class PlayOut(BaseModel):
     scoring: bool = False
     home_score: Optional[int] = None
     away_score: Optional[int] = None
+    # Ball position either side of the play, as yards from the offence's own
+    # goal line. None whenever the feed did not publish it — the UI then shows
+    # the play as text rather than drawing it somewhere it was not.
+    start_yard_line: Optional[int] = None
+    end_yard_line: Optional[int] = None
+    yards_gained: Optional[int] = None
+    down: Optional[int] = None
+    distance: Optional[int] = None
+    drive_id: str = ""
+    drive_description: str = ""
 
 
 class PlayByPlayOut(BaseModel):

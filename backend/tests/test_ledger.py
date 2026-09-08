@@ -177,3 +177,60 @@ def test_graded_rows_report_the_model_versions_behind_them():
     )
     ledger.grade("nfl:900", home_score=24, away_score=20)
     assert ledger.accuracy_summary()["model_versions"] == ["test-1.0"]
+
+
+# ── the Results page must survive rows written by an older schema ───────────
+
+def test_performance_skips_a_row_it_cannot_settle_rather_than_raising():
+    """
+    A durable store accumulates rows across schema changes. One row written
+    before `consensus_home_prob` existed used to raise KeyError here — and
+    because this was the only ledger call /accuracy did not guard, that took
+    the entire Results page down with a 500.
+    """
+    from unittest.mock import patch
+    from src.track import ledger as ledger_mod
+
+    legacy = {"model_home_prob": 0.6, "home_won": 1, "book_home_prob": 0.55,
+              "graded_at": "2026-01-01"}
+    unsettleable = {"graded_at": "2026-01-02"}
+
+    class FakeStore:
+        def rows(self, graded=True):
+            return [legacy, unsettleable]
+
+    with patch.object(ledger_mod, "_get_store", lambda: FakeStore()):
+        result = ledger_mod.performance()
+
+    assert result["total_picks"] == 1          # the unsettleable row is skipped
+    assert result["win_rate"] == 1.0           # and not counted in the denominator
+    assert result["profit_units"] is not None
+
+
+def test_performance_returns_an_empty_record_when_storage_fails():
+    """A page whose job is showing the record should show an empty one, not 500."""
+    from unittest.mock import patch
+    from src.track import ledger as ledger_mod
+
+    class BrokenStore:
+        def rows(self, graded=True):
+            raise RuntimeError("storage is unreachable")
+
+    with patch.object(ledger_mod, "_get_store", lambda: BrokenStore()):
+        result = ledger_mod.performance()
+
+    assert result["total_picks"] == 0
+    assert result["series"] == []
+
+
+def test_the_accuracy_endpoint_survives_a_ratings_failure():
+    from unittest.mock import patch
+    from fastapi.testclient import TestClient
+    from src.api.main import app
+    from src.track import ratings as ratings_mod
+
+    with patch.object(ratings_mod, "reconcile", side_effect=RuntimeError("boom")):
+        response = TestClient(app).get("/api/v1/accuracy")
+
+    assert response.status_code == 200
+    assert "performance" in response.json()

@@ -197,6 +197,16 @@ export interface PlayOut {
   scoring?: boolean
   home_score?: number | null
   away_score?: number | null
+  /** Ball position either side of the play, yards from the offence's own goal.
+   *  Absent whenever the feed did not publish it — the play then renders as
+   *  text rather than being drawn somewhere it was not. */
+  start_yard_line?: number | null
+  end_yard_line?: number | null
+  yards_gained?: number | null
+  down?: number | null
+  distance?: number | null
+  drive_id?: string
+  drive_description?: string
 }
 
 export interface PlayByPlayOut {
@@ -947,4 +957,38 @@ export interface EdgeAiAnswer {
 export interface EdgeAiTurn {
   role: 'user' | 'assistant'
   content: string
+}
+
+
+// ─── Live game chat ───────────────────────────────────────────────────────────
+
+export interface ChatMessage {
+  id: string
+  seq: number
+  user_id: string
+  username: string
+  display_name: string
+  avatar_url: string
+  text: string
+  created_at: string
+  system: boolean
+  reply_to?: string | null
+  reply_preview: string
+  reactions: Record<string, number>
+  deleted: boolean
+  hidden: boolean
+  /** True when the viewer wrote it. Decided by the server, not the client. */
+  mine: boolean
+}
+
+export interface ChatPage {
+  game_id: string
+  messages: ChatMessage[]
+  cursor: number
+  count: number
+  signed_in: boolean
+  may_post: boolean
+  /** Why not, when may_post is false. Shown verbatim. */
+  blocked_reason: string
+  reactions_available: string[]
 }

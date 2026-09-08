@@ -372,6 +372,18 @@ class PlayItem:
     scoring: bool = False
     home_score: Optional[int] = None
     away_score: Optional[int] = None
+    # Where the ball was, as yards from the offence's own goal line, before and
+    # after the play. This is what lets the feed draw a drive marching rather
+    # than printing a list of sentences.
+    start_yard_line: Optional[int] = None
+    end_yard_line: Optional[int] = None
+    yards_gained: Optional[int] = None
+    down: Optional[int] = None
+    distance: Optional[int] = None
+    # Groups consecutive plays into the possession they belong to, so the UI can
+    # show a drive as one unit.
+    drive_id: str = ""
+    drive_description: str = ""
 
 
 @dataclass
@@ -391,7 +403,35 @@ _feed_cache: dict[str, tuple[float, list[PlayItem]]] = {}
 _FEED_TTL = 2.5
 
 
-def _play_item(p: dict, team_abbr: str = "") -> PlayItem:
+def _spot(block: dict) -> Optional[int]:
+    """
+    Yards from the offence's own goal line, from an ESPN start/end block.
+
+    ESPN publishes `yardsToEndzone` (how far the offence has to go) alongside
+    `yardLine` (a spot measured from a fixed end of the field). The first is
+    already possession-relative and needs no interpretation; the second does
+    not, so it is only a fallback and only when the first is absent.
+    """
+    if not isinstance(block, dict):
+        return None
+    to_go = block.get("yardsToEndzone")
+    if isinstance(to_go, (int, float)) and 0 <= to_go <= 100:
+        return int(100 - to_go)
+    line = block.get("yardLine")
+    if isinstance(line, (int, float)) and 0 <= line <= 100:
+        return int(line)
+    return None
+
+
+def _play_item(p: dict, team_abbr: str = "", drive_id: str = "",
+               drive_description: str = "") -> PlayItem:
+    start, end = p.get("start") or {}, p.get("end") or {}
+    start_spot, end_spot = _spot(start), _spot(end)
+    gained = p.get("statYardage")
+    if not isinstance(gained, (int, float)):
+        gained = (end_spot - start_spot) if (start_spot is not None and end_spot is not None) else None
+    down = start.get("down") if isinstance(start, dict) else None
+    distance = start.get("distance") if isinstance(start, dict) else None
     return PlayItem(
         period=(p.get("period") or {}).get("number"),
         clock=(p.get("clock") or {}).get("displayValue", "") or "",
@@ -400,6 +440,13 @@ def _play_item(p: dict, team_abbr: str = "") -> PlayItem:
         scoring=bool(p.get("scoringPlay", False)),
         home_score=p.get("homeScore"),
         away_score=p.get("awayScore"),
+        start_yard_line=start_spot,
+        end_yard_line=end_spot,
+        yards_gained=int(gained) if isinstance(gained, (int, float)) else None,
+        down=int(down) if isinstance(down, int) and 1 <= down <= 4 else None,
+        distance=int(distance) if isinstance(distance, int) and 0 <= distance <= 99 else None,
+        drive_id=drive_id,
+        drive_description=drive_description,
     )
 
 
@@ -416,10 +463,12 @@ def _parse_plays(data: dict) -> list[PlayItem]:
         raw_drives.append(drives["current"])
 
     items: list[PlayItem] = []
-    for dr in raw_drives:
+    for index, dr in enumerate(raw_drives):
         team_abbr = (dr.get("team") or {}).get("abbreviation", "") or ""
+        drive_id = str(dr.get("id") or f"drive-{index}")
+        summary = str(dr.get("displayResult") or dr.get("result") or "").strip()
         for p in dr.get("plays", []) or []:
-            items.append(_play_item(p, team_abbr))
+            items.append(_play_item(p, team_abbr, drive_id, summary))
 
     # Fallback: a flat top-level plays array (chronological) if drives were empty.
     if not items:

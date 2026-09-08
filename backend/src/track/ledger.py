@@ -299,6 +299,13 @@ def accuracy_summary() -> dict:
     }
 
 
+_EMPTY_PERFORMANCE = {
+    "total_picks": 0, "win_rate": None, "avg_edge_pp": None,
+    "profit_units": None, "roi_pct": None, "series": [],
+}
+
+
+@_safe(lambda: dict(_EMPTY_PERFORMANCE))
 def performance() -> dict:
     """
     Honest trading-desk stats for the graded ledger. The recommended pick is
@@ -309,6 +316,11 @@ def performance() -> dict:
     product actually advises) when present, falling back to the raw model for
     older rows. `avg_edge_pp` still measures the raw model's divergence from the
     book on the bet side, so we can see what the model adds.
+
+    Every field is read with `.get`. A durable store accumulates rows across
+    schema changes, and one row written before a column existed used to raise
+    KeyError here — which took the whole Results page down, because this was
+    the only ledger call the route did not guard.
     """
     with _LOCK:
         rows = _get_store().rows(graded=True)
@@ -322,17 +334,22 @@ def performance() -> dict:
     edge_sum = 0.0
     edge_n = 0
 
+    usable = 0
     for r in rows:
-        raw_p = r["model_home_prob"]
-        if raw_p is None:
+        raw_p = r.get("model_home_prob")
+        won = r.get("home_won")
+        if raw_p is None or won is None:
+            # Not enough of the row survived to settle it. Skipping keeps one
+            # bad row from distorting the record; counting it would.
             continue
-        cons_p = r["consensus_home_prob"]
+        usable += 1
+        cons_p = r.get("consensus_home_prob")
         pick_p = cons_p if cons_p is not None else raw_p
         pick_home = pick_p >= 0.5
-        pick_won = bool(r["home_won"]) == pick_home
+        pick_won = bool(won) == pick_home
         wins += 1 if pick_won else 0
 
-        book_home = r["book_home_prob"]
+        book_home = r.get("book_home_prob")
         if book_home is not None:
             pick_book_p = book_home if pick_home else 1 - book_home
             pick_raw_p = raw_p if pick_home else 1 - raw_p
@@ -344,8 +361,10 @@ def performance() -> dict:
             series.append(round(cum, 3))
 
     return {
-        "total_picks": len(rows),
-        "win_rate": (wins / len(rows)) if rows else None,
+        # Rows that could be settled, not rows on file — a win rate divided by
+        # a denominator that includes unsettleable rows is understated.
+        "total_picks": usable,
+        "win_rate": (wins / usable) if usable else None,
         "avg_edge_pp": (edge_sum / edge_n) if edge_n else None,
         "profit_units": round(cum, 2) if staked else None,
         "roi_pct": round(100 * cum / staked, 1) if staked else None,

@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 
 from src.api.schemas import (
+    LiveGameOut,
     AdjustmentOut,
     BestBetOut,
     BestBetsResponse,
@@ -55,6 +57,7 @@ from src.predict.gridiron import LEAGUE_PARAMS as GRIDIRON_PARAMS
 from src.predict.gridiron import live_projection, predict_nfl_game, win_probability
 from src.predict.soccer import predict_match
 from src.predict import priors
+from src.chat import events as chat_events
 from src.track import ledger, ratings, win_history
 from src.value.edge import american_to_decimal
 from src.simulate.monte_carlo import simulate_soccer
@@ -62,6 +65,8 @@ from src.value.edge import BetEdge, edge_rating, evaluate_market
 from src.model_version import MODEL_VERSION
 from src.ingest.player_stats import enrich_with_nflverse, fetch_player_pool
 from src.predict.player_props import project_game
+
+log = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -896,6 +901,15 @@ async def _slate_entry(
                 "red_zone": live["red_zone"],
                 "goal_to_go": live["goal_to_go"],
             })
+            # A Stat Edge line in the game's chat, but only when the move
+            # earns one — chat_events decides, and mostly decides not to.
+            chat_events.consider(
+                league=league, event_id=str(g.event_id),
+                home_abbr=g.home_abbr, away_abbr=g.away_abbr,
+                home_win=live["home_win"],
+                home_score=g.home_score, away_score=g.away_score,
+                drive_note=live["drive_note"],
+            )
             # Recording every reading is what makes a probability timeline
             # possible later, and it happens server-side so the history is not
             # lost when someone reloads the page.
@@ -1183,11 +1197,15 @@ async def today(league: str) -> dict:
     }
 
 
-# A week of college football is several hundred games, and each entry runs the
-# model. Predicting the whole board on request would be slow and would hammer
-# the upstream feeds for games nobody scrolled to, so the response is capped
-# and the rest is reported as "not predicted yet" rather than quietly dropped.
-MAX_UPCOMING_PREDICTIONS = 60
+# Every scheduled game is returned. A week of college football is several
+# hundred, and running the model on all of them in one request would be slow
+# and would hammer the upstream feeds, so the projection is computed for the
+# earliest kickoffs and the rest are listed with `projected: false`.
+#
+# Listing everything is the point: a schedule that silently stops at sixty is
+# not a schedule. A game without a projection still shows its teams, kickoff
+# and line, and opening it computes the projection for that one game.
+MAX_UPCOMING_PREDICTIONS = 120
 
 
 @router.get("/upcoming/{league}", tags=["Predictions"])
@@ -1213,6 +1231,19 @@ async def upcoming(league: str, days: int = 7) -> dict:
     )
     predicted = board.games[:MAX_UPCOMING_PREDICTIONS]
     out_games = [await _slate_entry(league, g, poly_markets) for g in predicted]
+    for entry in out_games:
+        entry["projected"] = True
+
+    # The rest of the week, listed without a projection rather than omitted.
+    for game in board.games[MAX_UPCOMING_PREDICTIONS:]:
+        out_games.append({
+            "game": LiveGameOut(**game.__dict__).model_dump(),
+            "mapped": False,
+            "model": None,
+            "edges": [],
+            "polymarket": None,
+            "projected": False,
+        })
 
     return {
         "league": league,
@@ -1220,10 +1251,10 @@ async def upcoming(league: str, days: int = 7) -> dict:
         "fetched_at": board.fetched_at,
         "source_ok": board.ok,
         "total_scheduled": len(board.games),
-        "predicted": len(out_games),
-        # Stated rather than implied: a capped board is a partial answer, and
-        # the caller should be able to tell that from the response.
-        "truncated": len(board.games) > len(out_games),
+        "predicted": sum(1 for e in out_games if e.get("projected")),
+        # Every scheduled game is present; some are listed without a
+        # projection. Kept in the response so the page can say which.
+        "truncated": False,
         "market_source": next(
             (g.market_provider for g in predicted if g.market_provider), "",
         ),
@@ -1450,7 +1481,12 @@ def accuracy() -> dict:
     snapshotted (model + book + crowd at the same instant) and auto-graded
     when the game goes final. Brier scores head-to-head on identical games.
     """
-    ratings.reconcile()
+    try:
+        ratings.reconcile()
+    except Exception as exc:
+        # Reconciling ratings is bookkeeping. It must not be able to stop the
+        # page whose entire job is showing the record.
+        log.warning("ratings reconcile failed on /accuracy: %s", type(exc).__name__)
     return {
         **ledger.accuracy_summary(),
         "performance": ledger.performance(),

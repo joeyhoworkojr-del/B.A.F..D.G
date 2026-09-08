@@ -14,6 +14,8 @@ import type {
   GridironLeague,
   AccuracyResponse,
   SoccerUpcomingResponse,
+  ChatMessage,
+  ChatPage,
   EdgeAiAnswer,
   EdgeAiStatus,
   EdgeAiTurn,
@@ -229,6 +231,27 @@ export const api = {
 
   /** Whether Edge AI can answer on this deployment, and for this caller. */
   aiStatus: () => get<EdgeAiStatus>('/api/v1/ai/status'),
+
+  // ── Live game chat ────────────────────────────────────────────────────────
+  /** Messages after a cursor. `after=0` returns the most recent window. */
+  chat: (league: string, eventId: string, after = 0) =>
+    get<ChatPage>(`/api/v1/chat/${league}/${encodeURIComponent(eventId)}?after=${after}`),
+  postChat: (league: string, eventId: string, text: string, reply_to?: string) =>
+    post<{ message: ChatMessage }>(
+      `/api/v1/chat/${league}/${encodeURIComponent(eventId)}`, { text, reply_to },
+    ),
+  reactChat: (league: string, eventId: string, messageId: string, emoji: string) =>
+    post<{ message: ChatMessage }>(
+      `/api/v1/chat/${league}/${encodeURIComponent(eventId)}/${messageId}/react`, { emoji },
+    ),
+  deleteChat: (league: string, eventId: string, messageId: string) =>
+    request<{ message: ChatMessage }>(
+      `/api/v1/chat/${league}/${encodeURIComponent(eventId)}/${messageId}`, { method: 'DELETE' },
+    ),
+  reportChat: (league: string, eventId: string, messageId: string, reason = '') =>
+    post<{ reported: boolean; hidden: boolean; note: string }>(
+      `/api/v1/chat/${league}/${encodeURIComponent(eventId)}/${messageId}/report`, { reason },
+    ),
   /** Ask Edge AI. The game being viewed travels with the question so
    *  "why did we move to 64%" resolves without naming the teams. */
   askEdge: (
