@@ -369,3 +369,71 @@ def test_no_domain_is_set_by_default(monkeypatch):
     monkeypatch.delenv("SESSION_COOKIE_DOMAIN", raising=False)
     importlib.reload(sess)
     assert "domain" not in sess.cookie_kwargs("2026-10-01T00:00:00+00:00")
+
+
+# ─── Bearer fallback for cookie-stripping proxies ────────────────────────────
+
+def test_a_bearer_token_authenticates_when_no_cookie_arrives(client):
+    """
+    Vercel's rewrite to an external host drops the Cookie header, which made a
+    cookie-only session unusable in production however correct it was.
+    """
+    token = _register(client).json()["session_token"]
+    assert token
+
+    bare = TestClient(app)          # a client with no cookies at all
+    me = bare.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me.json()["user"]["username"] == "joey"
+    assert me.json()["debug"]["session_cookie_present"] is False
+    assert me.json()["debug"]["bearer_present"] is True
+
+
+def test_login_also_returns_a_token(client):
+    _register(client)
+    client.cookies.clear()
+    body = client.post("/api/v1/auth/login", json={
+        "identifier": "joey", "password": "a-strong-passphrase"}).json()
+    assert body["session_token"]
+
+
+def test_a_forged_bearer_token_is_rejected():
+    bare = TestClient(app)
+    me = bare.get("/api/v1/auth/me", headers={"Authorization": "Bearer nonsense"})
+    assert me.json()["user"] is None
+
+
+def test_a_malformed_authorization_header_is_ignored():
+    bare = TestClient(app)
+    for header in ("", "Bearer", "Basic abc", "Bearer   "):
+        assert bare.get("/api/v1/auth/me",
+                        headers={"Authorization": header}).json()["user"] is None
+
+
+def test_the_cookie_wins_when_both_are_present(client):
+    """The httpOnly cookie is the stronger credential, so it takes precedence."""
+    _register(client)
+    me = client.get("/api/v1/auth/me", headers={"Authorization": "Bearer stale-token"})
+    assert me.json()["user"]["username"] == "joey"
+
+
+def test_logout_works_over_bearer_too(client):
+    token = _register(client).json()["session_token"]
+    bare = TestClient(app)
+    headers = {"Authorization": f"Bearer {token}"}
+    assert bare.post("/api/v1/auth/logout", headers=headers).status_code == 200
+    assert bare.get("/api/v1/auth/me", headers=headers).json()["user"] is None
+
+
+def test_picks_can_be_published_over_bearer(client):
+    """The whole point: accounts and picks both work behind the proxy."""
+    from datetime import datetime, timedelta, timezone
+    token = _register(client).json()["session_token"]
+    bare = TestClient(app)
+    kickoff = (datetime.now(timezone.utc) + timedelta(hours=3)).isoformat(timespec="seconds")
+    r = bare.post("/api/v1/picks", headers={"Authorization": f"Bearer {token}"}, json={
+        "league": "ncaaf", "event_id": "401752", "home": "A", "away": "B",
+        "kickoff": kickoff, "market": "moneyline", "side": "home",
+        "selection": "A", "confidence": 70,
+    })
+    assert r.status_code == 200, r.text
+    assert r.json()["username"] == "joey"

@@ -256,11 +256,18 @@ Pick one of these instead.
 
 1. DNS: `CNAME api.statedge.ca → statedge-api.fly.dev`
 2. `fly certs add api.statedge.ca --app statedge-api`
-3. Vercel env: `VITE_API_BASE=https://api.statedge.ca`
-4. Fly secret: `SESSION_COOKIE_DOMAIN=.statedge.ca`
+3. Vercel env: `VITE_API_BASE=https://api.statedge.ca` — then redeploy
 
-Both hosts share a registrable domain, so the cookie is first-party for each
-and `SameSite=Lax` keeps working. Vercel still serves the SPA from its CDN.
+That is the whole change; no Fly secret is needed. The browser calls the API
+host directly, so nothing is proxied and no header can be dropped. The session
+cookie is set host-only for `api.statedge.ca` and sent straight back to it, and
+because both hosts share the registrable domain `statedge.ca` the request is
+same-site — so `SameSite=Lax` keeps working and none of this depends on
+third-party cookies. Vercel still serves the SPA from its CDN.
+
+`SESSION_COOKIE_DOMAIN=.statedge.ca` would widen that cookie to every subdomain
+and is **not** required here. Set it only if the session has to be readable by
+more than one host.
 
 **B. Serve everything from Fly (simplest).**
 

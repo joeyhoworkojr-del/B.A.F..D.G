@@ -12,7 +12,8 @@ from typing import Optional
 
 from src.accounts import passwords
 from src.accounts.models import (
-    COLLECTION, InvalidUsername, User, normalise_email, normalise_username,
+    ADMIN_USERNAMES, COLLECTION, InvalidUsername, User, normalise_email,
+    normalise_username,
 )
 from src.store.documents import UniqueViolation, get_docs
 
@@ -28,9 +29,29 @@ def _save(user: User) -> User:
     return user
 
 
+def _apply_admin(user: Optional[User]) -> Optional[User]:
+    """
+    Reconcile the stored level with the deployment's admin list.
+
+    Admin is granted by ADMIN_USERNAMES and nothing else, so a compromised
+    write to storage cannot promote an account — and removing a name from the
+    list demotes it on the next read rather than leaving stale power behind.
+    """
+    if user is None:
+        return None
+    should_be_admin = user.username in ADMIN_USERNAMES
+    if should_be_admin and user.level != "admin":
+        user.level = "admin"
+        _save(user)
+    elif not should_be_admin and user.level == "admin":
+        user.level = "beta"
+        _save(user)
+    return user
+
+
 def get_by_id(user_id: str) -> Optional[User]:
     doc = get_docs().get(COLLECTION, user_id)
-    return User.from_doc(doc) if doc else None
+    return _apply_admin(User.from_doc(doc)) if doc else None
 
 
 def get_by_username(username: str) -> Optional[User]:

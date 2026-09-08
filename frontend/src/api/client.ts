@@ -28,6 +28,8 @@ import type {
   AnalystOut,
   SubmitPickBody,
   LeaderboardOut,
+  AdminOverview,
+  AdminUserRow,
 } from '../types'
 
 // Same-origin by default. Vite's dev server proxies /api to :8000, the Docker
@@ -38,11 +40,48 @@ import type {
 // not a protocol-relative "//api/v1/..." URL.
 const BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/+$/, '')
 
+/**
+ * Session token, used only when the cookie cannot get through.
+ *
+ * The httpOnly cookie is the real credential and is always preferred — script
+ * cannot read it, so an XSS cannot steal it. But a proxy that strips the
+ * Cookie header makes a cookie-only session unusable, which is what broke
+ * sign-in on statedge.ca. This is the fallback for that case.
+ *
+ * It is deliberately weaker and deliberately temporary: once the API is
+ * same-origin with the site the cookie arrives, the server prefers it, and
+ * this stops mattering.
+ */
+const TOKEN_KEY = 'statedge.session'
+
+export function setSessionToken(token: string | null) {
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token)
+    else localStorage.removeItem(TOKEN_KEY)
+  } catch { /* private mode — the session then lasts as long as the tab */ }
+}
+
+export function getSessionToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_KEY)
+  } catch {
+    return null
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   // The session is an httpOnly cookie, so it has to be sent explicitly:
   // fetch omits credentials on cross-origin requests, and would silently log
   // the user out if VITE_API_BASE ever pointed at the API's own host.
-  const res = await fetch(`${BASE}${path}`, { credentials: 'include', ...init })
+  const token = getSessionToken()
+  const res = await fetch(`${BASE}${path}`, {
+    credentials: 'include',
+    ...init,
+    headers: {
+      ...(init?.headers ?? {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     const detail = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail ?? `HTTP ${res.status}`)
@@ -188,6 +227,11 @@ export const api = {
     get<LeaderboardOut>(`/api/v1/leaderboard${league ? `?league=${league}` : ''}`),
   analyst: (username: string) =>
     get<AnalystOut>(`/api/v1/analysts/${encodeURIComponent(username)}`),
+
+  // Staff portal — the server 404s these for anyone who isn't an admin
+  adminOverview: () => get<AdminOverview>('/api/v1/admin/overview'),
+  adminUsers: () => get<{ count: number; users: AdminUserRow[] }>('/api/v1/admin/users'),
+  adminPicks: () => get<{ count: number; picks: PickOut[] }>('/api/v1/admin/picks'),
 
   // World Cup spotlight (model pre-run on upcoming fixtures)
   soccerUpcoming: () => get<SoccerUpcomingResponse>('/api/v1/soccer/upcoming'),

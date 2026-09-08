@@ -156,6 +156,18 @@ function AccountArea() {
       >
         My Edge
       </NavLink>
+      {user.level === 'admin' && (
+        <NavLink
+          to="/staff"
+          className={({ isActive }) =>
+            `tap hidden items-center rounded-lg px-3 text-sm font-semibold transition lg:inline-flex ${
+              isActive ? 'bg-brand-soft text-brand' : 'text-zinc-400 hover:bg-terminal-muted hover:text-zinc-100'
+            }`
+          }
+        >
+          Staff
+        </NavLink>
+      )}
       <NavLink
         to={`/@${user.username}`}
         aria-label={`Your profile, @${user.username}`}

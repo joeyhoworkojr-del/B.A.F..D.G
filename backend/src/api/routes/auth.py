@@ -27,9 +27,31 @@ router = APIRouter()
 
 # ─── Dependencies ────────────────────────────────────────────────────────────
 
+def _session_token(request: Request) -> Optional[str]:
+    """
+    The session token, from the cookie or the Authorization header.
+
+    The cookie is preferred: it is httpOnly, so script cannot read it. But a
+    proxy between the browser and this process can drop the Cookie header —
+    Vercel's rewrite to an external host does exactly that — and when it does,
+    a cookie-only session is unusable no matter how correct it is.
+
+    The bearer header is the fallback for that topology. It is weaker, because
+    the client has to hold the token somewhere script can reach, and it stops
+    being used the moment the cookie arrives.
+    """
+    cookie = request.cookies.get(sessions.SESSION_COOKIE)
+    if cookie:
+        return cookie
+    auth = request.headers.get("authorization", "")
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip() or None
+    return None
+
+
 def current_user(request: Request) -> Optional[User]:
     """The signed-in user, or None. Never raises — anonymous is valid."""
-    user_id = sessions.resolve(request.cookies.get(sessions.SESSION_COOKIE))
+    user_id = sessions.resolve(_session_token(request))
     return get_by_id(user_id) if user_id else None
 
 
@@ -78,9 +100,14 @@ class UsernameChange(BaseModel):
     username: str = Field(..., max_length=40)
 
 
-def _session_payload(user: User) -> dict:
+def _session_payload(user: User, token: Optional[str] = None) -> dict:
     ent = entitlements_for(user)
-    return {"user": user.to_private(), "entitlements": _ent_dict(ent)}
+    body = {"user": user.to_private(), "entitlements": _ent_dict(ent)}
+    if token:
+        # Returned so a client behind a cookie-stripping proxy can still hold a
+        # session. Clients that receive their cookie normally ignore this.
+        body["session_token"] = token
+    return body
 
 
 def _ent_dict(ent: Entitlements) -> dict:
@@ -110,7 +137,7 @@ async def register_account(body: RegisterRequest, request: Request, response: Re
 
     token, expires = sessions.create(user.id, user_agent=request.headers.get("user-agent", ""))
     response.set_cookie(value=token, **sessions.cookie_kwargs(expires))
-    return _session_payload(user)
+    return _session_payload(user, token)
 
 
 @router.post("/auth/login", tags=["Auth"])
@@ -122,12 +149,12 @@ async def login(body: LoginRequest, request: Request, response: Response) -> dic
         raise HTTPException(status_code=401, detail="Incorrect username or password.")
     token, expires = sessions.create(user.id, user_agent=request.headers.get("user-agent", ""))
     response.set_cookie(value=token, **sessions.cookie_kwargs(expires))
-    return _session_payload(user)
+    return _session_payload(user, token)
 
 
 @router.post("/auth/logout", tags=["Auth"])
 async def logout(request: Request, response: Response) -> dict:
-    sessions.destroy(request.cookies.get(sessions.SESSION_COOKIE))
+    sessions.destroy(_session_token(request))
     # A cookie is only cleared by a matching path and domain; omitting the
     # domain here would leave the browser holding a dead session cookie.
     response.delete_cookie(
@@ -150,6 +177,7 @@ def _request_diagnostics(request: Request) -> dict:
     return {
         "cookies_received": sorted(request.cookies.keys()),
         "session_cookie_present": sessions.SESSION_COOKIE in request.cookies,
+        "bearer_present": request.headers.get("authorization", "").lower().startswith("bearer "),
         "secure_cookies": sessions.SECURE_COOKIES,
         "origin": request.headers.get("origin", ""),
     }

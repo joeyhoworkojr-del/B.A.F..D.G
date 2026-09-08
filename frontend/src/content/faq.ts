@@ -256,7 +256,7 @@ export const FAQ: FaqEntry[] = [
     category: 'Accounts & pricing',
     q: 'Can I get alerts when a new edge appears?',
     a: [
-      'Only in the app. The notification centre in the header lists the graded edges the model is publishing right now. Nothing is stored — it resets when you close the tab, because StatEdge keeps nothing about you.',
+      'Only in the app. The notification centre in the header lists the graded edges the model is publishing right now, and what you have already seen resets when you close the tab.',
       'Push and email alerts need a signed-in account, so they are not available.',
     ],
   },
