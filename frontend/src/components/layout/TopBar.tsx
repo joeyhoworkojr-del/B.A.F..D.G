@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { NavLink, Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { NotificationCentre } from './NotificationCentre'
 import { useSession } from '../../session/SessionProvider'
+import { AvatarMenu } from './AvatarMenu'
 
 /** Primary destinations, in the order they appear on desktop. */
 export const NAV_ITEMS = [
@@ -160,25 +161,7 @@ function AccountArea() {
       >
         My Edge
       </NavLink>
-      {user.level === 'admin' && (
-        <NavLink
-          to="/staff"
-          className={({ isActive }) =>
-            `tap hidden items-center rounded-lg px-3 text-sm font-semibold transition lg:inline-flex ${
-              isActive ? 'bg-brand-soft text-brand' : 'text-zinc-400 hover:bg-terminal-muted hover:text-zinc-100'
-            }`
-          }
-        >
-          Staff
-        </NavLink>
-      )}
-      <NavLink
-        to={`/@${user.username}`}
-        aria-label={`Your profile, @${user.username}`}
-        className="tap grid place-items-center rounded-full border border-terminal-border px-2 text-xs font-bold text-zinc-400 transition hover:text-zinc-100"
-      >
-        {(user.display_name || user.username).slice(0, 2).toUpperCase()}
-      </NavLink>
+      <AvatarMenu />
     </div>
   )
 }

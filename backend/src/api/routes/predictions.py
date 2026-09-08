@@ -55,7 +55,7 @@ from src.predict.gridiron import LEAGUE_PARAMS as GRIDIRON_PARAMS
 from src.predict.gridiron import live_projection, predict_nfl_game, win_probability
 from src.predict.soccer import predict_match
 from src.predict import priors
-from src.track import ledger, ratings
+from src.track import ledger, ratings, win_history
 from src.value.edge import american_to_decimal
 from src.simulate.monte_carlo import simulate_soccer
 from src.value.edge import BetEdge, edge_rating, evaluate_market
@@ -861,6 +861,7 @@ async def _slate_entry(
         if g.state == "in" and g.home_score is not None and g.away_score is not None:
             tot = pred.home_expected_pts + pred.away_expected_pts
             share = pred.home_expected_pts / tot if tot > 0 else 0.5
+            has_ball = bool(g.possession_abbr)
             live = live_projection(
                 league=league,
                 home_score=g.home_score, away_score=g.away_score,
@@ -868,7 +869,13 @@ async def _slate_entry(
                 pregame_margin=pred.predicted_spread,
                 total_estimate=pred.total_points_estimate,
                 home_share=share,
-                possession_home=(bool(g.possession_abbr) and g.possession_abbr == g.home_abbr),
+                possession_home=(has_ball and g.possession_abbr == g.home_abbr),
+                # Field position makes the projection predictive rather than
+                # reactive. Absent from the feed, live_projection falls back to
+                # the scoreboard-only model on its own.
+                yard_line=g.yard_line,
+                down=g.down,
+                distance=g.distance,
             )
             entry["model"].update({
                 "live": True,
@@ -877,7 +884,23 @@ async def _slate_entry(
                 "live_proj_home": live["proj_home"],
                 "live_proj_away": live["proj_away"],
                 "time_remaining_pct": live["time_remaining_pct"],
+                "drive_value": live["drive_value"],
+                "drive_note": live["drive_note"],
+                "state_aware": live["state_aware"],
+                "red_zone": live["red_zone"],
+                "goal_to_go": live["goal_to_go"],
             })
+            # Recording every reading is what makes a probability timeline
+            # possible later, and it happens server-side so the history is not
+            # lost when someone reloads the page.
+            win_history.record(
+                league=league, event_id=str(g.event_id),
+                home_win=live["home_win"],
+                home_score=g.home_score, away_score=g.away_score,
+                period=g.period, clock=g.clock or "",
+                possession=g.possession_abbr or "",
+                note=live["drive_note"],
+            )
 
         # ── Model vs the live market ──
         edges: list[BetEdge] = []

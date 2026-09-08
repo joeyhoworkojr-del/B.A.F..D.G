@@ -14,12 +14,12 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
-from src.accounts import sessions
+from src.accounts import avatars, passwords, sessions
 from src.accounts.entitlements import Entitlements, entitlements_for
-from src.accounts.models import ADMIN_USERNAMES, User
+from src.accounts.models import ROLE_POWERS, User, has_power, staff_config_report
 from src.accounts.service import (
     AccountError, authenticate, change_username, get_by_id, register,
-    update_profile, username_available,
+    set_password, update_profile, username_available,
 )
 
 router = APIRouter()
@@ -63,12 +63,34 @@ def require_user(request: Request) -> User:
     return user
 
 
-def require_admin(request: Request) -> User:
+def _require_power(request: Request, power: str) -> User:
+    """
+    Gate a route on a staff power rather than on a specific level.
+
+    404 rather than 403 throughout: a 403 confirms the route exists, and a
+    staff area that announces itself to everyone who probes for it is a worse
+    starting point than one that simply is not there. The hidden footer link is
+    a convenience for staff, never the control — this check is.
+    """
     user = require_user(request)
-    if user.level != "admin":
-        # 404 rather than 403: a 403 confirms the route exists.
+    if not has_power(user.level, power):
         raise HTTPException(status_code=404, detail="Not found")
     return user
+
+
+def require_admin(request: Request) -> User:
+    """Full control, including anything destructive."""
+    return _require_power(request, "manage_users")
+
+
+def require_staff(request: Request) -> User:
+    """Operational visibility — the staff dashboard and its read-only views."""
+    return _require_power(request, "view_staff")
+
+
+def require_moderator(request: Request) -> User:
+    """Community and chat moderation."""
+    return _require_power(request, "moderate")
 
 
 # ─── Schemas ─────────────────────────────────────────────────────────────────
@@ -113,6 +135,10 @@ def _session_payload(user: User, token: Optional[str] = None) -> dict:
 def _ent_dict(ent: Entitlements) -> dict:
     return {
         "level": ent.level,
+        # The powers this account actually holds, so the UI can show a Staff
+        # link without hard-coding which levels count as staff. The server
+        # checks these again on every request — this list is for rendering.
+        "powers": sorted(ROLE_POWERS.get(ent.level, frozenset())),
         "authenticated": ent.authenticated,
         "beta_open": ent.beta_open,
         "features": ent.features,
@@ -184,8 +210,7 @@ def _request_diagnostics(request: Request) -> dict:
         # host (the SPA's env instead of the API's) it is silently empty, and
         # a missing Staff link looks identical to a username that did not
         # match. The count answers that; the names stay private.
-        "admin_list_configured": bool(ADMIN_USERNAMES),
-        "admin_list_size": len(ADMIN_USERNAMES),
+        "staff_roles_configured": staff_config_report(),
     }
 
 
@@ -201,6 +226,96 @@ async def me(request: Request) -> dict:
             "debug": diagnostics,
         }
     return {**_session_payload(user), "debug": diagnostics}
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(..., max_length=256)
+    new_password: str = Field(..., max_length=256)
+
+
+class AvatarUpload(BaseModel):
+    # A data: URL from a canvas, or the bare base64 payload.
+    image: str = Field(..., max_length=avatars.MAX_BYTES * 2)
+
+
+@router.post("/auth/password", tags=["Auth"])
+async def change_password_route(
+    body: PasswordChange, request: Request, response: Response,
+    user: User = Depends(require_user),
+) -> dict:
+    """
+    Change your own password.
+
+    The current password is required even though the caller already holds a
+    session: a borrowed laptop should not be enough to lock the owner out of
+    their own account. Every other session is destroyed on success, so a
+    password change actually evicts whoever prompted it, and this one is
+    reissued so the person doing it is not signed out of their own browser.
+    """
+    if not passwords.verify(user.password_hash, body.current_password):
+        raise HTTPException(status_code=401, detail="That is not your current password.")
+    try:
+        passwords.validate(body.new_password)
+    except passwords.WeakPassword as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    set_password(user, body.new_password)
+    sessions.destroy_all(user.id)
+    token, expires = sessions.create(user.id, user_agent=request.headers.get("user-agent", ""))
+    response.set_cookie(value=token, **sessions.cookie_kwargs(expires))
+    return {**_session_payload(user, token), "signed_out_other_sessions": True}
+
+
+@router.post("/auth/avatar", tags=["Auth"])
+async def upload_avatar(body: AvatarUpload, user: User = Depends(require_user)) -> dict:
+    """
+    Replace your profile photo.
+
+    The image arrives already cropped and resized by the browser; this endpoint
+    checks it really is an image, of a format that cannot carry script, and
+    small enough to store.
+    """
+    try:
+        saved = avatars.save(user.id, body.image)
+    except avatars.InvalidImage as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    updated = update_profile(user, avatar_url=avatars.url_for(user.id, saved.etag))
+    return _session_payload(updated)
+
+
+@router.delete("/auth/avatar", tags=["Auth"])
+async def delete_avatar(user: User = Depends(require_user)) -> dict:
+    """Remove your photo. The profile falls back to initials."""
+    avatars.remove(user.id)
+    updated = update_profile(user, avatar_url="")
+    return _session_payload(updated)
+
+
+@router.get("/avatars/{user_id}", tags=["Auth"])
+async def serve_avatar(user_id: str) -> Response:
+    """
+    Serve a profile photo.
+
+    Public, because avatars appear beside names on leaderboards and in chat
+    where the viewer may not be signed in. Cached hard and busted by the etag
+    in the URL, so a new upload appears immediately without every page paying
+    for a revalidation.
+    """
+    avatar = avatars.load(user_id)
+    if avatar is None:
+        raise HTTPException(status_code=404, detail="No photo")
+    return Response(
+        content=avatar.data,
+        media_type=avatar.content_type,
+        headers={
+            "Cache-Control": "public, max-age=604800, immutable",
+            "ETag": f'"{avatar.etag}"',
+            # Belt and braces against a stored file being interpreted as
+            # anything other than the image type sniffed from its own bytes.
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; sandbox",
+        },
+    )
 
 
 @router.get("/auth/username-available", tags=["Auth"])

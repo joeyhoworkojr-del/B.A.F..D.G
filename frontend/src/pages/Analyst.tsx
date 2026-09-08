@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { Avatar } from '../components/Avatar'
 import { NotFound } from './NotFound'
 import { api } from '../api/client'
 import { PickRow, RecordSummary } from '../components/record/RecordSummary'
@@ -49,9 +50,7 @@ export function Analyst() {
   return (
     <div className="mx-auto w-full max-w-app px-4 py-6">
       <header className="flex flex-wrap items-start gap-4">
-        <div className="grid h-16 w-16 shrink-0 place-items-center rounded-full border border-terminal-border bg-terminal-muted font-display text-xl font-black text-zinc-400">
-          {(profile.display_name || profile.username).slice(0, 2).toUpperCase()}
-        </div>
+        <Avatar user={profile} size={64} />
         <div className="min-w-0">
           <h1 className="font-display text-2xl font-black text-zinc-100">
             {profile.display_name || profile.username}

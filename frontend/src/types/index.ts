@@ -242,6 +242,44 @@ export interface TodayModelOut {
   live_proj_home?: number
   live_proj_away?: number
   time_remaining_pct?: number
+  /** Points the drive in progress is worth over an ordinary possession. */
+  drive_value?: number
+  /** Plain-language reason the projection moved, or '' when there is none. */
+  drive_note?: string
+  /** False when the feed published no field position and the projection is
+   *  the scoreboard-and-clock model. The two are different claims. */
+  state_aware?: boolean
+  red_zone?: boolean
+  goal_to_go?: boolean
+}
+
+export interface WinPoint {
+  at: string
+  home_win: number
+  home_score: number
+  away_score: number
+  period?: number | null
+  clock: string
+  possession: string
+  note: string
+  scored: boolean
+}
+
+export interface WinHistoryOut {
+  league: string
+  event_id: string
+  points: WinPoint[]
+  swing: {
+    opened_at: string
+    opening_home_win: number
+    current_home_win: number
+    change: number
+    readings: number
+    high: number
+    low: number
+  } | null
+  note: string
+  fetched_at: string
 }
 
 export interface PolymarketOut {
@@ -680,8 +718,13 @@ export interface PrivateProfile extends PublicProfile {
   auth_provider: string
 }
 
+/** Staff powers, checked again server-side on every request. */
+export type StaffPower = 'view_staff' | 'manage_users' | 'moderate' | 'configure'
+
 export interface AccountEntitlements {
   level: AccountLevel
+  /** What this account may do. Empty for everyone who is not staff. */
+  powers?: StaffPower[]
   authenticated: boolean
   beta_open: boolean
   features: Record<string, boolean>
@@ -794,6 +837,7 @@ export interface Standing {
   user_id: string
   username: string
   display_name: string
+  avatar_url: string
   badges: string[]
   edge_rating: number
   provisional: boolean

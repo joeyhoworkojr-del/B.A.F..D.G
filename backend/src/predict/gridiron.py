@@ -23,6 +23,7 @@ from typing import Optional
 from src.data.cfl import get_cfl_ratings
 from src.data.ncaaf import get_ncaaf_ratings
 from src.data.nfl import get_nfl_ratings
+from src.predict import expected_points as ep_model
 
 MARGIN_SIGMA = 13.45   # std-dev of final margin vs expectation
 TOTAL_SIGMA = 13.70    # std-dev of final total vs expectation
@@ -168,6 +169,14 @@ def time_remaining_fraction(period: Optional[int], clock_seconds: float) -> floa
     return max(0.0, min(1.0, (GAME_SECONDS - elapsed) / GAME_SECONDS))
 
 
+# The expected-points curve is calibrated to published anchors, not fitted on
+# this season, so its estimate carries model error that the margin sigma knows
+# nothing about. Shrinking the possession term toward zero is the honest way to
+# price that in: the model still moves before the score does, just not as far
+# as a perfectly-known expectation would justify.
+DRIVE_VALUE_SHRINK = 0.85
+
+
 def live_projection(
     *,
     league: str,
@@ -179,12 +188,31 @@ def live_projection(
     total_estimate: float,     # model's pre-game total points
     home_share: float,         # pre-game share of scoring that is the home team's
     possession_home: Optional[bool] = None,
+    yard_line: Optional[int] = None,     # from the possessing team's own goal
+    down: Optional[int] = None,
+    distance: Optional[int] = None,
 ) -> dict:
     """
-    Update the win probability and projected final score *during* a game from
-    the live state. As the clock runs down the current score margin dominates
-    and the pre-game lean fades out; a late, close game gets a small nudge to
-    whoever has the ball.
+    Update the win probability and projected final score *during* a game.
+
+    Three things decide the projection, in decreasing order of weight as the
+    clock runs down: the current margin, the pre-game lean over the time still
+    to play, and the expected points of the drive in progress.
+
+    That third term is what makes the model predictive rather than reactive. A
+    team on the opponent's 5 with 1st and goal is about five points better off
+    than a team that has just taken a kickoff, and those points are in the
+    projection now — the number moves as the drive moves, not in a step when
+    the touchdown lands.
+
+    The expected-points term needs no separate time weighting. It is already
+    denominated in points, and the uncertainty around the remaining margin
+    shrinks with the clock, so the same five points barely register in the
+    first quarter and are close to decisive in the fourth. That is the correct
+    behaviour and it falls out of the model rather than being imposed on it.
+
+    Field position is optional throughout. Without it the possession term is
+    zero and this is the scoreboard-and-clock model it has always been.
     """
     m_sigma = LEAGUE_PARAMS[league]["margin_sigma"]
     frac = time_remaining_fraction(period, clock_seconds)
@@ -193,7 +221,21 @@ def live_projection(
     # Expected final margin = current margin + the pre-game edge, scaled by the
     # share of the game still to play.
     exp_margin = cur_margin + pregame_margin * frac
-    if possession_home is not None and frac < 0.25 and abs(cur_margin) <= 8:
+
+    drive_value = 0.0
+    drive_note = ""
+    state: Optional[ep_model.GameState] = None
+    if possession_home is not None and yard_line is not None:
+        state = ep_model.GameState(
+            yard_line=int(yard_line), down=down, distance=distance,
+        )
+        if state.is_usable():
+            drive_value = ep_model.possession_value(state, league) * DRIVE_VALUE_SHRINK
+            drive_note = ep_model.describe(state, league)
+            exp_margin += drive_value if possession_home else -drive_value
+    elif possession_home is not None and frac < 0.25 and abs(cur_margin) <= 8:
+        # No field position published. Having the ball late in a close game is
+        # still worth something; this is the crude stand-in it always was.
         exp_margin += 1.6 if possession_home else -1.6
 
     # Remaining-outcome uncertainty shrinks toward zero as the clock empties.
@@ -201,8 +243,20 @@ def live_projection(
     hw = win_probability(exp_margin, sigma)
 
     rem_points = max(0.0, total_estimate) * frac
-    proj_home = home_score + rem_points * home_share
-    proj_away = away_score + rem_points * (1.0 - home_share)
+    # Points the drive in progress is expected to add land on the team that
+    # actually has the ball, rather than being split by the pre-game share.
+    if state is not None and state.is_usable():
+        drive_points = max(0.0, ep_model.expected_points(state, league))
+        rem_points = max(0.0, rem_points - drive_points)
+        proj_home = home_score + rem_points * home_share
+        proj_away = away_score + rem_points * (1.0 - home_share)
+        if possession_home:
+            proj_home += drive_points
+        else:
+            proj_away += drive_points
+    else:
+        proj_home = home_score + rem_points * home_share
+        proj_away = away_score + rem_points * (1.0 - home_share)
 
     return {
         "home_win": hw,
@@ -210,6 +264,14 @@ def live_projection(
         "proj_home": round(proj_home, 1),
         "proj_away": round(proj_away, 1),
         "time_remaining_pct": round(frac * 100, 1),
+        # Reported so the UI and Edge AI can say *why* the number moved, and so
+        # a projection built without field position is distinguishable from one
+        # that had it.
+        "drive_value": round(drive_value, 2),
+        "drive_note": drive_note,
+        "state_aware": state is not None and state.is_usable(),
+        "red_zone": bool(state.red_zone) if state is not None else False,
+        "goal_to_go": bool(state.goal_to_go) if state is not None else False,
     }
 
 

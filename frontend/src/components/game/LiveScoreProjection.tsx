@@ -82,6 +82,33 @@ export function LiveScoreProjection({
           </div>
         </dl>
 
+        {model.drive_note && (
+          <div className="rounded-lg border border-terminal-border bg-terminal-muted px-3 py-2.5">
+            <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">
+              Why it moved
+            </p>
+            <p className="mt-1 text-sm leading-snug text-zinc-300">{model.drive_note}</p>
+            {model.drive_value != null && model.drive_value !== 0 && (
+              <p className="mt-1.5 text-xs text-zinc-500">
+                That is worth{' '}
+                <span className={`font-mono font-bold ${
+                  model.drive_value > 0 ? 'text-signal-green' : 'text-signal-red'
+                }`}>
+                  {model.drive_value > 0 ? '+' : ''}{model.drive_value.toFixed(1)}
+                </span>{' '}
+                points to the projection — counted now, not after the drive ends.
+              </p>
+            )}
+          </div>
+        )}
+
+        {model.live && model.state_aware === false && (
+          <p className="text-xs text-zinc-500">
+            This feed is not publishing field position for this game, so the projection is
+            running on the score and the clock alone.
+          </p>
+        )}
+
         <div className="border-t border-terminal-border pt-3">
           <p className="text-xs text-zinc-500">
             Before kickoff the model projected{' '}

@@ -4,7 +4,7 @@ import { api, setSessionToken } from '../api/client'
 import type { AccountEntitlements, PrivateProfile, SessionOut } from '../types'
 
 const GUEST: AccountEntitlements = {
-  level: 'guest', authenticated: false, beta_open: true,
+  level: 'guest', powers: [], authenticated: false, beta_open: true,
   features: {}, unavailable_reason: {}, billing_enabled: false, note: '',
 }
 

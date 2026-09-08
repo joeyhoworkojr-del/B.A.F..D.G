@@ -66,7 +66,18 @@ export function Footer() {
             betting advice. Saving or following a game on StatEdge records your interest —
             it does not place a wager, and StatEdge does not accept or process wagers.
           </p>
-          <p className="mt-2">© {new Date().getFullYear()} StatEdge</p>
+          <p className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <span>© {new Date().getFullYear()} StatEdge</span>
+            {/* Discreet on purpose, but not a security measure: every staff
+                route checks the caller's role server-side, so a normal user
+                following this link gets a 404 rather than a portal. */}
+            <Link
+              to="/staff"
+              className="text-zinc-600 transition hover:text-zinc-400 hover:underline"
+            >
+              Staff
+            </Link>
+          </p>
         </div>
       </div>
     </footer>

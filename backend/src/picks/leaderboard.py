@@ -39,6 +39,7 @@ class Standing:
     user_id: str
     username: str
     display_name: str
+    avatar_url: str
     badges: list[str]
     edge_rating: float
     provisional: bool
@@ -99,6 +100,7 @@ def standings(league: Optional[str] = None) -> list[Standing]:
             user_id=user_id,
             username=user.username,
             display_name=user.display_name or user.username,
+            avatar_url=user.avatar_url,
             badges=user.badges,
             edge_rating=rate(units, len(graded)),
             provisional=len(graded) < MIN_GRADED,
