@@ -28,6 +28,13 @@ log = logging.getLogger(__name__)
 KEY_ENV_VAR = "ANTHROPIC_API_KEY"
 MODEL_ENV_VAR = "EDGE_AI_MODEL"
 
+# An organisation-level key is not scoped to a workspace, and the API refuses
+# to guess which one to bill: it wants the workspace named on the request. A
+# workspace-scoped key carries that already and needs nothing here. Setting
+# this makes an org-level key work without anyone reissuing it.
+WORKSPACE_ENV_VAR = "ANTHROPIC_WORKSPACE_ID"
+WORKSPACE_HEADER = "anthropic-workspace-id"
+
 # Haiku 4.5 is the default: the cheapest model available, and the job here is
 # reading structured tool results and writing a tight paragraph rather than
 # solving anything hard. Overridable by environment, so moving up to Sonnet or
@@ -135,6 +142,15 @@ def _user_message(exc: Exception) -> str:
     """
     status = getattr(exc, "status_code", None)
     text = str(exc).lower()
+    # Checked before the model branch: this message names a header and a
+    # workspace, and the looser "model … not" test below would otherwise claim
+    # it as a model problem and send whoever reads it to the wrong setting.
+    if "not scoped to a workspace" in text or (status == 400 and "workspace" in text):
+        return (
+            "Edge AI's API key is an organisation key, which the API will not "
+            "accept without being told which workspace to bill. Staff: either "
+            f"set {WORKSPACE_ENV_VAR}, or issue a workspace-scoped key."
+        )
     if status == 404 or "not_found" in text or "model" in text and "not" in text:
         return ("Edge AI is configured with a model this account cannot use. "
                 "Staff can see the exact error on the staff page.")
@@ -152,9 +168,13 @@ class AnthropicProvider:
 
     name = "anthropic"
 
-    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None,
+                 workspace_id: Optional[str] = None):
         self._key = (api_key if api_key is not None else os.getenv(KEY_ENV_VAR) or "").strip()
         self._model = (model or os.getenv(MODEL_ENV_VAR) or DEFAULT_MODEL).strip()
+        self._workspace = (
+            workspace_id if workspace_id is not None else os.getenv(WORKSPACE_ENV_VAR) or ""
+        ).strip()
         self._client = None
         self._last_error = ""
 
@@ -177,6 +197,9 @@ class AnthropicProvider:
             "model": self._model,
             "configured": self.available(),
             "key_env_var": KEY_ENV_VAR,
+            # Whether one is set, never which — a workspace id is not a secret,
+            # but it is not the status endpoint's business either.
+            "workspace_scoped": bool(self._workspace),
             "last_error": self._last_error,
             "note": "" if self.available() else f"set {KEY_ENV_VAR} to enable Edge AI",
         }
@@ -190,7 +213,16 @@ class AnthropicProvider:
             from anthropic import AsyncAnthropic
         except ImportError as exc:      # pragma: no cover - dependency is pinned
             raise ProviderUnavailable("the anthropic package is not installed") from exc
-        self._client = AsyncAnthropic(api_key=self._key, timeout=REQUEST_TIMEOUT_SECONDS)
+        self._client = AsyncAnthropic(
+            api_key=self._key,
+            timeout=REQUEST_TIMEOUT_SECONDS,
+            # Sent only when configured: a workspace-scoped key already carries
+            # its workspace, and naming a different one on such a key is an
+            # error rather than an override.
+            default_headers=(
+                {WORKSPACE_HEADER: self._workspace} if self._workspace else None
+            ),
+        )
         return self._client
 
     async def complete(
@@ -294,6 +326,7 @@ class UnconfiguredProvider:
             "model": "",
             "configured": False,
             "key_env_var": KEY_ENV_VAR,
+            "workspace_scoped": False,
             "last_error": "",
             "note": f"set {KEY_ENV_VAR} to enable Edge AI",
         }

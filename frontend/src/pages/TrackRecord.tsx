@@ -59,6 +59,26 @@ export function TrackRecord() {
     )
   }
 
+  // Storage that cannot be read is not a 0–0 record, and showing it as one
+  // would be the page claiming something the ledger never said.
+  if (data.unavailable) {
+    return (
+      <div className="mx-auto max-w-3xl px-4 py-12">
+        <h1 className="font-display text-3xl font-bold text-zinc-100">Results</h1>
+        <div className="mt-4 rounded-xl border border-signal-amber/40 bg-signal-amber-dim p-4">
+          <p className="text-sm font-bold text-signal-amber">
+            The track record can’t be read right now.
+          </p>
+          <p className="mt-1.5 text-sm leading-relaxed text-zinc-400">
+            The storage behind it is unreachable, so there is nothing to show. This is
+            not an empty record — the graded picks still exist and will reappear once
+            storage recovers. Nothing here has been reset.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   const { overall, by_league, performance, recent, pending } = data
   const versions = data.model_versions ?? []
   const briers = [overall.model?.brier, overall.book?.brier, overall.crowd?.brier].filter((b): b is number => b != null)

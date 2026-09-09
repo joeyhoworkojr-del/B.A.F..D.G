@@ -358,6 +358,9 @@ class BestBetOut(BaseModel):
     home_flag: str
     away_flag: str
     market: str
+    # "moneyline", "spread" or "total" — the market kind on its own, so the
+    # page can group and filter without parsing the display label.
+    market_kind: str = ""
     selection: str
     model_prob: float
     market_prob: Optional[float] = None   # SR reference (None for totals signals)

@@ -190,3 +190,60 @@ def test_an_error_carrying_a_key_is_scrubbed_before_it_is_stored(no_proxy):
     stored = prov.status()["last_error"]
     assert leaked not in stored
     assert "sk-***" in stored
+
+
+def test_a_workspace_id_travels_on_every_request_when_configured(no_proxy):
+    # An organisation-level key is not tied to a workspace, and the API will
+    # not guess which one to bill. This is what makes such a key usable
+    # without anyone reissuing it.
+    with _Recorder() as rec:
+        from anthropic import AsyncAnthropic
+        prov = P.AnthropicProvider(
+            api_key="sk-ant-placeholder-000", model="claude-haiku-4-5",
+            workspace_id="wrkspc_123",
+        )
+        prov._client = AsyncAnthropic(
+            api_key="sk-ant-placeholder-000", base_url=rec.url,
+            timeout=10.0, max_retries=0,
+            default_headers={P.WORKSPACE_HEADER: "wrkspc_123"},
+        )
+        _ask(prov, edge_ai.TOOLS)
+
+    assert rec.seen["headers"].get(P.WORKSPACE_HEADER) == "wrkspc_123"
+
+
+def test_no_workspace_header_is_sent_when_none_is_configured(no_proxy):
+    # A workspace-scoped key already carries its workspace; naming a different
+    # one on such a key is an error, not an override.
+    with _Recorder() as rec:
+        _ask(_provider_pointed_at(rec.url), edge_ai.TOOLS)
+
+    assert P.WORKSPACE_HEADER not in {k.lower() for k in rec.seen["headers"]}
+
+
+def test_the_unscoped_key_error_names_the_setting_that_fixes_it(no_proxy):
+    # The exact body the live deployment came back with. It was reaching the
+    # user as "temporarily unreachable", which named nothing at all.
+    body = {"type": "error", "error": {
+        "type": "invalid_request_error",
+        "message": ("This API key is not scoped to a workspace, so this request must "
+                    "include the anthropic-workspace-id header with the ID of the "
+                    "workspace to use. Add the header, or use an API key that is "
+                    "scoped to a workspace.")}}
+    with _Recorder(status=400, body=body) as rec:
+        with pytest.raises(P.ProviderUnavailable) as exc:
+            _ask(_provider_pointed_at(rec.url), edge_ai.TOOLS)
+
+    message = str(exc.value)
+    assert P.WORKSPACE_ENV_VAR in message
+    # And it must not be mistaken for the model being wrong, which would send
+    # whoever reads it to change a setting that is already correct.
+    assert "model this account cannot use" not in message
+
+
+def test_the_status_report_says_whether_a_workspace_is_set_but_never_which(no_proxy):
+    prov = P.AnthropicProvider(api_key="sk-ant-placeholder-000",
+                               workspace_id="wrkspc_secret")
+    report = prov.status()
+    assert report["workspace_scoped"] is True
+    assert "wrkspc_secret" not in repr(report)

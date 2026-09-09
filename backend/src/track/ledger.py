@@ -136,11 +136,13 @@ def reset_store() -> None:
     _store = None
 
 
+@_safe("unavailable")
 def storage_backend() -> str:
     """"sqlite", "postgres" or "redis" — so the record can state its durability."""
     return _get_store().backend
 
 
+@_safe(False)
 def storage_durable() -> bool:
     """
     Whether the record survives a deploy.
@@ -148,6 +150,9 @@ def storage_durable() -> bool:
     A SQLite ledger on a container's own disk does not: the disk is replaced
     each release. The UI must not present a graded record as permanent when the
     storage behind it is not.
+
+    Unreadable storage answers False. Guessing that a record is durable when
+    the store cannot even be opened is the one wrong answer here.
     """
     return _get_store().durable or bool(os.getenv("LEDGER_DURABLE"))
 
@@ -240,7 +245,15 @@ def grade_board(league: str, games) -> int:
 
 
 def _brier(rows: list[Any], col: str) -> Optional[dict]:
-    vals = [(r[col], r["home_won"]) for r in rows if r[col] is not None]
+    # A stored row is whatever the build that wrote it wrote. Rows predating a
+    # column simply do not have it, so the column is read with .get() and a row
+    # that cannot be scored is skipped rather than subscripted — the difference
+    # between one old row and the whole track record failing to load.
+    vals = [
+        (r.get(col), r.get("home_won"))
+        for r in rows
+        if r.get(col) is not None and r.get("home_won") is not None
+    ]
     if not vals:
         return None
     briers = [(p - won) ** 2 for p, won in vals]
@@ -252,6 +265,35 @@ def _brier(rows: list[Any], col: str) -> Optional[dict]:
     }
 
 
+_EMPTY_SUMMARY_BASE = {
+    "games_graded": 0, "model": None, "book": None, "crowd": None,
+}
+
+
+def _empty_summary() -> dict:
+    """The shape the page expects when the ledger cannot be read at all."""
+    return {
+        "overall": dict(_EMPTY_SUMMARY_BASE),
+        "by_league": {},
+        "pending": 0,
+        "note": "",
+        "scope": "pregame",
+        "live_record_available": False,
+        "live_note": "",
+        "model_versions": [],
+        "storage_backend": storage_backend(),
+        "storage_durable": storage_durable(),
+        # A fallback that can itself raise is not a fallback, and this one runs
+        # precisely when something is already broken.
+        "storage_config": _safe(dict)(config_report)(),
+        # Said out loud rather than shown as a genuine 0–0 record: an empty
+        # scorecard and an unreadable one look identical otherwise, and only
+        # one of them is a claim about how the model has done.
+        "unavailable": True,
+    }
+
+
+@_safe(_empty_summary)
 def accuracy_summary() -> dict:
     """Head-to-head scorecard: model vs book vs crowd on identical games."""
     with _LOCK:
@@ -261,7 +303,7 @@ def accuracy_summary() -> dict:
 
     leagues: dict[str, list[Any]] = {}
     for r in rows:
-        leagues.setdefault(r["league"], []).append(r)
+        leagues.setdefault(r.get("league") or "unknown", []).append(r)
 
     def summarize(subset: list[Any]) -> dict:
         return {
@@ -271,7 +313,7 @@ def accuracy_summary() -> dict:
             "crowd": _brier(subset, "crowd_home_prob"),
         }
 
-    versions = sorted({r["model_version"] for r in rows if r["model_version"]})
+    versions = sorted({r.get("model_version") for r in rows if r.get("model_version")})
 
     return {
         "overall": summarize(rows),
