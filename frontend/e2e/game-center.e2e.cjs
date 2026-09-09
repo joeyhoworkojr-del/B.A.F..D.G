@@ -133,20 +133,32 @@ async function main() {
         (await page.getByText('vs.').first().isVisible()) &&
         (await page.locator('header:has-text("Pregame")').getByText('0', { exact: true }).count()) === 0)
 
-      // 5. "Why this edge?" opens the right explanation.
+      // 5. "Why this edge?" opens the right explanation — which now lives on
+      //    the Markets section, so following the link has to cross to it.
       await page.getByRole('button', { name: /why this edge/i }).click()
       await page.waitForTimeout(400)
+      check(`[${name}] why-this-edge crosses to the markets section`,
+        await page.getByRole('tab', { name: /^Markets/ }).getAttribute('aria-selected') === 'true')
+      // Both the section tabs and the market tabs are tabs, so the market ones
+      // are addressed inside the panel rather than by name alone.
+      const marketTab = label => page.locator('#market-panel-tabs, [role="tablist"]')
+        .last().getByRole('tab', { name: label })
       check(`[${name}] why-this-edge selects the spread market`,
-        await page.getByRole('tab', { name: 'Spread' }).getAttribute('aria-selected') === 'true')
+        await marketTab('Spread').getAttribute('aria-selected') === 'true')
       check(`[${name}] grade calculation is explained`,
         await page.getByText('How grades are calculated').isVisible())
 
       // 6. Market tabs are keyboard operable.
-      await page.getByRole('tab', { name: 'Spread' }).focus()
+      await marketTab('Spread').focus()
       await page.keyboard.press('ArrowRight')
       await page.waitForTimeout(250)
       check(`[${name}] market tabs respond to arrow keys`,
-        await page.getByRole('tab', { name: 'Total' }).getAttribute('aria-selected') === 'true')
+        await marketTab('Total').getAttribute('aria-selected') === 'true')
+
+      // Back to where the page opens, so the checks below measure the section
+      // a reader actually lands on.
+      await page.getByRole('tab', { name: /^Scorecast/ }).click()
+      await page.waitForTimeout(300)
 
       // 7. Nav: the bottom bar covers everything below `lg`, and the desktop
       // header nav takes over at and above it. Exactly one is ever visible.

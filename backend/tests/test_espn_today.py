@@ -47,6 +47,46 @@ def test_parse_event_scores_and_market() -> None:
     assert g.market_provider == "ESPN BET"
 
 
+def _with_records(home: list, away: list) -> dict:
+    """SAMPLE_EVENT with records attached to each competitor."""
+    import copy
+    ev = copy.deepcopy(SAMPLE_EVENT)
+    for c in ev["competitions"][0]["competitors"]:
+        c["records"] = home if c["homeAway"] == "home" else away
+    return ev
+
+
+def test_the_overall_record_is_the_one_shown_beside_a_team() -> None:
+    # A competitor carries several: overall, home, away, conference. Only the
+    # overall one belongs next to a team name on a matchup header.
+    g = _parse_event("nfl", _with_records(
+        home=[{"name": "Home", "summary": "3-0"},
+              {"name": "overall", "summary": "5-2"}],
+        away=[{"type": "total", "summary": "4-3"},
+              {"name": "Road", "summary": "1-2"}],
+    ))
+    assert g is not None
+    assert g.home_record == "5-2"
+    assert g.away_record == "4-3"
+
+
+def test_an_unlabelled_record_is_used_rather_than_guessing_at_another() -> None:
+    g = _parse_event("nfl", _with_records(
+        home=[{"summary": "2-1-0"}], away=[{"summary": "1-2-0"}],
+    ))
+    assert g is not None
+    assert g.home_record == "2-1-0"
+    assert g.away_record == "1-2-0"
+
+
+def test_no_record_is_empty_rather_than_an_invented_0_0() -> None:
+    # Week one, before anyone has played. "0-0" would be a claim; "" is not.
+    g = _parse_event("nfl", SAMPLE_EVENT)
+    assert g is not None
+    assert g.home_record == ""
+    assert g.away_record == ""
+
+
 def test_parse_event_malformed_returns_none() -> None:
     assert _parse_event("nfl", {"competitions": []}) is None
 

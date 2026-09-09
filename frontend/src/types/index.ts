@@ -179,6 +179,9 @@ export interface LiveGameOut {
   down?: number | null
   distance?: number | null
   last_play?: string
+  /** Overall record as the feed words it ("2-1"). Empty when it has none. */
+  home_record?: string
+  away_record?: string
   home_logo?: string
   away_logo?: string
   market_spread?: number | null
