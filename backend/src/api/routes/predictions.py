@@ -1005,6 +1005,39 @@ async def _slate_entry(
     return entry
 
 
+# How far ahead a single game can be looked up. The board lists a week, so a
+# game opened from it has to be findable for at least that long.
+LOOKUP_DAYS = 14
+
+
+async def _find_game(league: str, event_id: str):
+    """
+    One game by id, wherever on the calendar it is.
+
+    Today's scoreboard first: it is the cheap call and it carries the score,
+    clock and possession that a schedule entry does not. But the board lists a
+    week ahead now, and a game opened from it used to 404 the moment it was not
+    today's — "no game on the current board" for a game plainly on the board
+    the reader was just looking at.
+
+    Returns (game, board) — the board is the today feed either way, so callers
+    keep the freshness and source they report.
+    """
+    board = await fetch_scoreboard(league)
+    # Settling finished games is the today feed's job and belongs here, before
+    # any early return.
+    ledger.grade_board(league, board.games)
+
+    wanted = str(event_id)
+    game = next((g for g in board.games if str(g.event_id) == wanted), None)
+    if game is not None:
+        return game, board
+
+    ahead = await fetch_upcoming(league, LOOKUP_DAYS)
+    game = next((g for g in ahead.games if str(g.event_id) == wanted), None)
+    return game, board
+
+
 @router.get("/game/{league}/{event_id}", tags=["Predictions"])
 async def game_detail(league: str, event_id: str) -> dict:
     """
@@ -1023,17 +1056,16 @@ async def game_detail(league: str, event_id: str) -> dict:
             detail=f"league must be one of: {', '.join(FOCUS_LEAGUES)}",
         )
 
-    board, poly = await asyncio.gather(
-        fetch_scoreboard(league),
+    (game, board), poly = await asyncio.gather(
+        _find_game(league, event_id),
         fetch_league_markets(league),
     )
-    ledger.grade_board(league, board.games)
-    game = next((g for g in board.games if str(g.event_id) == str(event_id)), None)
     if game is None:
         raise HTTPException(
             status_code=404,
             detail=(
-                f"No {league.upper()} game {event_id!r} on the current board"
+                f"No {league.upper()} game {event_id!r} is scheduled in the "
+                f"next {LOOKUP_DAYS} days"
                 if board.ok else "Live feed is temporarily unreachable"
             ),
         )
@@ -1076,20 +1108,20 @@ async def game_player_props(league: str, event_id: str) -> dict:
             detail=f"league must be one of: {', '.join(FOCUS_LEAGUES)}",
         )
 
-    board, poly, pool = await asyncio.gather(
-        fetch_scoreboard(league),
+    (game, board), poly, pool = await asyncio.gather(
+        _find_game(league, event_id),
         fetch_league_markets(league),
         fetch_player_pool(league, event_id),
     )
     # ESPN publishes three leaders per team; nflverse has every player's week.
     # A no-op for NCAAF and whenever the feed is unavailable.
     pool = await enrich_with_nflverse(pool)
-    game = next((g for g in board.games if str(g.event_id) == str(event_id)), None)
     if game is None:
         raise HTTPException(
             status_code=404,
             detail=(
-                f"No {league.upper()} game {event_id!r} on the current board"
+                f"No {league.upper()} game {event_id!r} is scheduled in the "
+                f"next {LOOKUP_DAYS} days"
                 if board.ok else "Live feed is temporarily unreachable"
             ),
         )
