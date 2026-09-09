@@ -2,7 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useSearchParams, Link, useLocation } from 'react-router-dom'
 import type { LiveGameOut, MarketKey } from '../types'
 import { useGameDetail } from '../hooks/useGameDetail'
-import { GameHeader } from '../components/game/GameHeader'
+import { MatchupBanner } from '../components/game/MatchupBanner'
+import { GameTabs, type GameTabKey } from '../components/game/GameTabs'
+import { WhoWins } from '../components/game/WhoWins'
+import { KeyPlayers } from '../components/game/KeyPlayers'
 import { Panel } from '../components/game/Panel'
 import { PrimaryEdgeCard } from '../components/game/PrimaryEdgeCard'
 import { MarketSelector } from '../components/game/MarketSelector'
@@ -26,6 +29,8 @@ import type { Point } from '../components/game/MiniChart'
 
 const LEAGUE_LABEL: Record<string, string> = { ncaaf: 'College Football', nfl: 'NFL' }
 const MARKET_PANEL_ID = 'market-panel'
+const TAB_PANEL_ID = 'game-tab-panel'
+const TAB_KEYS: GameTabKey[] = ['scorecast', 'markets', 'plays', 'chat']
 const pct1 = (v?: number | null) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`)
 
 
@@ -49,6 +54,19 @@ export function GameDetail() {
   const requested = params.get('market') as MarketKey | null
   const [active, setActive] = useState<MarketKey>(requested ?? 'spread')
 
+  // The section lives in the URL, so a link to a game's plays or its chat is a
+  // link someone can send.
+  const requestedTab = params.get('tab') as GameTabKey | null
+  const [tab, setTab] = useState<GameTabKey>(
+    requestedTab && TAB_KEYS.includes(requestedTab) ? requestedTab : 'scorecast',
+  )
+  const selectTab = (key: GameTabKey) => {
+    setTab(key)
+    const next = new URLSearchParams(params)
+    next.set('tab', key)
+    setParams(next, { replace: true })
+  }
+
   // Keep the selected market valid for whatever the book actually posts.
   useEffect(() => {
     if (!markets.length) return
@@ -66,12 +84,16 @@ export function GameDetail() {
   const whyRef = useRef<HTMLDivElement>(null)
   const explain = (key: string) => {
     selectMarket(key as MarketKey)
-    whyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    // The explanation lives on another tab now, so showing it means going
+    // there first — scrolling to a node that is not rendered does nothing.
+    setTab('markets')
+    requestAnimationFrame(() =>
+      whyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
   }
   useEffect(() => {
-    if (location.hash === '#why' && data) {
-      whyRef.current?.scrollIntoView({ block: 'start' })
-    }
+    if (location.hash !== '#why' || !data) return
+    setTab('markets')
+    requestAnimationFrame(() => whyRef.current?.scrollIntoView({ block: 'start' }))
   }, [data, location.hash])
 
   // The server records the timeline; these local samples are only a fallback
@@ -119,10 +141,10 @@ export function GameDetail() {
       <Link to="/" className="text-sm font-semibold text-zinc-300 hover:text-zinc-100">← Scores</Link>
 
       <div className="mt-3 space-y-4">
-        <GameHeader game={game} leagueLabel={LEAGUE_LABEL[league] ?? league.toUpperCase()} />
+        <MatchupBanner game={game} leagueLabel={LEAGUE_LABEL[league] ?? league.toUpperCase()} />
 
         {error && data && (
-          <p role="status" className="rounded-lg border border-signal-amber/40 bg-signal-amber/10 px-3 py-2 text-sm text-signal-amber">
+          <p role="status" className="rounded-lg border border-signal-amber/40 bg-signal-amber-dim px-3 py-2 text-sm text-signal-amber">
             Live feed hiccup — showing the last good data. {error}
           </p>
         )}
@@ -132,206 +154,253 @@ export function GameDetail() {
           </p>
         )}
 
-        {/* Desktop: insight and context side by side; mobile: stacked. */}
-        <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
-          <div className="min-w-0 space-y-4">
-            {data?.mapped === false ? (
-              <Panel title="Best available edge" state="empty"
-                     emptyMessage="This matchup isn’t mapped to the model yet, so no edge is claimed for it." />
-            ) : (
-              <PrimaryEdgeCard
-                edge={data?.best_edge}
-                gradeScale={data?.grade_scale ?? []}
-                fetchedAt={data?.fetched_at}
-                sourceOk={data?.source_ok ?? true}
-                onExplain={explain}
-              />
-            )}
+        <GameTabs
+          tabs={[
+            { key: 'scorecast', label: 'Scorecast' },
+            { key: 'markets', label: 'Markets' },
+            { key: 'plays', label: 'Plays' },
+            { key: 'chat', label: 'Chat' },
+          ]}
+          active={tab}
+          onChange={selectTab}
+          panelId={TAB_PANEL_ID}
+        />
 
-            <Panel
-              title="Markets"
-              subtitle="Model, sportsbook (vig removed) and prediction-market crowd on the same market."
-              state={loading && !data ? 'loading' : markets.length ? 'ready' : 'empty'}
-              emptyMessage="No lines are posted for this game yet, so there is nothing to compare."
-              refreshing={refreshing}
-              fetchedAt={data?.fetched_at}
-              source={oddsSourceLabel(data?.source)}
-              sourceOk={data?.source_ok}
-              actions={markets.length > 0 && (
-                <MarketSelector markets={markets} active={active} onChange={selectMarket} panelId={MARKET_PANEL_ID} />
-              )}
-            >
-              {activeMarket && (
-                <div id={MARKET_PANEL_ID} role="tabpanel" aria-labelledby={`market-tab-${activeMarket.key}`} tabIndex={0}
-                     className="space-y-6 focus:outline-none">
-                  <ProbabilityComparison market={activeMarket} />
-                  <SportsbookOddsTable market={activeMarket} />
-                </div>
-              )}
-            </Panel>
+        <div id={TAB_PANEL_ID} role="tabpanel" aria-labelledby={`game-tab-${tab}`} tabIndex={-1}
+             className="space-y-4 focus:outline-none">
 
-            <div ref={whyRef} />
-            <Panel
-              id="why"
-              title="Why this edge?"
-              subtitle={activeMarket ? `Explaining the ${activeMarket.label.toLowerCase()} market.` : undefined}
-              state={activeMarket ? 'ready' : 'empty'}
-              emptyMessage="Nothing to explain until a line is posted."
-            >
-              {activeMarket && (
-                <ModelExplanation
-                  market={activeMarket}
-                  model={data?.model}
-                  gradeScale={data?.grade_scale ?? []}
-                  modelVersion={data?.model_version ?? '—'}
+          {/* ── Scorecast: what the model says about this game ── */}
+          {tab === 'scorecast' && (
+            <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
+              <div className="min-w-0 space-y-4">
+                {markets.length > 0 && (
+                  <WhoWins
+                    game={game}
+                    markets={markets}
+                    active={active}
+                    onChange={selectMarket}
+                    community={community}
+                    onMakePick={() => selectTab('chat')}
+                  />
+                )}
+
+                {data?.mapped === false ? (
+                  <Panel title="Best available edge" state="empty"
+                         emptyMessage="This matchup isn’t mapped to the model yet, so no edge is claimed for it." />
+                ) : (
+                  <PrimaryEdgeCard
+                    edge={data?.best_edge}
+                    gradeScale={data?.grade_scale ?? []}
+                    fetchedAt={data?.fetched_at}
+                    sourceOk={data?.source_ok ?? true}
+                    onExplain={explain}
+                  />
+                )}
+
+                {eventId && <KeyPlayers league={league} eventId={eventId} />}
+
+                {/* Opened from here, Edge AI already knows which game this is. */}
+                <AskEdge league={league} eventId={eventId} live={live} compact />
+              </div>
+
+              <div className="min-w-0 space-y-4">
+                {live && game && data?.model && (
+                  <LiveScoreProjection game={game} model={data.model} />
+                )}
+
+                {live && (
+                  <Panel title="Live win probability" refreshing={refreshing}
+                         fetchedAt={data?.fetched_at} source={oddsSourceLabel(data?.source)} sourceOk={data?.source_ok}
+                         staleAfterSeconds={45}>
+                    <div className="space-y-4">
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-sm text-zinc-300">{game.home_abbr} (home)</span>
+                        <span className="font-mono text-2xl font-black tabular-nums text-signal-green">{pct1(homeWin)}</span>
+                      </div>
+                      <LiveWinProbabilityChart history={winHistory} teamLabel={game.home_abbr} fallback={wpPoints} />
+                      <FieldTracker game={game} />
+                    </div>
+                  </Panel>
+                )}
+
+                {status === 'pre' && (
+                  <Panel title="Projected score"
+                         subtitle="Model projection before kickoff — not a live score."
+                         state={data?.model ? 'ready' : loading ? 'loading' : 'empty'}
+                         emptyMessage="No projection until this matchup is mapped to the model."
+                         fetchedAt={data?.fetched_at} source={oddsSourceLabel(data?.source)} sourceOk={data?.source_ok}>
+                    {data?.model && (
+                      <div className="space-y-3">
+                        <p className="font-mono text-3xl font-black tabular-nums text-zinc-100">
+                          {data.model.proj_away_score ?? '—'} – {data.model.proj_home_score ?? '—'}
+                        </p>
+                        <p className="text-xs text-zinc-400">{game.away_abbr} at {game.home_abbr}</p>
+                        <dl className="grid grid-cols-2 gap-3 border-t border-terminal-border/70 pt-3 text-sm">
+                          <div>
+                            <dt className="text-xs text-zinc-400">Win probability ({game.home_abbr})</dt>
+                            <dd className="font-mono font-bold tabular-nums text-zinc-100">
+                              {pct1(data.model.calibrated_home_win ?? data.model.home_win_prob)}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="text-xs text-zinc-400">Projected total</dt>
+                            <dd className="font-mono font-bold tabular-nums text-zinc-100">
+                              {data.model.total_estimate?.toFixed(1) ?? '—'}
+                            </dd>
+                          </div>
+                        </dl>
+                      </div>
+                    )}
+                  </Panel>
+                )}
+
+                {status === 'post' && (
+                  <Panel title="Result vs the pre-game call"
+                         subtitle="The frozen prediction, judged against the closing line."
+                         state={snap ? 'ready' : 'empty'}
+                         emptyMessage="No pre-game snapshot was stored for this game, so there is nothing to grade.">
+                    {snap && (
+                      <dl className="space-y-2 text-sm">
+                        <div className="flex justify-between gap-3">
+                          <dt className="text-zinc-400">Final</dt>
+                          <dd className="font-mono font-bold text-zinc-100">{game.away_score}–{game.home_score}</dd>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <dt className="text-zinc-400">Model said ({game.home_abbr} win)</dt>
+                          <dd className="font-mono font-bold text-zinc-100">{pct1(snap.model_home_prob)}</dd>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <dt className="text-zinc-400">Closing spread</dt>
+                          <dd className="font-mono font-bold text-zinc-100">{snap.closing_spread ?? '—'}</dd>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <dt className="text-zinc-400">Result</dt>
+                          <dd className={`font-bold ${
+                            snap.graded
+                              ? ((snap.model_home_prob ?? 0.5) >= 0.5) === (snap.home_won === 1)
+                                ? 'text-signal-green' : 'text-signal-red'
+                              : 'text-zinc-400'
+                          }`}>
+                            {snap.graded
+                              ? ((snap.model_home_prob ?? 0.5) >= 0.5) === (snap.home_won === 1) ? 'Model correct' : 'Model wrong'
+                              : 'Awaiting grading'}
+                          </dd>
+                        </div>
+                        <p className="border-t border-terminal-border/70 pt-2 text-xs text-zinc-500">
+                          Snapshotted {snap.snapshot_at ?? 'pre-kickoff'} by model{' '}
+                          <span className="font-mono">{snap.model_version ?? 'unknown'}</span>.
+                        </p>
+                      </dl>
+                    )}
+                  </Panel>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── Markets: the full model-vs-book comparison ── */}
+          {tab === 'markets' && (
+            <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
+              <div className="min-w-0 space-y-4">
+                <Panel
+                  title="Markets"
+                  subtitle="Model, sportsbook (vig removed) and prediction-market crowd on the same market."
+                  state={loading && !data ? 'loading' : markets.length ? 'ready' : 'empty'}
+                  emptyMessage="No lines are posted for this game yet, so there is nothing to compare."
+                  refreshing={refreshing}
+                  fetchedAt={data?.fetched_at}
+                  source={oddsSourceLabel(data?.source)}
+                  sourceOk={data?.source_ok}
+                  actions={markets.length > 0 && (
+                    <MarketSelector markets={markets} active={active} onChange={selectMarket} panelId={MARKET_PANEL_ID} />
+                  )}
+                >
+                  {activeMarket && (
+                    <div id={MARKET_PANEL_ID} role="tabpanel" aria-labelledby={`market-tab-${activeMarket.key}`} tabIndex={0}
+                         className="space-y-6 focus:outline-none">
+                      <ProbabilityComparison market={activeMarket} />
+                      <SportsbookOddsTable market={activeMarket} />
+                    </div>
+                  )}
+                </Panel>
+                <div ref={whyRef} />
+                <Panel
+                  id="why"
+                  title="Why this edge?"
+                  subtitle={activeMarket ? `Explaining the ${activeMarket.label.toLowerCase()} market.` : undefined}
+                  state={activeMarket ? 'ready' : 'empty'}
+                  emptyMessage="Nothing to explain until a line is posted."
+                >
+                  {activeMarket && (
+                    <ModelExplanation
+                      market={activeMarket}
+                      model={data?.model}
+                      gradeScale={data?.grade_scale ?? []}
+                      modelVersion={data?.model_version ?? '—'}
+                    />
+                  )}
+                </Panel>
+              </div>
+              <div className="min-w-0 space-y-4">
+                <LockedPremiumPanel
+                  title="Line movement"
+                  description="Track how this line has moved since it opened, and where the sharp money went."
+                  requires="line_movement_history"
+                >
+                  <Panel title="Line movement"
+                         subtitle={activeMarket ? `${activeMarket.label} line since our first snapshot.` : undefined}>
+                    <LineMovementChart
+                      points={linePoints}
+                      label={activeMarket?.label ?? 'Line'}
+                      emptyMessage="Only the current line is known — line history isn’t recorded server-side yet."
+                    />
+                  </Panel>
+                </LockedPremiumPanel>
+              </div>
+            </div>
+          )}
+
+          {/* ── Plays ── */}
+          {tab === 'plays' && (
+            <div className="min-w-0 space-y-4">
+              {live && game && <FieldTracker game={game} />}
+              <Panel
+                title="Play-by-play"
+                subtitle={live ? 'Updates automatically every 10 seconds.' : undefined}
+                state={status === 'pre' ? 'empty' : (pbp?.plays.length ? 'ready' : loading ? 'loading' : 'empty')}
+                emptyMessage={status === 'pre'
+                  ? 'Play-by-play begins at kickoff.'
+                  : 'No plays have been published for this game yet.'}
+                refreshing={refreshing}
+                fetchedAt={pbp?.fetched_at}
+                source="ESPN"
+                sourceOk={pbp?.ok ?? true}
+                staleAfterSeconds={45}
+              >
+                <DriveFeed plays={pbp?.plays ?? []} />
+              </Panel>
+            </div>
+          )}
+
+          {/* ── Chat: picks, the crowd, and the room ── */}
+          {tab === 'chat' && (
+            <div className="min-w-0 space-y-4">
+              {game && (
+                <MakeYourPick
+                  league={league}
+                  game={game}
+                  existing={community?.your_picks}
+                  onSubmitted={refreshCommunity}
                 />
               )}
-            </Panel>
-
-            {game && (
-              <MakeYourPick
-                league={league}
-                game={game}
-                existing={community?.your_picks}
-                onSubmitted={refreshCommunity}
+              <GameCommunity
+                data={community}
+                homeAbbr={game?.home_abbr ?? 'HOME'}
+                awayAbbr={game?.away_abbr ?? 'AWAY'}
               />
-            )}
-
-            <GameCommunity
-              data={community}
-              homeAbbr={game?.home_abbr ?? 'HOME'}
-              awayAbbr={game?.away_abbr ?? 'AWAY'}
-            />
-
-            {/* Opened from here, Edge AI already knows which game this is. */}
-            <AskEdge league={league} eventId={eventId} live={live} compact />
-
-            {eventId && <GameChat league={league} eventId={eventId} live={live} />}
-          </div>
-
-          <div className="min-w-0 space-y-4">
-            {live && game && data?.model && (
-              <LiveScoreProjection game={game} model={data.model} />
-            )}
-
-            {live && (
-              <Panel title="Live win probability" refreshing={refreshing}
-                     fetchedAt={data?.fetched_at} source={oddsSourceLabel(data?.source)} sourceOk={data?.source_ok}
-                     staleAfterSeconds={45}>
-                <div className="space-y-4">
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-sm text-zinc-300">{game.home_abbr} (home)</span>
-                    <span className="font-mono text-2xl font-black tabular-nums text-signal-green">{pct1(homeWin)}</span>
-                  </div>
-                  <LiveWinProbabilityChart history={winHistory} teamLabel={game.home_abbr} fallback={wpPoints} />
-                  <FieldTracker game={game} />
-                </div>
-              </Panel>
-            )}
-
-            {status === 'pre' && (
-              <Panel title="Projected score"
-                     subtitle="Model projection before kickoff — not a live score."
-                     state={data?.model ? 'ready' : loading ? 'loading' : 'empty'}
-                     emptyMessage="No projection until this matchup is mapped to the model."
-                     fetchedAt={data?.fetched_at} source={oddsSourceLabel(data?.source)} sourceOk={data?.source_ok}>
-                {data?.model && (
-                  <div className="space-y-3">
-                    <p className="font-mono text-3xl font-black tabular-nums text-zinc-100">
-                      {data.model.proj_away_score ?? '—'} – {data.model.proj_home_score ?? '—'}
-                    </p>
-                    <p className="text-xs text-zinc-400">{game.away_abbr} at {game.home_abbr}</p>
-                    <dl className="grid grid-cols-2 gap-3 border-t border-terminal-border/70 pt-3 text-sm">
-                      <div>
-                        <dt className="text-xs text-zinc-400">Win probability ({game.home_abbr})</dt>
-                        <dd className="font-mono font-bold tabular-nums text-zinc-100">
-                          {pct1(data.model.calibrated_home_win ?? data.model.home_win_prob)}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt className="text-xs text-zinc-400">Projected total</dt>
-                        <dd className="font-mono font-bold tabular-nums text-zinc-100">
-                          {data.model.total_estimate?.toFixed(1) ?? '—'}
-                        </dd>
-                      </div>
-                    </dl>
-                  </div>
-                )}
-              </Panel>
-            )}
-
-            {status === 'post' && (
-              <Panel title="Result vs the pre-game call"
-                     subtitle="The frozen prediction, judged against the closing line."
-                     state={snap ? 'ready' : 'empty'}
-                     emptyMessage="No pre-game snapshot was stored for this game, so there is nothing to grade.">
-                {snap && (
-                  <dl className="space-y-2 text-sm">
-                    <div className="flex justify-between gap-3">
-                      <dt className="text-zinc-400">Final</dt>
-                      <dd className="font-mono font-bold text-zinc-100">{game.away_score}–{game.home_score}</dd>
-                    </div>
-                    <div className="flex justify-between gap-3">
-                      <dt className="text-zinc-400">Model said ({game.home_abbr} win)</dt>
-                      <dd className="font-mono font-bold text-zinc-100">{pct1(snap.model_home_prob)}</dd>
-                    </div>
-                    <div className="flex justify-between gap-3">
-                      <dt className="text-zinc-400">Closing spread</dt>
-                      <dd className="font-mono font-bold text-zinc-100">{snap.closing_spread ?? '—'}</dd>
-                    </div>
-                    <div className="flex justify-between gap-3">
-                      <dt className="text-zinc-400">Result</dt>
-                      <dd className={`font-bold ${
-                        snap.graded
-                          ? ((snap.model_home_prob ?? 0.5) >= 0.5) === (snap.home_won === 1)
-                            ? 'text-signal-green' : 'text-signal-red'
-                          : 'text-zinc-400'
-                      }`}>
-                        {snap.graded
-                          ? ((snap.model_home_prob ?? 0.5) >= 0.5) === (snap.home_won === 1) ? 'Model correct' : 'Model wrong'
-                          : 'Awaiting grading'}
-                      </dd>
-                    </div>
-                    <p className="border-t border-terminal-border/70 pt-2 text-xs text-zinc-500">
-                      Snapshotted {snap.snapshot_at ?? 'pre-kickoff'} by model{' '}
-                      <span className="font-mono">{snap.model_version ?? 'unknown'}</span>.
-                    </p>
-                  </dl>
-                )}
-              </Panel>
-            )}
-
-            <LockedPremiumPanel
-              title="Line movement"
-              description="Track how this line has moved since it opened, and where the sharp money went."
-              requires="line_movement_history"
-            >
-              <Panel title="Line movement"
-                     subtitle={activeMarket ? `${activeMarket.label} line since our first snapshot.` : undefined}>
-                <LineMovementChart
-                  points={linePoints}
-                  label={activeMarket?.label ?? 'Line'}
-                  emptyMessage="Only the current line is known — line history isn’t recorded server-side yet."
-                />
-              </Panel>
-            </LockedPremiumPanel>
-
-            <Panel
-              title="Play-by-play"
-              subtitle={live ? 'Updates automatically every 10 seconds.' : undefined}
-              state={status === 'pre' ? 'empty' : (pbp?.plays.length ? 'ready' : loading ? 'loading' : 'empty')}
-              emptyMessage={status === 'pre'
-                ? 'Play-by-play begins at kickoff.'
-                : 'No plays have been published for this game yet.'}
-              refreshing={refreshing}
-              fetchedAt={pbp?.fetched_at}
-              source="ESPN"
-              sourceOk={pbp?.ok ?? true}
-              staleAfterSeconds={45}
-            >
-              <DriveFeed plays={pbp?.plays ?? []} />
-            </Panel>
-          </div>
+              {eventId && <GameChat league={league} eventId={eventId} live={live} />}
+            </div>
+          )}
         </div>
       </div>
     </div>

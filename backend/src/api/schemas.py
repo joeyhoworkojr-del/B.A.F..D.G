@@ -250,6 +250,10 @@ class LiveGameOut(BaseModel):
     last_play: str = ""
     home_logo: str = ""
     away_logo: str = ""
+    # Overall record as the feed words it ("2-1", "2-1-0"). Empty before a
+    # season has any games in it, which is a real state, not a missing field.
+    home_record: str = ""
+    away_record: str = ""
     # Live market
     market_spread: Optional[float] = None
     market_over_under: Optional[float] = None

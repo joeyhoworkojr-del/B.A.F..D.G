@@ -39,6 +39,8 @@ beforeEach(() => {
   vi.spyOn(api, 'playByPlay').mockResolvedValue({
     league: 'ncaaf', event_id: '401752', ok: true, fetched_at: new Date().toISOString(), plays: [],
   })
+  // Key players sit on the default tab; no test here is about them.
+  vi.spyOn(api, 'gameProps').mockRejectedValue(new Error('no projections'))
 })
 afterEach(() => vi.restoreAllMocks())
 
@@ -52,8 +54,10 @@ describe('Game Center — pregame', () => {
     expect(within(card).getByText('FSU +3.0')).toBeInTheDocument()
     expect(within(card).getByText('Model cover probability')).toBeInTheDocument()
 
-    // Play-by-play is present but explicitly empty until kickoff.
-    expect(screen.getByText(/Play-by-play begins at kickoff/i)).toBeInTheDocument()
+    // Play-by-play has its own section rather than sitting under the model,
+    // and says plainly that it has nothing yet rather than looking broken.
+    await userEvent.click(screen.getByRole('tab', { name: /plays/i }))
+    expect(await screen.findByText(/Play-by-play begins at kickoff/i)).toBeInTheDocument()
   })
 
   it('shows a projected score labelled as a projection, not a live score', async () => {
@@ -79,7 +83,7 @@ describe('Game Center — market navigation', () => {
     vi.spyOn(api, 'gameDetail').mockResolvedValue(gameDetail())
     renderAt('/game/ncaaf/401752?market=total')
     await waitFor(() =>
-      expect(screen.getByRole('tab', { name: 'Total' })).toHaveAttribute('aria-selected', 'true'),
+      expect(screen.getAllByRole('tab', { name: 'Total' })[0]).toHaveAttribute('aria-selected', 'true'),
     )
   })
 
@@ -90,9 +94,15 @@ describe('Game Center — market navigation', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /why this edge/i }))
 
-    // Jumps to the spread market (where the edge is) and explains it.
+    // Crosses to the Markets section — the explanation is not on the tab the
+    // link was clicked from, and scrolling to a node that is not rendered
+    // would silently do nothing.
     await waitFor(() =>
-      expect(screen.getByRole('tab', { name: 'Spread' })).toHaveAttribute('aria-selected', 'true'),
+      expect(screen.getByRole('tab', { name: /markets/i })).toHaveAttribute('aria-selected', 'true'),
+    )
+    // ...and lands on the spread market, where the edge actually is.
+    await waitFor(() =>
+      expect(screen.getAllByRole('tab', { name: 'Spread' })[0]).toHaveAttribute('aria-selected', 'true'),
     )
     expect(screen.getByText('Why this edge?')).toBeInTheDocument()
     expect(screen.getByText(/How grades are calculated/i)).toBeInTheDocument()
@@ -101,10 +111,10 @@ describe('Game Center — market navigation', () => {
 
   it('switching markets swaps the probability being compared', async () => {
     vi.spyOn(api, 'gameDetail').mockResolvedValue(gameDetail())
-    renderAt('/game/ncaaf/401752?market=spread')
+    renderAt('/game/ncaaf/401752?market=spread&tab=markets')
     expect(await screen.findByText('cover probability')).toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('tab', { name: 'Moneyline' }))
+    await userEvent.click(screen.getAllByRole('tab', { name: 'Moneyline' })[0])
     await waitFor(() => expect(screen.getByText('win probability')).toBeInTheDocument())
     expect(screen.queryByText('cover probability')).not.toBeInTheDocument()
   })

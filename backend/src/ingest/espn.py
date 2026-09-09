@@ -89,6 +89,8 @@ class LiveGame:
     last_play: str = ""                        # most recent play text
     home_logo: str = ""                        # team logo URL
     away_logo: str = ""
+    home_record: str = ""                      # e.g. "2-1" or "2-1-0"
+    away_record: str = ""
     # Live market (sportsbook odds embedded in the ESPN feed) — what the
     # public's money is doing right now
     market_spread: Optional[float] = None      # home-based, e.g. -3.5
@@ -166,6 +168,22 @@ def _parse_event(league: str, ev: dict) -> Optional[LiveGame]:
         if home is None or away is None:
             return None
 
+        def record(c: dict) -> str:
+            """The team's overall record, as the feed words it.
+
+            A competitor carries several records — overall, home, away,
+            conference — and only the overall one belongs beside a team name.
+            The feed does not always mark which is which, so the first entry is
+            the fallback rather than a guess at a different one.
+            """
+            entries = c.get("records") or []
+            if not entries:
+                return ""
+            for r in entries:
+                if (r.get("type") or r.get("name") or "").lower() in ("total", "overall"):
+                    return str(r.get("summary") or "")
+            return str(entries[0].get("summary") or "")
+
         def score(c: dict) -> Optional[int]:
             s = c.get("score")
             try:
@@ -231,6 +249,8 @@ def _parse_event(league: str, ev: dict) -> Optional[LiveGame]:
             last_play=last_play,
             home_logo=home.get("team", {}).get("logo", "") or "",
             away_logo=away.get("team", {}).get("logo", "") or "",
+            home_record=record(home),
+            away_record=record(away),
             market_spread=spread,
             market_over_under=over_under,
             market_home_ml=home_ml,

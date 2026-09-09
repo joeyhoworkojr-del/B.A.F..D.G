@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { GameHeader } from './GameHeader'
+import { MatchupBanner } from './MatchupBanner'
 import { GameStatus } from './GameStatus'
 import { MarketSelector } from './MarketSelector'
 import { ProbabilityComparison } from './ProbabilityComparison'
@@ -15,12 +15,12 @@ import {
   gradeScale, gameDetail,
 } from '../../test/fixtures'
 
-describe('GameHeader / GameStatus', () => {
+describe('MatchupBanner / GameStatus', () => {
   it('never shows a 0–0 scoreline before kickoff', () => {
-    render(<GameHeader game={pregameGame} leagueLabel="College Football" />)
-    expect(screen.getByText('Pregame')).toBeInTheDocument()
-    expect(screen.getByText('vs.')).toBeInTheDocument()
-    // No score digits are rendered pre-game
+    render(<MatchupBanner game={pregameGame} leagueLabel="College Football" />)
+    // The middle column carries the kickoff instead of a scoreline, so
+    // nothing reads as a game already under way.
+    expect(screen.getByText(/Sep|Oct|Nov|Dec|Jan/)).toBeInTheDocument()
     expect(screen.queryByText('0')).not.toBeInTheDocument()
   })
 
@@ -30,7 +30,7 @@ describe('GameHeader / GameStatus', () => {
   })
 
   it('shows score, clock, possession and down/distance when live', () => {
-    render(<GameHeader game={liveGame} leagueLabel="College Football" />)
+    render(<MatchupBanner game={liveGame} leagueLabel="College Football" />)
     expect(screen.getByText('LIVE')).toBeInTheDocument()
     expect(screen.getByText('Q3 6:59')).toBeInTheDocument()
     expect(screen.getByText('FSU ball')).toBeInTheDocument()
