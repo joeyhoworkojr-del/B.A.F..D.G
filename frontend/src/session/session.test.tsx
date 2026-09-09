@@ -235,7 +235,7 @@ describe('Live data freshness', () => {
     const fs = await import('node:fs')
     const path = await import('node:path')
     const src = fs.readFileSync(path.resolve(process.cwd(), 'src/api/client.ts'), 'utf8')
-    for (const route of ['/api/v1/today/', '/api/v1/live/scores', '/api/v1/live/pbp/', '/api/v1/game/']) {
+    for (const route of ['/api/v1/board', '/api/v1/today/', '/api/v1/live/scores', '/api/v1/live/pbp/', '/api/v1/game/']) {
       const line = src.split('\n').find(l => l.includes(route) && l.includes('get<'))
       expect(line, `${route} should exist`).toBeTruthy()
       expect(line, `${route} needs a cache-buster`).toContain('Date.now()')
@@ -246,6 +246,6 @@ describe('Live data freshness', () => {
     const fs = await import('node:fs')
     const path = await import('node:path')
     const src = fs.readFileSync(path.resolve(process.cwd(), 'src/pages/Dashboard.tsx'), 'utf8')
-    expect(src).toContain('hasLive.current ? 12_000 : 30_000')
+    expect(src).toContain('hasLive.current ? 15_000 : 60_000')
   })
 })

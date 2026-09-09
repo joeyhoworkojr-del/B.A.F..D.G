@@ -82,6 +82,10 @@ export function AskEdge({
       ])
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Edge AI could not answer that.')
+      // Re-read status after a failure: the server records the provider's own
+      // last error there, scrubbed of credentials. Without it the only thing
+      // anyone can report is "it says unreachable", which is not diagnosable.
+      api.aiStatus().then(setStatus).catch(() => {})
     } finally {
       setBusy(false)
     }
@@ -163,7 +167,16 @@ export function AskEdge({
         {busy && (
           <p className="text-sm text-zinc-500" role="status">Edge is looking that up…</p>
         )}
-        {error && <p role="alert" className="text-sm text-signal-red">{error}</p>}
+        {error && (
+          <div role="alert">
+            <p className="text-sm text-signal-red">{error}</p>
+            {status?.last_error && (
+              <p className="mt-1 font-mono text-xs leading-relaxed text-zinc-500">
+                {status.last_error}
+              </p>
+            )}
+          </div>
+        )}
         <div ref={endRef} />
       </div>
 

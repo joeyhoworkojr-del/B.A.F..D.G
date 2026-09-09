@@ -1,18 +1,19 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { DataFreshnessBadge } from '../components/game/DataFreshnessBadge'
+import { PropsStrip } from '../components/props/PropsStrip'
 import { FaqList } from '../components/faq/FaqList'
 import { oddsSourceSentence } from '../components/OddsSource'
 import { FAQ, FAQ_PREVIEW_IDS } from '../content/faq'
 import { api } from '../api/client'
 import { useSession } from '../session/SessionProvider'
-import type { TodayResponse, TodayGameOut, EdgeOut, AccuracyResponse, FootballLeague } from '../types'
+import type { BoardDay, BoardEntry, BoardResponse, EdgeOut, AccuracyResponse } from '../types'
 
-const LEAGUES: { id: FootballLeague; label: string }[] = [
-  { id: 'ncaaf', label: 'NCAAF' },
-  { id: 'nfl', label: 'NFL' },
-]
-const LEAGUE_SPORT: Record<string, string> = { ncaaf: 'College Football', nfl: 'NFL' }
+const LEAGUE_LABEL: Record<string, string> = { ncaaf: 'NCAAF', nfl: 'NFL' }
+
+/** Cards rendered before the list offers to show the rest. A college Saturday
+ *  is two hundred games; a homepage that dumps all of them is not a homepage. */
+const VISIBLE_STEP = 24
 
 const pct = (v?: number | null) => (v == null ? '—' : `${Math.round(v * 100)}%`)
 const fmtSpread = (s?: number | null) => (s == null ? '—' : s > 0 ? `+${s}` : `${s}`)
@@ -22,12 +23,10 @@ function noVigHome(h?: number | null, a?: number | null): number | null {
   const ih = 1 / dec(h), ia = 1 / dec(a)
   return ih / (ih + ia)
 }
-function fmtKick(iso: string): string {
+function fmtTime(iso: string): string {
   const d = new Date(iso)
   if (isNaN(d.getTime())) return ''
-  const day = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
-  const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
-  return `${day} • ${time}`
+  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
 }
 
 type Verdict = 'pick' | 'fade' | 'none'
@@ -47,24 +46,30 @@ function TeamLogo({ url, abbr }: { url?: string; abbr: string }) {
     : <span className="grid h-7 w-7 place-items-center rounded bg-terminal-muted text-xs font-bold text-zinc-400">{abbr.slice(0, 3)}</span>
 }
 
+function LeagueTag({ league }: { league: string }) {
+  return (
+    <span className="rounded border border-terminal-border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+      {LEAGUE_LABEL[league] ?? league.toUpperCase()}
+    </span>
+  )
+}
+
 // ─── Header scores strip ──────────────────────────────────────────────────────
-function ScoresStrip({ league, games }: { league: FootballLeague; games: TodayGameOut[] }) {
-  const ordered = [...games].sort((a, b) => (a.game.state === 'in' ? -1 : 0) - (b.game.state === 'in' ? -1 : 0))
+function ScoresStrip({ games }: { games: BoardEntry[] }) {
+  if (games.length === 0) return null
   return (
     <div className="flex items-stretch gap-0 overflow-x-auto border-b border-terminal-border/60 text-sm no-scrollbar">
-      <div className="flex shrink-0 items-center gap-1 px-3 font-bold text-zinc-300">
-        {league.toUpperCase()} <span className="text-zinc-500">›</span>
-      </div>
-      {ordered.slice(0, 12).map(({ game: g }) => {
+      {games.slice(0, 14).map(({ game: g, league }) => {
         const live = g.state === 'in'
+        const done = g.state === 'post'
         return (
-          <Link key={g.event_id} to={`/game/${league}/${g.event_id}`} state={{ game: g }}
-            className="flex shrink-0 flex-col justify-center border-l border-terminal-border/60 px-3 py-2 hover:bg-terminal-muted/40">
+          <Link key={`${league}-${g.event_id}`} to={`/game/${league}/${g.event_id}`} state={{ game: g }}
+            className="flex shrink-0 flex-col justify-center border-l border-terminal-border/60 px-3 py-2 first:border-l-0 hover:bg-terminal-muted/40">
             <span className="flex items-center gap-1.5 whitespace-nowrap font-semibold text-zinc-100">
               {live && <span className="h-1.5 w-1.5 rounded-full bg-signal-green" />}
-              {g.away_abbr} {live || g.state === 'post' ? g.away_score ?? 0 : ''}
-              <span className="text-zinc-500">{live || g.state === 'post' ? '–' : '@'}</span>
-              {live || g.state === 'post' ? `${g.home_score ?? 0} ` : ''}{g.home_abbr}
+              {g.away_abbr} {live || done ? g.away_score ?? 0 : ''}
+              <span className="text-zinc-500">{live || done ? '–' : '@'}</span>
+              {live || done ? `${g.home_score ?? 0} ` : ''}{g.home_abbr}
             </span>
             <span className={`whitespace-nowrap text-xs ${live ? 'text-signal-green' : 'text-zinc-500'}`}>
               {live ? `${g.period ? `Q${g.period} ` : ''}${g.clock || g.detail}` : g.detail}
@@ -94,9 +99,9 @@ function StatBar({ acc }: { acc: AccuracyResponse | null }) {
   return (
     <div className="grid grid-cols-3 overflow-hidden rounded-2xl border border-terminal-border bg-terminal-surface">
       {cells.map(([l, v, c], i) => (
-        <div key={l} className={`px-4 py-4 text-center ${i > 0 ? 'border-l border-terminal-border' : ''}`}>
+        <div key={l} className={`px-4 py-3 text-center ${i > 0 ? 'border-l border-terminal-border' : ''}`}>
           <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">{l}</p>
-          <p className={`mt-1 font-mono text-2xl font-black tabular-nums ${c}`}>{v}</p>
+          <p className={`mt-0.5 font-mono text-2xl font-black tabular-nums ${c}`}>{v}</p>
         </div>
       ))}
     </div>
@@ -104,9 +109,8 @@ function StatBar({ acc }: { acc: AccuracyResponse | null }) {
 }
 
 // ─── Live model card ──────────────────────────────────────────────────────────
-function LiveCard({ league, entry }: { league: FootballLeague; entry: TodayGameOut }) {
-  const g = entry.game
-  const m = entry.model
+function LiveCard({ entry }: { entry: BoardEntry }) {
+  const { game: g, model: m, league } = entry
   const homeWin = m ? (m.live && m.live_home_win != null ? m.live_home_win : (m.calibrated_home_win ?? m.home_win_prob)) : 0.5
   const favHome = homeWin >= 0.5
   const modelP = favHome ? homeWin : 1 - homeWin
@@ -122,7 +126,7 @@ function LiveCard({ league, entry }: { league: FootballLeague; entry: TodayGameO
           <span className="h-1.5 w-1.5 rounded-full bg-signal-green animate-pulse" /> LIVE
           <span className="text-signal-green/90">{g.period ? `Q${g.period} ` : ''}{g.clock || g.detail}</span>
         </span>
-        <span className="text-xs text-zinc-500">{LEAGUE_SPORT[league]}</span>
+        <LeagueTag league={league} />
       </div>
       <div className="flex items-stretch gap-3 p-4">
         <Link to={`/game/${league}/${g.event_id}`} state={{ game: g }} className="min-w-0 flex-1 space-y-3">
@@ -181,7 +185,7 @@ function Row({ label, value, valueCls }: { label: string; value: string; valueCl
   )
 }
 
-// ─── Top-edge card ────────────────────────────────────────────────────────────
+// ─── Pre-game card ────────────────────────────────────────────────────────────
 function bestEdge(edges: EdgeOut[]): EdgeOut | null {
   const ab = edges.filter(e => e.rating === 'A' || e.rating === 'B')
   return ab.length ? ab.reduce((x, y) => (y.edge_pp > x.edge_pp ? y : x)) : null
@@ -192,9 +196,8 @@ function marketKey(market: string): string {
   return m.includes('total') ? 'total' : m.includes('spread') ? 'spread' : 'moneyline'
 }
 
-function EdgeCard({ league, entry }: { league: FootballLeague; entry: TodayGameOut }) {
-  const g = entry.game
-  const m = entry.model
+function EdgeCard({ entry }: { entry: BoardEntry }) {
+  const { game: g, model: m, league } = entry
   // Not every game has an edge worth naming, and a followed team's game is
   // shown whether it does or not. The non-null assertions here used to crash
   // the whole board on the first game without one.
@@ -210,9 +213,9 @@ function EdgeCard({ league, entry }: { league: FootballLeague; entry: TodayGameO
   )
   return (
     <div className="rounded-2xl border border-terminal-border bg-terminal-surface p-4">
-      <div className="mb-3 flex items-center justify-between text-xs text-zinc-500">
-        <span>{fmtKick(g.kickoff)}</span>
-        <span>{LEAGUE_SPORT[league]}</span>
+      <div className="mb-3 flex items-center justify-between gap-2 text-xs text-zinc-500">
+        <span>{g.state === 'post' ? g.detail : fmtTime(g.kickoff)}</span>
+        <LeagueTag league={league} />
       </div>
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1 space-y-3">
@@ -249,8 +252,14 @@ function EdgeCard({ league, entry }: { league: FootballLeague; entry: TodayGameO
           </>
         ) : (
           <>
+            {/* Beyond the board's projection cap the model has not been run on
+                this game at all, which is a different thing from having run and
+                found nothing. Saying "no edge" for either would be a claim the
+                model never made. */}
             <span className="text-xs text-zinc-500">
-              The model and the market agree on this one — no edge is claimed.
+              {entry.projected
+                ? 'The model and the market agree on this one — no edge is claimed.'
+                : 'Not projected yet — opening the game runs the model on it.'}
             </span>
             <Link to={`/game/${league}/${g.event_id}`} state={{ game: g }} className="ml-auto whitespace-nowrap text-xs font-semibold text-zinc-400 hover:text-zinc-200">
               View game ›
@@ -270,86 +279,164 @@ function Stat({ label, value, green }: { label: string; value: string; green?: b
   )
 }
 
+/**
+ * A game that has already been played.
+ *
+ * Deliberately not the pre-game card: spread and total pills read as picks,
+ * and offering a pick on a game that finished two hours ago is a claim about
+ * something already decided. The graded result lives on Results; here it is
+ * the score and a way in.
+ */
+function FinalCard({ entry }: { entry: BoardEntry }) {
+  const { game: g, league } = entry
+  const homeWon = (g.home_score ?? 0) > (g.away_score ?? 0)
+  return (
+    <Link
+      to={`/game/${league}/${g.event_id}`}
+      state={{ game: g }}
+      className="block rounded-2xl border border-terminal-border bg-terminal-surface p-4 hover:border-zinc-500"
+    >
+      <div className="mb-3 flex items-center justify-between gap-2 text-xs text-zinc-500">
+        <span className="font-semibold uppercase tracking-wide">Final</span>
+        <LeagueTag league={league} />
+      </div>
+      <div className="space-y-3">
+        {[[g.away, g.away_abbr, g.away_logo, g.away_score, !homeWon],
+          [g.home, g.home_abbr, g.home_logo, g.home_score, homeWon]].map(
+          ([name, abbr, logo, score, won]) => (
+            <div key={abbr as string} className="flex items-center gap-2.5">
+              <TeamLogo url={logo as string} abbr={abbr as string} />
+              <span className={`truncate text-[15px] font-bold ${won ? 'text-zinc-100' : 'text-zinc-500'}`}>
+                {name}
+              </span>
+              <span className={`ml-auto font-mono text-2xl font-black tabular-nums ${won ? 'text-zinc-100' : 'text-zinc-500'}`}>
+                {score ?? 0}
+              </span>
+            </div>
+          ),
+        )}
+      </div>
+    </Link>
+  )
+}
+
+function GameCard({ entry }: { entry: BoardEntry }) {
+  if (entry.game.state === 'in') return <LiveCard entry={entry} />
+  if (entry.game.state === 'post') return <FinalCard entry={entry} />
+  return <EdgeCard entry={entry} />
+}
+
+/** Live first, then the biggest claimed edge, then kickoff order. */
+function boardOrder(a: BoardEntry, b: BoardEntry): number {
+  // In progress, then still to come, then already played. A finished game is
+  // the least useful thing on a board about what to watch, but it is what
+  // someone looking for this afternoon's score came for, so it stays.
+  const rank = (e: BoardEntry) => (e.game.state === 'in' ? 0 : e.game.state === 'pre' ? 1 : 2)
+  const liveA = rank(a)
+  const liveB = rank(b)
+  if (liveA !== liveB) return liveA - liveB
+  const ea = bestEdge(a.edges)?.edge_pp ?? -1
+  const eb = bestEdge(b.edges)?.edge_pp ?? -1
+  if (ea !== eb) return eb - ea
+  return (a.game.kickoff || '').localeCompare(b.game.kickoff || '')
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export function Dashboard() {
   const [params, setParams] = useSearchParams()
   const query = params.get('q') ?? ''
   const { user } = useSession()
-  const [league, setLeague] = useState<FootballLeague>('ncaaf')
-  // Open on the league this person actually follows, once — after that the tab
-  // is theirs. Re-applying it on every session refresh would fight anyone who
-  // switched away.
-  const appliedPreference = useRef(false)
-  const [data, setData] = useState<TodayResponse | null>(null)
+  const [data, setData] = useState<BoardResponse | null>(null)
   const [acc, setAcc] = useState<AccuracyResponse | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [dayDate, setDayDate] = useState<string | null>(null)
+  const [visible, setVisible] = useState(VISIBLE_STEP)
   const hasLive = useRef(false)
 
-  const load = useCallback((lg: FootballLeague) => {
-    api.today(lg).then(d => { setData(d); setError('') }).catch(e => setError(e.message)).finally(() => setLoading(false))
+  const load = useCallback(() => {
+    api.board()
+      .then(d => { setData(d); setError('') })
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false))
   }, [])
 
   useEffect(() => { api.accuracy().then(setAcc).catch(() => {}) }, [])
-
   useEffect(() => {
-    if (appliedPreference.current || !user) return
-    const sports = user.favourite_sports ?? []
-    // Only when they follow one and not the other; following both says nothing
-    // about which board to open.
-    const prefers = sports.includes('nfl') !== sports.includes('ncaaf')
-      ? (sports.includes('nfl') ? 'nfl' : 'ncaaf')
-      : null
-    appliedPreference.current = true
-    if (prefers) setLeague(prefers as FootballLeague)
-  }, [user])
-  useEffect(() => {
-    setLoading(true); setData(null); load(league)
+    load()
     // A running clock needs refreshing near the rate it changes; a board with
     // nothing in progress does not.
-    const iv = setInterval(() => load(league), hasLive.current ? 12_000 : 30_000)
+    const iv = setInterval(load, hasLive.current ? 15_000 : 60_000)
     return () => clearInterval(iv)
-  }, [league, load])
+  }, [load])
 
   // Search matches either team's name or abbreviation, so "bama" and "ALA"
-  // both find the same game.
-  const games = useMemo(() => {
-    const all = data?.games ?? []
+  // both find the same game. It searches the whole window, not one day.
+  const days: BoardDay[] = useMemo(() => {
+    const all = data?.days ?? []
     const q = query.trim().toLowerCase()
     if (!q) return all
-    return all.filter(({ game: g }) =>
-      [g.home, g.away, g.home_abbr, g.away_abbr].some(v => v.toLowerCase().includes(q)))
+    return all
+      .map(d => ({
+        ...d,
+        games: d.games.filter(({ game: g }) =>
+          [g.home, g.away, g.home_abbr, g.away_abbr].some(v => v.toLowerCase().includes(q))),
+      }))
+      .filter(d => d.games.length > 0)
   }, [data, query])
 
-  const liveGames = games.filter(x => x.game.state === 'in')
+  // The first day with anything on it. On a Wednesday in September that is
+  // Thursday, and the board opens there rather than on an empty Today.
+  const day = useMemo(
+    () => days.find(d => d.date === dayDate) ?? days[0] ?? null,
+    [days, dayDate],
+  )
+  useEffect(() => { setVisible(VISIBLE_STEP) }, [day?.date, query])
+
+  const dayGames = useMemo(() => [...(day?.games ?? [])].sort(boardOrder), [day])
+  const liveGames = useMemo(
+    () => days.flatMap(d => d.games).filter(e => e.game.state === 'in'),
+    [days],
+  )
   hasLive.current = liveGames.length > 0
 
   // Games involving a team this person follows, pulled to the top. Stored as
   // `league:CODE` so a college and an NFL team sharing an abbreviation stay
   // distinct — several do.
-  const followed = useMemo(() => {
-    const codes = new Set(
-      (user?.favourite_teams ?? [])
-        .filter(k => k.startsWith(`${league}:`))
-        .map(k => k.slice(league.length + 1).toUpperCase()),
-    )
-    if (codes.size === 0) return []
-    return games.filter(({ game: g }) =>
-      codes.has((g.home_abbr || '').toUpperCase()) || codes.has((g.away_abbr || '').toUpperCase()))
-  }, [games, user, league])
-  const edgeGames = games
-    .filter(x => x.game.state === 'pre' && x.mapped && x.model && bestEdge(x.edges))
-    .sort((a, b) => (bestEdge(b.edges)!.edge_pp) - (bestEdge(a.edges)!.edge_pp))
-    .slice(0, 12)
+  const followedKeys = useMemo(
+    () => new Set((user?.favourite_teams ?? []).map(k => k.toLowerCase())),
+    [user],
+  )
+  const isFollowed = useCallback(
+    (e: BoardEntry) =>
+      followedKeys.has(`${e.league}:${(e.game.home_abbr || '').toLowerCase()}`) ||
+      followedKeys.has(`${e.league}:${(e.game.away_abbr || '').toLowerCase()}`),
+    [followedKeys],
+  )
+  const followed = useMemo(() => dayGames.filter(isFollowed), [dayGames, isFollowed])
+  const rest = useMemo(() => dayGames.filter(e => !isFollowed(e)), [dayGames, isFollowed])
+
+  // Props go under the game they belong to. The live game if there is one,
+  // otherwise the first thing on the selected day.
+  const featured = liveGames[0] ?? dayGames[0] ?? null
 
   return (
     <div className="pb-4">
-      {games.length > 0 && <ScoresStrip league={league} games={games} />}
+      <ScoresStrip games={liveGames.length > 0 ? liveGames : dayGames} />
 
-      <div className="mx-auto w-full max-w-[1200px] space-y-5 px-4 pt-4">
-        <div>
-          <h1 className="font-display text-3xl font-black tracking-tight text-zinc-100">Game Center</h1>
-          <p className="mt-0.5 text-sm text-zinc-400">AI-powered projections &amp; market edges</p>
+      <div className="mx-auto w-full max-w-[1200px] space-y-4 px-4 pt-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="font-display text-3xl font-black tracking-tight text-zinc-100">Game Center</h1>
+            <p className="mt-0.5 text-sm text-zinc-400">
+              NFL and college football on one board, with the model’s number beside the market’s.
+            </p>
+          </div>
+          {liveGames.length > 0 && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-signal-green/15 px-3 py-1.5 text-xs font-bold text-signal-green">
+              <span className="h-1.5 w-1.5 rounded-full bg-signal-green animate-pulse" /> {liveGames.length} LIVE
+            </span>
+          )}
         </div>
 
         <StatBar acc={acc} />
@@ -358,7 +445,7 @@ export function Dashboard() {
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className="text-zinc-400">
               Showing games matching <span className="font-bold text-zinc-100">“{query.trim()}”</span>
-              {' '}— {games.length} of {data?.games.length ?? 0}
+              {' '}— {days.reduce((n, d) => n + d.games.length, 0)} of {data?.total_games ?? 0}
             </span>
             <button
               type="button"
@@ -370,80 +457,95 @@ export function Dashboard() {
           </div>
         )}
 
-        {/* Tabs + live badge */}
-        <div className="flex items-center gap-2">
-          <div className="flex gap-2">
-            {LEAGUES.map(l => (
-              <button key={l.id} onClick={() => setLeague(l.id)}
-                className={`rounded-full px-5 py-1.5 text-sm font-bold transition ${
-                  league === l.id
+        {/* One row of days rather than two league tabs. A day with nothing on
+            it is not offered at all, which is why the board never opens empty. */}
+        {days.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar" role="tablist" aria-label="Days with games">
+            {days.map(d => (
+              <button
+                key={d.date}
+                type="button"
+                role="tab"
+                aria-selected={d.date === day?.date}
+                onClick={() => setDayDate(d.date)}
+                className={`tap shrink-0 rounded-full px-4 text-sm font-bold transition ${
+                  d.date === day?.date
                     ? 'bg-brand text-white shadow-card'
                     : 'bg-terminal-muted text-zinc-400 hover:text-zinc-100'
-                }`}>
-                {l.label}
+                }`}
+              >
+                {d.label}
+                <span className={`ml-1.5 font-mono text-xs ${d.date === day?.date ? 'text-white/70' : 'text-zinc-500'}`}>
+                  {d.games.length}
+                </span>
               </button>
             ))}
           </div>
-          {liveGames.length > 0 && (
-            <span className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-signal-green/15 px-3 py-1.5 text-xs font-bold text-signal-green">
-              <span className="h-1.5 w-1.5 rounded-full bg-signal-green animate-pulse" /> {liveGames.length} LIVE
-            </span>
-          )}
-        </div>
+        )}
 
         {error && <div className="rounded-2xl border border-signal-red/40 bg-terminal-surface p-4 text-sm text-signal-red">Couldn’t load games: {error}</div>}
         {loading && !data && <div className="space-y-4"><div className="skeleton h-40 rounded-2xl" /><div className="skeleton h-44 rounded-2xl" /></div>}
 
         {followed.length > 0 && (
           <div className="space-y-3">
-            <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-500">
-              Your teams
-            </h2>
+            <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Your teams</h2>
             <div className="grid gap-3 lg:grid-cols-2">
-              {followed.map(entry => (
-                entry.game.state === 'in'
-                  ? <LiveCard key={`fav-${entry.game.event_id}`} league={league} entry={entry} />
-                  : <EdgeCard key={`fav-${entry.game.event_id}`} league={league} entry={entry} />
-              ))}
+              {followed.map(entry => <GameCard key={`fav-${entry.league}-${entry.game.event_id}`} entry={entry} />)}
             </div>
           </div>
         )}
 
-        {/* Signed in, teams chosen, none playing today — worth saying, because
-            an absent section reads as a broken setting. */}
-        {user && (user.favourite_teams?.length ?? 0) > 0 && followed.length === 0 && !loading && (
+        {/* Signed in, teams chosen, none playing on this day — worth saying,
+            because an absent section reads as a broken setting. */}
+        {user && (user.favourite_teams?.length ?? 0) > 0 && followed.length === 0 && !loading && day && (
           <p className="text-sm text-zinc-500">
-            None of the teams you follow are on today’s {league === 'nfl' ? 'NFL' : 'college'} board.
+            None of the teams you follow are playing {day.label.toLowerCase()}.
           </p>
         )}
 
-        {liveGames.length > 0 && (
+        {rest.length > 0 && (
           <div className="space-y-3">
-            <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Live now</h2>
+            <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-500">
+              {day?.label ?? 'On the board'}
+              {day && Object.entries(day.by_league).some(([, n]) => n > 0) && (
+                <span className="ml-2 font-normal normal-case tracking-normal text-zinc-600">
+                  {Object.entries(day.by_league)
+                    .filter(([, n]) => n > 0)
+                    .map(([lg, n]) => `${n} ${LEAGUE_LABEL[lg] ?? lg.toUpperCase()}`)
+                    .join(' · ')}
+                </span>
+              )}
+            </h2>
             <div className="grid gap-3 lg:grid-cols-2">
-              {liveGames.map(entry => <LiveCard key={entry.game.event_id} league={league} entry={entry} />)}
+              {rest.slice(0, visible).map(entry => (
+                <GameCard key={`${entry.league}-${entry.game.event_id}`} entry={entry} />
+              ))}
             </div>
+            {rest.length > visible && (
+              <button
+                type="button"
+                onClick={() => setVisible(v => v + VISIBLE_STEP)}
+                className="tap w-full rounded-2xl border border-terminal-border bg-terminal-surface py-3 text-sm font-bold text-zinc-300 hover:text-zinc-100"
+              >
+                Show {Math.min(VISIBLE_STEP, rest.length - visible)} more of {rest.length}
+              </button>
+            )}
           </div>
         )}
 
-        {edgeGames.length > 0 && (
-          <div className="space-y-3">
-            <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Top edges</h2>
-            <div className="grid gap-3 lg:grid-cols-2">
-              {edgeGames.map(entry => <EdgeCard key={entry.game.event_id} league={league} entry={entry} />)}
-            </div>
-          </div>
-        )}
-
-        {!loading && liveGames.length === 0 && edgeGames.length === 0 && !error && (
+        {!loading && dayGames.length === 0 && !error && (
           <div className="rounded-2xl border border-dashed border-terminal-border bg-terminal-surface p-10 text-center">
-            <p className="font-display text-lg font-bold text-zinc-100">No edges on the board</p>
+            <p className="font-display text-lg font-bold text-zinc-100">Nothing on the board</p>
             <p className="mx-auto mt-1 max-w-sm text-sm text-zinc-500">
               {query.trim()
-                ? `Nothing in the ${LEAGUE_SPORT[league]} window matches “${query.trim()}”.`
-                : `No live games or model edges for ${LEAGUE_SPORT[league]} in today’s window. This fills in automatically on game day.`}
+                ? `No NFL or college game in the next week matches “${query.trim()}”.`
+                : data?.note || 'No NFL or college football scheduled in the next week. This fills in automatically as the schedule is released.'}
             </p>
           </div>
+        )}
+
+        {featured && (
+          <PropsStrip league={featured.league} eventId={featured.game.event_id} />
         )}
 
         <section aria-labelledby="faq-preview" className="pt-2">

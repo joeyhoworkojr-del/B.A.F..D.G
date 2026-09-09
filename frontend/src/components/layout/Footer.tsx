@@ -13,8 +13,10 @@ const COLUMNS: { heading: string; links: { label: string; to: string; external?:
     heading: 'Product',
     links: [
       { label: 'Games', to: '/' },
-      { label: 'Live', to: '/live' },
+      // Live games are at the top of the Games board now, so linking a
+      // separate Live page here would send people somewhere emptier.
       { label: 'Edges', to: '/best-bets' },
+      { label: 'Props', to: '/props' },
       { label: 'Results', to: '/results' },
     ],
   },

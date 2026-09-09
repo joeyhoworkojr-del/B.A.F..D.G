@@ -20,8 +20,19 @@ const CHROME = [
   '/opt/pw-browsers/chromium/chrome-linux/chrome',
 ].find(p => fs.existsSync(p))
 
-const VIEWPORTS = [[390, 844, 'mobile'], [768, 1024, 'tablet'], [1440, 900, 'desktop']]
-const PAGES = [
+// The full sweep runs three browser pages at once over every route, which is
+// more memory than a small container always has. SHOT_VIEWPORTS and SHOT_PAGES
+// narrow the run to a comma-separated subset so it can be taken in bites; both
+// unset keeps the full sweep, which is what CI runs.
+const only = name => {
+  const raw = (process.env[name] || '').trim()
+  return raw ? new Set(raw.split(',').map(s => s.trim()).filter(Boolean)) : null
+}
+const VP_FILTER = only('SHOT_VIEWPORTS')
+const PAGE_FILTER = only('SHOT_PAGES')
+
+const ALL_VIEWPORTS = [[390, 844, 'mobile'], [768, 1024, 'tablet'], [1440, 900, 'desktop']]
+const ALL_PAGES = [
   ['games', '/'],
   ['game-center', '/game/ncaaf/401752'],
   ['live', '/live'],
@@ -44,6 +55,9 @@ const PAGES = [
   ['upcoming', '/upcoming'],
 ]
 
+const VIEWPORTS = ALL_VIEWPORTS.filter(([, , n]) => !VP_FILTER || VP_FILTER.has(n))
+const PAGES = ALL_PAGES.filter(([n]) => !PAGE_FILTER || PAGE_FILTER.has(n))
+
 async function stub(page) {
   // Playwright matches the most recently added route first, so this catch-all
   // is registered up front: anything not stubbed below returns an empty but
@@ -51,6 +65,8 @@ async function stub(page) {
   await page.route('**/api/v1/**', r => r.fulfill({ json: {} }))
   await page.route('**/api/v1/today/**', r =>
     r.fulfill({ json: fx.today(new URL(r.request().url()).pathname.split('/').pop()) }))
+  await page.route('**/api/v1/board*', r => r.fulfill({ json: fx.board() }))
+  await page.route('**/api/v1/props/**', r => r.fulfill({ json: fx.gameProps }))
   await page.route('**/api/v1/accuracy', r => r.fulfill({ json: fx.accuracy }))
   await page.route('**/api/v1/news*', r => r.fulfill({ json: fx.news }))
   await page.route('**/api/v1/entitlements', r => r.fulfill({ json: fx.entitlements }))

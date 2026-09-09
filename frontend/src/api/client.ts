@@ -1,4 +1,5 @@
 import type {
+  BoardResponse,
   SoccerPredictResponse,
   NFLPredictResponse,
   RankingsResponse,
@@ -182,6 +183,11 @@ export const api = {
   // the only thing that cannot be answered from a cache.
   today: (league: GridironLeague | 'ncaaf') =>
     get<TodayResponse>(`/api/v1/today/${league}?_=${Date.now()}`),
+  /** Both leagues on one board, grouped by the day a game is played. The
+   *  homepage asks for this instead of one league at a time. Carries live
+   *  clocks, so it gets the same cache-buster as `today`. */
+  board: (days = 8) =>
+    get<BoardResponse>(`/api/v1/board?days=${days}&_=${Date.now()}`),
   /** The week ahead, already predicted. A schedule days out is stable, so no
    *  cache-buster here — unlike a running clock, it can safely be cached. */
   upcoming: (league: GridironLeague | 'ncaaf', days = 7) =>

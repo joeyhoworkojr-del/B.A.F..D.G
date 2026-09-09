@@ -4,11 +4,17 @@ import { NotificationCentre } from './NotificationCentre'
 import { useSession } from '../../session/SessionProvider'
 import { AvatarMenu } from './AvatarMenu'
 
-/** Primary destinations, in the order they appear on desktop. */
+/**
+ * Primary destinations, in the order they appear on desktop.
+ *
+ * Live games, player props and the week ahead are not here because they are
+ * not separate places any more: the homepage is one board across both leagues,
+ * live games sort to the top of it, and it rolls forward to the next day that
+ * has football on it. Their routes still resolve — a bookmark or a shared link
+ * must not 404 — they are simply no longer a nav decision to make.
+ */
 export const NAV_ITEMS = [
   { to: '/', label: 'Games', end: true },
-  { to: '/live', label: 'Live', end: false },
-  { to: '/props', label: 'Props', end: false },
   { to: '/best-bets', label: 'Edges', end: false },
   { to: '/leaderboard', label: 'Leaderboard', end: false },
   { to: '/news', label: 'News', end: false },
@@ -17,11 +23,7 @@ export const NAV_ITEMS = [
 
 /** Secondary destinations — the "More" menu on both breakpoints. */
 export const MORE_ITEMS = [
-  // Kept out of the primary bar deliberately: an eighth item wraps the header
-  // at 1440px, and the week-ahead board is a destination people seek out
-  // rather than one they need in front of them at all times.
   { to: '/ask', label: 'Ask Edge' },
-  { to: '/upcoming', label: 'Upcoming' },
   { to: '/parlay', label: 'Parlay' },
   { to: '/faq', label: 'FAQ' },
   { to: '/about', label: 'About & methodology' },

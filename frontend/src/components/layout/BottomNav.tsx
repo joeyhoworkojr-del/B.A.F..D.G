@@ -6,9 +6,9 @@ const Football = () => (
     <path d="M3 21c4-.5 14-2.5 18-18C8 3.5 3.5 8 3 21Z" /><path d="M8.5 15.5 15.5 8.5M10 12l2 2M12 10l2 2" />
   </svg>
 )
-const Live = () => (
+const Ticked = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <circle cx="12" cy="12" r="3" /><path d="M6.3 6.3a8 8 0 0 0 0 11.4M17.7 17.7a8 8 0 0 0 0-11.4" />
+    <path d="M9 11l2.5 2.5L16 8" /><circle cx="12" cy="12" r="9" />
   </svg>
 )
 const Person = () => (
@@ -30,10 +30,12 @@ const Spark = () => (
 
 const baseItems = [
   { to: '/', label: 'Games', Icon: Football, end: true },
-  { to: '/live', label: 'Live', Icon: Live, end: false },
-  // Ask Edge takes the middle slot rather than Props: it is the feature people
-  // reach for repeatedly, and one-handed reach matters most in the centre.
-  // Props keeps its own page and sits in the row under the header.
+  // Live games are on the Games board now, at the top of it, so a Live tab
+  // only ever led to a page that was empty most of the week. The slot goes to
+  // the record instead — the thing that makes a projection worth reading.
+  { to: '/results', label: 'Results', Icon: Ticked, end: false },
+  // Ask Edge takes the middle slot: it is the feature people reach for
+  // repeatedly, and one-handed reach matters most in the centre.
   { to: '/ask', label: 'Ask Edge', Icon: Spark, end: false },
   { to: '/best-bets', label: 'Edges', Icon: Bars, end: false },
 ]
@@ -43,7 +45,7 @@ const baseItems = [
  * 768px tablet has — squeezing it in there pushed the page 8px wide — so the
  * bottom bar covers everything up to that width and the top bar takes over
  * above it. The page reserves matching bottom padding so it never covers
- * content. News, Results, Parlay and FAQ sit in the row under the header.
+ * content. News, Leaderboard, Parlay and FAQ sit in the row under the header.
  */
 export function BottomNav() {
   const { user } = useSession()

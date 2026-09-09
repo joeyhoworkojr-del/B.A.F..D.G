@@ -3,21 +3,21 @@ import { useSession } from '../../session/SessionProvider'
 import { can } from '../../session/powers'
 
 /**
- * News, Results, Parlay and FAQ don't fit in the five-slot bottom bar, so below
+ * Leaderboard, News, Parlay and FAQ don't fit in the five-slot bottom bar, so below
  * `lg` they get an explicit row rather than being unreachable.
  */
 export function MobileMoreLinks() {
   const { user, entitlements } = useSession()
   const canStaff = can(entitlements, 'view_staff')
+  // Props and the week ahead are not listed here any more: both are on the
+  // homepage — player projections under the featured game, the week in the day
+  // chips — so a link to each was a second route to the same content.
   const links = [
-    { to: '/props', label: 'Props' },
-    { to: '/upcoming', label: 'Upcoming' },
     // Settings — and with it Log out — must be reachable on a phone without
     // hunting. The top-bar avatar menu is desktop-only.
     ...(user ? [{ to: '/account', label: 'Settings' }] : []),
     { to: '/leaderboard', label: 'Leaderboard' },
     { to: '/news', label: 'News' },
-    { to: '/results', label: 'Results' },
     { to: '/parlay', label: 'Parlay' },
     { to: '/faq', label: 'FAQ' },
     // The top bar only shows Staff from `lg` up, which left an admin on a

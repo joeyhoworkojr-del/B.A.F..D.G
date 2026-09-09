@@ -94,6 +94,81 @@ const today = league => ({
   })),
 })
 
+/**
+ * The merged homepage board: both leagues, grouped by the day a game is played.
+ *
+ * Today carries the college slate (one of them live); tomorrow carries a single
+ * NFL game. That is the shape the homepage is built for — a day with football
+ * on it, and a next day that has something different on it.
+ */
+const board = () => {
+  const nfl = {
+    game: mkGame({
+      league: 'nfl', event_id: '401800', home: 'Chiefs', away: 'Ravens',
+      home_abbr: 'KC', away_abbr: 'BAL', state: 'pre', detail: 'Thu 8:20 PM',
+      kickoff: inHours(26), market_spread: -3.5, market_over_under: 47.5,
+      market_home_ml: -180, market_away_ml: 150, market_details: 'KC -3.5',
+    }),
+    mapped: true, league: 'nfl', projected: true,
+    model: mkModel({ home_win_prob: 0.64, away_win_prob: 0.36, home_expected: 25.9,
+                     away_expected: 22.4, total_estimate: 48.3, over_prob: 0.53,
+                     under_prob: 0.47, home_cover_prob: 0.55, total_line: 47.5 }),
+    edges: [mkEdge({ market: 'Moneyline', selection: 'KC ML', model_prob: 0.64, edge_pp: 5.1, rating: 'B' })],
+  }
+  const days = [
+    {
+      date: '2026-09-12', label: 'Today',
+      games: today('ncaaf').games.map(g => ({ ...g, league: 'ncaaf', projected: true })),
+      live: today('ncaaf').games.filter(g => g.game.state === 'in').length,
+      by_league: { nfl: 0, ncaaf: today('ncaaf').games.length },
+    },
+    {
+      date: '2026-09-13', label: 'Tomorrow', games: [nfl],
+      live: 0, by_league: { nfl: 1, ncaaf: 0 },
+    },
+  ]
+  return {
+    days,
+    live_count: days.reduce((n, d) => n + d.live, 0),
+    total_games: days.reduce((n, d) => n + d.games.length, 0),
+    predicted: days.reduce((n, d) => n + d.games.length, 0),
+    leagues: ['nfl', 'ncaaf'],
+    source_ok: true, fetched_at: iso(), market_source: 'ESPN BET', note: '',
+  }
+}
+
+/** Player projections for the homepage strip and the props page. */
+const gameProps = {
+  league: 'ncaaf', event_id: '401752', status: 'pre',
+  home: 'Florida State', away: 'Clemson', home_abbr: 'FSU', away_abbr: 'CLEM',
+  fetched_at: iso(), source: 'ESPN', source_ok: true,
+  model_version: '2026.09.1-gridiron',
+  projected_home_points: 27.4, projected_away_points: 24.9,
+  lines_available: false,
+  lines_note: 'No posted prop lines — these are projections, not a market comparison.',
+  projections: [
+    { athlete_id: 'a1', player: 'Cade Klubnik', team_abbr: 'CLEM', position: 'QB',
+      market: 'pass_yards', label: 'Pass yards', projection: 268.4, season_avg: 254.1,
+      games_played: 9, actual: false },
+    { athlete_id: 'a2', player: 'Thomas Castellanos', team_abbr: 'FSU', position: 'QB',
+      market: 'pass_yards', label: 'Pass yards', projection: 231.7, season_avg: 220.5,
+      games_played: 9, actual: false },
+    { athlete_id: 'a3', player: 'Phil Mafah', team_abbr: 'CLEM', position: 'RB',
+      market: 'rush_yards', label: 'Rush yards', projection: 84.2, season_avg: 79.8,
+      games_played: 9, actual: false },
+    { athlete_id: 'a4', player: 'Lawrance Toafili', team_abbr: 'FSU', position: 'RB',
+      market: 'rush_yards', label: 'Rush yards', projection: 61.5, season_avg: 58.9,
+      games_played: 9, actual: false },
+    { athlete_id: 'a5', player: 'Antonio Williams', team_abbr: 'CLEM', position: 'WR',
+      market: 'rec_yards', label: 'Receiving yards', projection: 72.9, season_avg: 68.4,
+      games_played: 9, actual: false },
+    { athlete_id: 'a6', player: 'Malik Benson', team_abbr: 'FSU', position: 'WR',
+      market: 'rec_yards', label: 'Receiving yards', projection: 54.1, season_avg: 51.2,
+      games_played: 9, actual: false },
+  ],
+  note: '',
+}
+
 const accuracy = {
   overall: {
     games_graded: 128,
@@ -250,4 +325,4 @@ const myPicks = {
   picks: [],
 }
 
-module.exports = { iso, inHours, mkGame, mkModel, mkEdge, today, accuracy, bestBets, bestParlay, plays, news, entitlements, props, session, community, leaderboard, myPicks }
+module.exports = { iso, inHours, mkGame, mkModel, mkEdge, today, board, gameProps, accuracy, bestBets, bestParlay, plays, news, entitlements, props, session, community, leaderboard, myPicks }
