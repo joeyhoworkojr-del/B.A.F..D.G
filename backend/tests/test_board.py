@@ -93,15 +93,54 @@ def test_a_completely_empty_board_says_so_rather_than_rendering_blank():
     assert "No games scheduled" in data["note"]
 
 
+def _day_containing(data, event_id):
+    """The day bucket holding a given game, so an assertion about ordering
+    does not depend on which ET day the test happens to run on."""
+    for day in data["days"]:
+        if any(e["game"]["event_id"] == event_id for e in day["games"]):
+            return day
+    raise AssertionError(f"{event_id} is not on the board at all")
+
+
 def test_live_games_sort_above_everything_else_that_day():
     soon = game("1", "nfl", state="pre", hours=1)
     playing = game("2", "nfl", state="in", hours=-1)
     with board_with({"nfl": [soon, playing]}, {}):
         data = get_board()
 
-    first_day = data["days"][0]["games"]
-    assert first_day[0]["game"]["event_id"] == "2"     # the live one
+    live_day = _day_containing(data, "2")
+    assert live_day["games"][0]["game"]["event_id"] == "2"   # the live one
     assert data["live_count"] == 1
+
+
+def test_a_game_still_being_played_after_et_midnight_stays_on_the_board():
+    """
+    A late kickoff crosses ET midnight while it is still being played.
+
+    Grouping it by the day it kicked off put it on yesterday, and yesterday is
+    dropped — so a game in progress disappeared from the board at exactly the
+    moment people were watching it.
+    """
+    started_yesterday = game("2", "nfl", state="in", hours=-4)
+    with board_with({"nfl": [started_yesterday]}, {}):
+        data = get_board()
+
+    assert data["live_count"] == 1
+    day = _day_containing(data, "2")
+    assert day["label"] == "Today"
+
+
+def test_a_game_that_finished_before_today_is_still_left_off():
+    # The rule that live games are always current must not quietly readmit
+    # last week's results to a board about what to watch.
+    old_game = game("9", "nfl", state="post", hours=-72)
+    with board_with({"nfl": [old_game]}, {}):
+        data = get_board()
+
+    assert all(
+        e["game"]["event_id"] != "9"
+        for day in data["days"] for e in day["games"]
+    )
 
 
 def test_games_are_grouped_by_the_day_they_are_played():
