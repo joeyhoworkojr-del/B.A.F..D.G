@@ -1382,7 +1382,11 @@ async def board(days: int = BOARD_LOOKAHEAD_DAYS) -> dict:
     grouped: dict[str, list[dict]] = {}
     predicted = 0
     for league, game in collected:
-        day = _et_day(game.kickoff) or today
+        # A game in progress belongs to today whatever day it kicked off on.
+        # A late kickoff crosses ET midnight while it is still being played,
+        # and grouping it by kickoff dropped it off the board entirely at
+        # exactly the moment people were watching it.
+        day = today if game.state == "in" else (_et_day(game.kickoff) or today)
         if day < today:
             continue
         if predicted < BOARD_MAX_PREDICTED:
