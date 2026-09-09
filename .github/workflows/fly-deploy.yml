@@ -66,13 +66,16 @@ jobs:
         continue-on-error: true          # never fail a good deploy over a report
         run: |
           sleep 15   # let the new machine finish starting
-          echo "### Optional integrations" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
+          # tee, not >>: the step summary is not readable from the API, so a
+          # report that only lands there cannot answer "is the college feed
+          # actually working" for anyone who is not clicking through the web UI.
+          echo "### Optional integrations" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "" | tee -a "$GITHUB_STEP_SUMMARY"
 
           ai=$(curl -sS --max-time 20 https://statedge-api.fly.dev/api/v1/ai/status || echo '{}')
           sources=$(curl -sS --max-time 20 https://statedge-api.fly.dev/api/v1/data/sources || echo '{}')
 
-          python3 - "$ai" "$sources" >> "$GITHUB_STEP_SUMMARY" <<'PY'
+          python3 - "$ai" "$sources" <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
           import json, sys
 
           def load(raw):
@@ -95,7 +98,12 @@ jobs:
               "Edge AI (ANTHROPIC_API_KEY)",
               ai.get("available") is not None and ai.get("model"),
               ai.get("available"),
-              ai.get("reason") or f"${budget.get('remaining_usd', '?')} of "
+              # The provider's own last failure first: when Edge AI is
+              # refusing to answer, that sentence is the whole diagnosis, and
+              # "sign in to ask" — all an unauthenticated probe can otherwise
+              # report — is not.
+              ai.get("last_error") or ai.get("reason")
+              or f"${budget.get('remaining_usd', '?')} of "
                                   f"${budget.get('daily_limit_usd', '?')} left today",
           )
 
