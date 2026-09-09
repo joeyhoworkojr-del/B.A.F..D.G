@@ -90,21 +90,31 @@ jobs:
           print("| --- | --- | --- | --- |")
 
           def row(name, configured, working, note):
-              tick = lambda v: "yes" if v else "no"
+              # None means "not established here" — different from a no, and
+              # printing it as one would be a claim this report cannot make.
+              tick = lambda v: "unknown" if v is None else ("yes" if v else "no")
               print(f"| {name} | {tick(configured)} | {tick(working)} | {note} |")
 
           budget = ai.get("budget") or {}
+          # The provider's last failure is recorded in the process that made
+          # the request, so a deploy clears it and this report — which runs
+          # fifteen seconds later — can never see one. Say that, rather than
+          # printing "sign in to ask", which is all an unauthenticated probe
+          # can be told and says nothing about whether the key works.
+          if ai.get("last_error"):
+              ai_note = ai["last_error"]
+          elif ai.get("available"):
+              ai_note = (f"key present, ${budget.get('daily_limit_usd', '?')}/day cap; "
+                         "no request made since this machine started")
+          else:
+              ai_note = ai.get("reason") or "no key"
           row(
               "Edge AI (ANTHROPIC_API_KEY)",
-              ai.get("available") is not None and ai.get("model"),
-              ai.get("available"),
-              # The provider's own last failure first: when Edge AI is
-              # refusing to answer, that sentence is the whole diagnosis, and
-              # "sign in to ask" — all an unauthenticated probe can otherwise
-              # report — is not.
-              ai.get("last_error") or ai.get("reason")
-              or f"${budget.get('remaining_usd', '?')} of "
-                                  f"${budget.get('daily_limit_usd', '?')} left today",
+              bool(ai.get("model")),
+              # A key being present is not the same as it working, and this
+              # probe cannot tell the difference without spending money.
+              None,
+              ai_note,
           )
 
           for provider in sources.get("providers") or []:
