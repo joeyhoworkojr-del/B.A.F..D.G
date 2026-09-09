@@ -234,3 +234,94 @@ def test_the_accuracy_endpoint_survives_a_ratings_failure():
 
     assert response.status_code == 200
     assert "performance" in response.json()
+
+
+def test_a_row_written_before_a_column_existed_does_not_break_the_record():
+    """
+    The Results page went blank in production over this.
+
+    A stored row is whatever the build that wrote it wrote. When a later build
+    reads a column those rows never had, subscripting raises — and because
+    `accuracy_summary` was the one ledger call without a failure guard, a
+    single old row took down the whole page whose job is showing the record.
+    """
+    class PartialStore:
+        backend = "redis"
+        durable = True
+
+        def rows(self, graded=True):
+            return [{
+                "league": "nfl", "event_id": "1", "home_won": 1,
+                "model_home_prob": 0.6, "model_version": "2026.09.1",
+                # book_home_prob and crowd_home_prob simply are not here.
+            }]
+
+        def count(self, graded=False):
+            return 0
+
+    with patch.object(ledger, "_get_store", lambda: PartialStore()):
+        summary = ledger.accuracy_summary()
+
+    # The row that can be scored is scored...
+    assert summary["overall"]["games_graded"] == 1
+    assert summary["overall"]["model"]["n"] == 1
+    # ...and the ones with no data report nothing rather than a made-up zero.
+    assert summary["overall"]["book"] is None
+    assert summary["overall"]["crowd"] is None
+
+
+def test_unreadable_storage_says_so_instead_of_reporting_an_empty_record():
+    """
+    An empty scorecard and an unreadable one look identical, and only one of
+    them is a claim about how the model has done.
+    """
+    class BrokenStore:
+        @property
+        def backend(self):
+            raise RuntimeError("storage is unreachable")
+
+        @property
+        def durable(self):
+            raise RuntimeError("storage is unreachable")
+
+        def rows(self, graded=True):
+            raise RuntimeError("storage is unreachable")
+
+        def count(self, graded=False):
+            raise RuntimeError("storage is unreachable")
+
+    with patch.object(ledger, "_get_store", lambda: BrokenStore()):
+        summary = ledger.accuracy_summary()
+
+    assert summary["unavailable"] is True
+    assert summary["overall"]["games_graded"] == 0
+    # The fallback runs precisely when something is already broken, so it must
+    # not itself depend on the storage that just failed.
+    assert summary["storage_backend"] == "unavailable"
+    assert summary["storage_durable"] is False
+
+
+def test_the_results_endpoint_still_answers_when_storage_is_down():
+    class BrokenStore:
+        @property
+        def backend(self):
+            raise RuntimeError("down")
+
+        @property
+        def durable(self):
+            raise RuntimeError("down")
+
+        def rows(self, graded=True):
+            raise RuntimeError("down")
+
+        def count(self, graded=False):
+            raise RuntimeError("down")
+
+    with patch.object(ledger, "_get_store", lambda: BrokenStore()):
+        response = client.get("/api/v1/accuracy")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["overall"]["games_graded"] == 0
+    assert body["performance"]["total_picks"] == 0
+    assert body["recent"] == []

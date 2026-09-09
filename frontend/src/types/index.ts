@@ -449,6 +449,14 @@ export interface AccuracyResponse {
   storage_backend?: string
   /** False when the record does not survive a deploy. */
   storage_durable?: boolean
+  /**
+   * True when the ledger could not be read at all.
+   *
+   * An empty scorecard and an unreadable one are identical on the wire, and
+   * only one of them is a claim about how the model has done. The page must
+   * not present the second as the first.
+   */
+  unavailable?: boolean
   performance: PerformanceOut
   recent: GradedRow[]
 }

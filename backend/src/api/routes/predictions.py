@@ -1403,6 +1403,43 @@ async def board(days: int = BOARD_LOOKAHEAD_DAYS) -> dict:
 
 _LEAGUE_FLAGS = {"nfl": "🏈", "ncaaf": "🏈"}
 
+# The three markets a football bettor actually shops. Ordered as they are read.
+MARKET_KINDS = ("moneyline", "spread", "total")
+
+
+def _market_kind(market: str) -> str:
+    """Which of the three markets an edge label belongs to."""
+    m = (market or "").lower()
+    if "total" in m or m.startswith("over") or m.startswith("under"):
+        return "total"
+    if "spread" in m:
+        return "spread"
+    if "moneyline" in m or " ml" in m:
+        return "moneyline"
+    return "other"
+
+
+def _best_per_market(edges: list[dict]) -> list[dict]:
+    """
+    The strongest qualifying edge in each of moneyline, spread and total.
+
+    Taking a game's top two edges overall meant one market could crowd the
+    others out entirely: a game with two strong total signals would never
+    surface its moneyline, however good that was. Someone shopping a spread
+    wants the spread pick, not whichever market happened to disagree loudest.
+    """
+    best: dict[str, dict] = {}
+    for e in edges:
+        if e.get("rating") not in ("A", "B"):
+            continue
+        kind = _market_kind(e.get("market", ""))
+        if kind not in MARKET_KINDS:
+            continue
+        current = best.get(kind)
+        if current is None or (e.get("edge_pp") or 0) > (current.get("edge_pp") or 0):
+            best[kind] = e
+    return [best[k] for k in MARKET_KINDS if k in best]
+
 # The product is focused on American football: the NFL and NCAA FBS.
 FOCUS_LEAGUES = ("nfl", "ncaaf")
 
@@ -1430,9 +1467,7 @@ async def best_bets() -> BestBetsResponse:
             entry = await _slate_entry(lg, g, poly)
             if not entry["mapped"]:
                 continue
-            for e in entry["edges"][:2]:   # top two edges per game, A/B only
-                if e["rating"] not in ("A", "B"):
-                    continue
+            for e in _best_per_market(entry["edges"]):
                 bets.append(BestBetOut(
                     fixture_id=f"{lg}:{g.event_id}",
                     league=lg, event_id=g.event_id,
@@ -1440,6 +1475,7 @@ async def best_bets() -> BestBetsResponse:
                     home=g.home, away=g.away,
                     home_flag=flag, away_flag=flag,
                     market=f"{label} · {e['market']}",
+                    market_kind=_market_kind(e["market"]),
                     selection=e["selection"],
                     model_prob=e["model_prob"], market_prob=e["market_prob"],
                     edge_pp=e["edge_pp"], rating=e["rating"],
