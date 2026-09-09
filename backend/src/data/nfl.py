@@ -72,9 +72,33 @@ LEAGUE_AVG_PPG = 22.3
 # Defaults derive from Elo; overrides capture style (e.g. a team can be good
 # via defense with a mediocre offense). These drive matchup-specific totals.
 
-_OFF_COEF = 0.045   # points of offense per Elo point above 1500
-_DEF_COEF = 0.035   # points of defense per Elo point above 1500
-# (off+def)/2 per Elo point = 0.04 → margin ≈ elo_diff / 25, the standard scale
+# Calibrated against 799 completed regular-season games (2023-25, nflverse),
+# comparing the model's projected margin with both the closing line and the
+# result. `margin = elo_diff * (off + def) / 2 + home field`, so this pair of
+# numbers sets how far apart two teams can be — and that turned out to be the
+# home-field problem.
+#
+# At the old 0.040 the model's projected margins had sd 4.19 against the
+# market's 5.88: team differences were compressed, so the fixed ~2-point home
+# bump decided far more games than it should. The model made the home side
+# favourite in 68% of games, against 60% for the market and 54% actual.
+#
+# Widening to 0.050 is not a trade of accuracy for balance — it is better on
+# both. RMSE against real margins by scale factor:
+#
+#     0.030  71.0% home  RMSE 13.57
+#     0.040  68.0% home  RMSE 13.44   <- previous
+#     0.050  64.1% home  RMSE 13.40   <- minimum
+#     0.060  61.0% home  RMSE 13.43
+#     0.070  58.8% home  RMSE 13.55
+#
+# Past 0.050 accuracy degrades again, so the fit is not simply "wider is
+# better". The residual gap to the market's 60% is rating quality, not scale:
+# these priors correlate 0.66 with the closing line, and no rescaling fixes
+# that — better ratings do.
+_OFF_COEF = 0.05625   # points of offense per Elo point above 1500
+_DEF_COEF = 0.04375   # points of defense per Elo point above 1500
+# (off+def)/2 per Elo point = 0.05 → margin ≈ elo_diff / 20
 
 _STYLE_OVERRIDES: dict[str, tuple[float, float]] = {
     # code: (off_delta, def_delta) applied on top of the Elo-derived baseline
