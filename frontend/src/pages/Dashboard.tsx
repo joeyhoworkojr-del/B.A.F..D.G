@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { DataFreshnessBadge } from '../components/game/DataFreshnessBadge'
 import { PropsStrip } from '../components/props/PropsStrip'
+import { NewsStrip } from '../components/news/NewsStrip'
 import { FaqList } from '../components/faq/FaqList'
 import { oddsSourceSentence } from '../components/OddsSource'
 import { FAQ, FAQ_PREVIEW_IDS } from '../content/faq'
@@ -547,6 +548,8 @@ export function Dashboard() {
         {featured && (
           <PropsStrip league={featured.league} eventId={featured.game.event_id} />
         )}
+
+        <NewsStrip />
 
         <section aria-labelledby="faq-preview" className="pt-2">
           <div className="mb-2 flex items-end justify-between gap-3">
