@@ -233,7 +233,26 @@ export interface AllScoreboardsOut {
   fetched_at: string
 }
 
+/**
+ * A game where the model's own read disagrees with the market about the
+ * winner, by more than a coin flip. Absent when they agree, when no line is
+ * posted, or when the disagreement is too slight to be worth saying.
+ */
+export interface UpsetOut {
+  side: 'home' | 'away'
+  team: string
+  /** What the model gives this underdog, in this game, before market anchoring. */
+  model_prob: number
+  /** What the market gives the same side. */
+  market_prob: number
+  /** How the RULE has done across many games. Never a claim about this one. */
+  rule_hit_rate: number
+  /** How often market underdogs win in general, for comparison. */
+  rule_base_rate: number
+}
 export interface TodayModelOut {
+  /** Present only when the model disagrees with the market on the winner. */
+  upset?: UpsetOut | null
   home_win_prob: number
   away_win_prob: number
   calibrated_home_win?: number
@@ -302,6 +321,7 @@ export interface PolymarketOut {
   url: string
   title: string
 }
+
 
 export interface TodayGameOut {
   game: LiveGameOut

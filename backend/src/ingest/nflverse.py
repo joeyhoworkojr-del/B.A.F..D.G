@@ -35,7 +35,11 @@ import httpx
 log = logging.getLogger(__name__)
 
 RELEASE_BASE = "https://github.com/nflverse/nflverse-data/releases/download"
-PLAYER_WEEK = "player_stats/stats_player_week_{season}.csv"
+# Verified against the live release list. The previous "player_stats/..."
+# prefix 404s — nflverse publishes weekly player stats under "stats_player",
+# and `_download_csv` reports a 404 as "not published yet", so this failed
+# silently for every season instead of loudly for a wrong path.
+PLAYER_WEEK = "stats_player/stats_player_week_{season}.csv"
 TEAM_WEEK = "stats_team/stats_team_week_{season}.csv"
 
 # The weekly files are rebuilt after each slate, not during one, so a long TTL
@@ -170,6 +174,60 @@ def _lock_for(key: str) -> asyncio.Lock:
     if lock is None:
         lock = _locks[key] = asyncio.Lock()
     return lock
+
+
+# Some release assets are a season of daily snapshots — the depth charts run to
+# hundreds of thousands of rows — and only a handful of those rows are ever
+# wanted. Streaming past the rest keeps memory flat instead of raising a cap
+# that exists precisely because this container has 512 MB.
+STREAM_MAX_BYTES = 400 * 1024 * 1024
+
+
+async def stream_csv_rows(path: str, keep) -> tuple[Optional[list[dict]], str]:
+    """
+    Download a release asset row by row, retaining only rows `keep` accepts.
+
+    Memory is bounded by what is kept, not by the size of the file. Returns
+    (rows, note); rows is None on failure and the note always says what
+    happened.
+    """
+    url = f"{RELEASE_BASE}/{path}"
+    header: Optional[list[str]] = None
+    kept: list[dict] = []
+    pending = ""
+    seen = 0
+    try:
+        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT, follow_redirects=True) as client:
+            async with client.stream("GET", url) as resp:
+                if resp.status_code == 404:
+                    return None, "not published yet"
+                if resp.status_code >= 400:
+                    return None, f"HTTP {resp.status_code}"
+                async for chunk in resp.aiter_bytes():
+                    seen += len(chunk)
+                    if seen > STREAM_MAX_BYTES:
+                        return None, f"exceeded {STREAM_MAX_BYTES // (1024 * 1024)} MB cap"
+                    pending += chunk.decode("utf-8", errors="replace")
+                    lines = pending.split("\n")
+                    # The last piece may be half a row; hold it for the next chunk.
+                    pending = lines.pop()
+                    for line in lines:
+                        if not line.strip():
+                            continue
+                        values = next(csv.reader([line]), None)
+                        if values is None:
+                            continue
+                        if header is None:
+                            header = values
+                            continue
+                        row = dict(zip(header, values))
+                        if keep(row):
+                            kept.append(row)
+    except httpx.HTTPError as exc:
+        return None, f"request failed: {type(exc).__name__}"
+    if header is None:
+        return None, "empty file"
+    return kept, "ok"
 
 
 async def _download_csv(path: str) -> tuple[Optional[str], str]:

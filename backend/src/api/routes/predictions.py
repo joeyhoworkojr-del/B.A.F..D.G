@@ -47,6 +47,7 @@ from src.ingest.espn import (
 from src.ingest.polymarket import fetch_league_markets, match_game
 from src.ingest.weather import WeatherReport, fetch_gridiron_weather, fetch_weather
 from src.predict.adjustments import (
+    Adjustment,
     mlb_lineup_adjustments,
     mlb_weather_adjustments,
     nfl_lineup_adjustments,
@@ -60,6 +61,7 @@ from src.predict.gridiron import LEAGUE_PARAMS as GRIDIRON_PARAMS
 from src.predict.gridiron import live_projection, predict_nfl_game, win_probability
 from src.predict.soccer import predict_match
 from src.predict import priors
+from src.predict import quarterback as qb_model
 from src.chat import events as chat_events
 from src.track import ledger, ratings, win_history
 from src.value.edge import american_to_decimal
@@ -352,6 +354,25 @@ async def _predict_gridiron(req: NFLPredictRequest, league: str) -> NFLPredictRe
                 sport=league,
             ))
 
+    # ── Quarterback change ──
+    # The largest single roster factor in football, and one a ratings model
+    # misses entirely: a team's rating reflects whoever has been playing, so a
+    # change of starter is invisible to it until weeks of results catch up.
+    # Silent when the usual starter is playing, which is most games — this
+    # adjusts the exceptions rather than nudging every projection.
+    if league == "nfl" and req.apply_lineups:
+        home_qb, away_qb = await qb_model.changes_for(home_code, away_code)
+        for change, is_home in ((home_qb, True), (away_qb, False)):
+            if change is None:
+                continue
+            adjustments.append(Adjustment(
+                label=f"{change.team} QB change",
+                detail=change.detail,
+                source="lineup",
+                home_pts_delta=change.points if is_home else 0.0,
+                away_pts_delta=0.0 if is_home else change.points,
+            ))
+
     if league == "mlb":
         result = predict_mlb_game(
             home_code, away_code,
@@ -571,6 +592,75 @@ def _map_code(league: str, abbr: str) -> Optional[str]:
         return code
     except KeyError:
         return None
+
+
+# ─── Upset detection ──────────────────────────────────────────────────────────
+# A game where the model's own read disagrees with the market about who wins.
+#
+# Detection deliberately uses the RAW model probability, not the
+# market-anchored one: anchoring exists to stop the headline number being
+# overconfident, and a number already pulled halfway to the market cannot be
+# used to measure disagreement with it.
+#
+# The threshold is fitted, not chosen. Over 799 completed games (2023-25),
+# market underdogs won 31.8% of the time. Flagging every disagreement means
+# calling an upset in 22% of games; requiring the model to give the underdog
+# at least this much cuts that to about one game in ten, and those underdogs
+# won 47%:
+#
+#     min prob   flagged   share of games   underdog won
+#       0.50       173          21.7%           43.9%
+#       0.55       103          12.9%           45.6%
+#       0.58        83          10.4%           47.0%   <- adopted
+#       0.60        60           7.5%           50.0%
+#
+# Lower and the board cries upset constantly, which is worth nothing to a
+# reader. 47% against a 31.8% base rate is a real signal; it is a base rate
+# across many games and must never be shown as the chance for one of them.
+UPSET_MIN_DOG_PROB = 0.58
+
+# Measured hit rate of flagged upsets, for labelling only. It is the record of
+# the rule, not a projection for any single game, and the UI must say which.
+UPSET_HISTORICAL_HIT_RATE = 0.47
+UPSET_BASE_RATE = 0.318
+
+
+def _upset_read(game, home_win_raw: float) -> Optional[dict]:
+    """
+    Whether the model disagrees with the market about the winner, and by enough
+    to be worth saying. None when the market posts no line, when the two agree,
+    or when the disagreement is a coin flip.
+    """
+    market_home_prob = _no_vig_home_prob(game)
+    if market_home_prob is None and game.market_spread is not None:
+        market_home_prob = _spread_to_home_prob(game.market_spread, game.league)
+    if market_home_prob is None:
+        return None
+    # A pick'em has no underdog to be wrong about.
+    if abs(market_home_prob - 0.5) < 0.02:
+        return None
+
+    market_likes_home = market_home_prob > 0.5
+    model_likes_home = home_win_raw > 0.5
+    if market_likes_home == model_likes_home:
+        return None
+
+    dog_prob = (1.0 - home_win_raw) if market_likes_home else home_win_raw
+    if dog_prob < UPSET_MIN_DOG_PROB:
+        return None
+
+    return {
+        "side": "away" if market_likes_home else "home",
+        "team": game.away_abbr if market_likes_home else game.home_abbr,
+        # The model's own read on this game, before market anchoring.
+        "model_prob": round(dog_prob, 4),
+        "market_prob": round(
+            (1.0 - market_home_prob) if market_likes_home else market_home_prob, 4),
+        # Labelled separately on purpose: a record across many games is not a
+        # probability for this one.
+        "rule_hit_rate": UPSET_HISTORICAL_HIT_RATE,
+        "rule_base_rate": UPSET_BASE_RATE,
+    }
 
 
 # How far to shrink the model's headline win probability toward the no-vig
@@ -862,6 +952,9 @@ async def _slate_entry(
             "total_line": pred.total_line,
             "conditions": [c.model_dump() for c in pred.conditions],
             "live": False,
+            # Present only when the model actually disagrees with the market
+            # about the winner, by more than a coin flip.
+            "upset": _upset_read(g, pred.home_win_prob),
         }
 
         # ── Live in-game update: revise win prob + projected score from the
