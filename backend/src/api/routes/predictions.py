@@ -615,6 +615,99 @@ async def _slate_entries(league: str, games: list, poly, *, snapshot: bool = Fal
     return list(await asyncio.gather(*(one(g) for g in games)))
 
 
+# ─── Live picks ───────────────────────────────────────────────────────────────
+# A game in progress where the live model reads the result differently from the
+# posted price.
+#
+# The trap this is built around: a sportsbook feed does not necessarily reprice
+# in play. If the posted moneyline is still the pre-game one while a team is
+# three scores down, comparing a live model against it manufactures an enormous
+# edge out of nothing but a stale number. So an edge is only ever claimed when
+# the book has demonstrably moved since kickoff — measured against the frozen
+# pre-game snapshot, which is the one record of what the price was before the
+# game started.
+#
+# Where it has not moved, the model's live read is still shown. It is simply
+# not dressed up as a disagreement with a market that is not participating.
+LIVE_MIN_EDGE_PP = 6.0
+
+# Whether the book is pricing the game being played is decided by comparing how
+# far it has moved since kickoff against how far the *model* has moved. A book
+# that is genuinely in-play tracks the game; one republishing its pre-game line
+# barely moves at all while the model swings fifty points.
+#
+# A fixed "has it moved by N points" test is not enough — the vig and the
+# rounding between a stored pre-game probability and a freshly derived one can
+# clear a couple of points on their own, which is enough to call a completely
+# stale line live and invent a fifty-point edge out of it.
+LIVE_MARKET_FOLLOW_RATIO = 0.35
+
+# Below this the model itself has barely moved, so there is nothing for the
+# book to have followed and nothing worth claiming either way.
+LIVE_MIN_MODEL_MOVE_PP = 5.0
+
+# Live probabilities are recalculated from the score and clock. They are never
+# snapshotted and never graded, so this carries no track record — unlike the
+# pre-game record, which does. The UI has to say so.
+LIVE_PICKS_GRADED = False
+
+
+def _live_read(game, live_home_win: float, snapshot: Optional[dict]) -> Optional[dict]:
+    """
+    The model's live read on a game in progress, and whether the book is
+    actually pricing against it.
+    """
+    market_home = _no_vig_home_prob(game)
+    if market_home is None and game.market_spread is not None:
+        market_home = _spread_to_home_prob(game.market_spread, game.league)
+    if market_home is None:
+        return None
+
+    pregame_book = (snapshot or {}).get("book_home_prob")
+    pregame_model = (snapshot or {}).get("model_home_prob")
+    if pregame_book is None or pregame_model is None:
+        # No frozen pre-game price to compare against, so whether the book has
+        # repriced cannot be established. Unknown is not "yes".
+        repriced = False
+        model_move = market_move = None
+    else:
+        model_move = abs(live_home_win - float(pregame_model)) * 100.0
+        market_move = abs(market_home - float(pregame_book)) * 100.0
+        repriced = (
+            model_move >= LIVE_MIN_MODEL_MOVE_PP
+            and market_move >= LIVE_MARKET_FOLLOW_RATIO * model_move
+        )
+
+    model_side_home = live_home_win >= 0.5
+    model_prob = live_home_win if model_side_home else 1.0 - live_home_win
+    market_prob = market_home if model_side_home else 1.0 - market_home
+    edge_pp = (model_prob - market_prob) * 100.0
+
+    return {
+        "team": game.home_abbr if model_side_home else game.away_abbr,
+        "side": "home" if model_side_home else "away",
+        "model_prob": round(model_prob, 4),
+        "market_prob": round(market_prob, 4),
+        "edge_pp": round(edge_pp, 1),
+        # The two facts that decide whether this is a pick or just a reading.
+        "market_repriced": repriced,
+        "actionable": bool(repriced and edge_pp >= LIVE_MIN_EDGE_PP),
+        # Shown so the claim can be checked rather than taken on trust.
+        "model_move_pp": None if model_move is None else round(model_move, 1),
+        "market_move_pp": None if market_move is None else round(market_move, 1),
+        "note": (
+            ""
+            if repriced
+            else "The posted price has barely moved since kickoff while the game "
+                 "has, so this is the model's read rather than an edge against a "
+                 "live market."
+        ),
+        # Said here so the UI cannot quietly imply otherwise: in-game readings
+        # are not snapshotted and not graded, and are no part of the record.
+        "graded": LIVE_PICKS_GRADED,
+    }
+
+
 # ─── Upset detection ──────────────────────────────────────────────────────────
 # A game where the model's own read disagrees with the market about who wins.
 #
@@ -1017,6 +1110,12 @@ async def _slate_entry(
                 "state_aware": live["state_aware"],
                 "red_zone": live["red_zone"],
                 "goal_to_go": live["goal_to_go"],
+                # Only meaningful for a game in progress, and only an edge when
+                # the book has actually repriced since kickoff.
+                "live_read": _live_read(
+                    g, live["home_win"],
+                    ledger.get_snapshot(f"{league}:{g.event_id}"),
+                ),
             })
             # A Stat Edge line in the game's chat, but only when the move
             # earns one — chat_events decides, and mostly decides not to.
