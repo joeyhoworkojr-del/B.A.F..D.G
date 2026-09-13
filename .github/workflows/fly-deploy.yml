@@ -117,6 +117,21 @@ jobs:
               ai_note,
           )
 
+          # Scaling out is only safe when state is shared. Sessions and the
+          # graded ledger live in this store: with per-machine SQLite, a second
+          # machine would log people out at random and split the track record.
+          storage = (sources.get("storage") or {})
+          backend = storage.get("backend") or "unknown"
+          row(
+              f"Ledger storage ({backend})",
+              backend != "unknown",
+              storage.get("durable"),
+              "shared across machines — safe to scale out"
+              if backend in ("redis", "postgres")
+              else "PER-MACHINE — do not run more than one machine until "
+                   "REDIS_URL or DATABASE_URL is set",
+          )
+
           for provider in sources.get("providers") or []:
               if not provider.get("requires_key"):
                   continue
