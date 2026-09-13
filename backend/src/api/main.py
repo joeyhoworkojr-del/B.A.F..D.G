@@ -30,6 +30,7 @@ from src.api.routes.live import router as live_router
 from src.api.schemas import HealthResponse
 from src.config import settings
 from src.predict import priors
+from src.predict import quarterback as qb_model
 
 # Built frontend (Vite dist). Absent in dev → API-only, unchanged behavior.
 STATIC_DIR = Path(
@@ -71,6 +72,9 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     # a cold start would otherwise pay a multi-megabyte download inside
     # someone's page load, and a feed outage would stall it entirely.
     tasks.append(asyncio.create_task(priors.refresh_forever()))
+    # Same reasoning for the quarterback feeds, which are larger still and are
+    # read once per NFL game on a board.
+    tasks.append(asyncio.create_task(qb_model.refresh_forever()))
     yield
     for task in tasks:
         task.cancel()

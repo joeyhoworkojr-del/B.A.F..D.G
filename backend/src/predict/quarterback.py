@@ -20,6 +20,7 @@ rating only escapes the mean in proportion to how much evidence sits behind it.
 """
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import logging
@@ -55,6 +56,17 @@ MAX_SWING_POINTS = 7.0
 # replaced him, so no change is claimed.
 MIN_STARTER_ATTEMPTS = 50.0
 
+# How many teams a season must have established starters for before it is used
+# as the basis for ratings.
+#
+# A season's file is published the moment the season opens, so in September it
+# exists and is nearly empty — six quarterbacks, none of them with enough
+# attempts to have established anything. Taking the newest file that merely
+# *exists* meant the adjustment went silent for the first months of every
+# season, which is when it matters most. Last season is the right prior until
+# this one has enough in it, which is what SEASON_LOOKBACK was always for.
+MIN_ESTABLISHED_TEAMS = 8
+
 TTL_SECONDS = 6 * 3600.0
 
 
@@ -84,14 +96,59 @@ class QbChange:
         )
 
 
+# The feeds behind this are several megabytes. Nothing here may ever sit in
+# front of a page render: a board on a Saturday asks for it once per NFL game,
+# every deploy starts cold, and without a guard a burst of traffic had eight
+# requests downloading the same files at once — 17 seconds instead of four, on
+# a machine with 512 MB.
+#
+# So the cache is read-through but never blocking. A cold cache answers "no
+# change" straight away and warms itself in the background; a stale one keeps
+# serving while it refreshes. A quarterback note missing from one render is a
+# far smaller problem than a board that will not load.
 _cache: dict[str, tuple[float, object]] = {}
+_lock = asyncio.Lock()
+_warming: set[asyncio.Task] = set()
+
+EMPTY: tuple[dict, dict, dict] = ({}, {}, {})
+
+
+def _cached(key: str, *, allow_stale: bool):
+    hit = _cache.get(key)
+    if hit is None:
+        return None
+    if allow_stale or time.monotonic() - hit[0] < TTL_SECONDS:
+        return hit[1]
+    return None
 
 
 def _fresh(key: str):
-    hit = _cache.get(key)
-    if hit and time.monotonic() - hit[0] < TTL_SECONDS:
-        return hit[1]
-    return None
+    return _cached(key, allow_stale=False)
+
+
+def _warm_in_background() -> None:
+    """Start one refresh, if one is not already running."""
+    if _lock.locked():
+        return
+    try:
+        task = asyncio.get_running_loop().create_task(_refresh())
+    except RuntimeError:                      # no loop: nothing to schedule on
+        return
+    _warming.add(task)
+    task.add_done_callback(_warming.discard)
+
+
+async def _refresh() -> None:
+    """Single-flight: whoever holds the lock does the work, the rest skip it."""
+    if _lock.locked():
+        return
+    async with _lock:
+        if _fresh("qb") is not None:
+            return
+        try:
+            await _load()
+        except Exception as exc:              # a warm must never raise anywhere
+            log.warning("QB refresh failed: %s", type(exc).__name__)
 
 
 def _seasons() -> list[int]:
@@ -210,11 +267,21 @@ async def _load() -> tuple[dict[str, QbRating], dict[str, str], dict[str, str]]:
     expected: dict[str, str] = {}
     for season in _seasons():
         text, note = await _download_csv(PLAYER_WEEK.format(season=season))
-        if text:
-            ratings = parse_qb_ratings(text)
-            expected = parse_expected_starters(text)
+        if not text:
+            log.info("nflverse QB stats %s: %s", season, note)
+            continue
+        season_ratings = parse_qb_ratings(text)
+        season_expected = parse_expected_starters(text)
+        # Existing is not the same as usable: a season opens with a published
+        # file and almost nothing in it.
+        if len(season_expected) >= MIN_ESTABLISHED_TEAMS:
+            ratings, expected = season_ratings, season_expected
             break
-        log.info("nflverse QB stats %s: %s", season, note)
+        log.info(
+            "nflverse QB stats %s: only %d teams have an established starter, "
+            "falling back to the previous season",
+            season, len(season_expected),
+        )
 
     depth: dict[str, str] = {}
     for season in _seasons():
@@ -267,16 +334,51 @@ def compute_change(
 
 
 async def changes_for(home: str, away: str) -> tuple[Optional[QbChange], Optional[QbChange]]:
-    """Quarterback changes for both sides of one game."""
+    """
+    Quarterback changes for both sides of one game.
+
+    Never waits on the network. Fresh data is used; stale data is used while a
+    refresh runs; a cold cache returns no change and triggers the warm, so the
+    adjustment appears on a subsequent render rather than delaying this one.
+    """
+    data = _cached("qb", allow_stale=True)
+    if data is None or _fresh("qb") is None:
+        _warm_in_background()
+    if data is None:
+        return None, None
+    ratings, expected, depth = data                       # type: ignore[misc]
     try:
-        ratings, expected, depth = await _load()
+        return (
+            compute_change(home, ratings, expected, depth),
+            compute_change(away, ratings, expected, depth),
+        )
     except Exception as exc:                              # never break a page
         log.warning("QB adjustment unavailable: %s", type(exc).__name__)
         return None, None
-    return (
-        compute_change(home, ratings, expected, depth),
-        compute_change(away, ratings, expected, depth),
-    )
+
+
+async def warm() -> None:
+    """Load the feeds up front, so the first board of the day is not the one
+    that pays for them. Called at startup; safe to call more than once."""
+    await _refresh()
+
+
+async def refresh_forever() -> None:
+    """
+    Keep the cache warm in the background, the way the team priors are.
+
+    A cold start would otherwise pay a multi-megabyte download inside
+    someone's page load — and with `auto_stop_machines` on, cold starts are
+    routine rather than rare.
+    """
+    while True:
+        try:
+            await _refresh()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            log.warning("QB warm loop: %s", type(exc).__name__)
+        await asyncio.sleep(TTL_SECONDS / 2)
 
 
 def reset_cache() -> None:
