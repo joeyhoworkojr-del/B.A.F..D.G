@@ -56,7 +56,12 @@ def test_a_burst_of_concurrent_callers_causes_one_build():
     assert all(r == {"built": 1} for r in results)
 
 
-def test_the_result_is_rebuilt_once_it_is_older_than_the_ttl():
+def test_a_stale_result_is_served_at_once_and_refreshed_behind_the_reader():
+    """
+    "It does not load straight away" is what waiting for a rebuild looks like.
+    A result a few seconds past its TTL is not worth making someone wait for,
+    so it is handed over immediately and replaced in the background.
+    """
     calls = {"n": 0}
 
     async def build():
@@ -66,11 +71,50 @@ def test_the_result_is_rebuilt_once_it_is_older_than_the_ttl():
     async def run():
         first = await cache.cached("k", build, ttl=0.01)
         await asyncio.sleep(0.02)
+        # Stale now — but answered without a wait, from the old value.
         second = await cache.cached("k", build, ttl=0.01)
-        return first, second
+        # ...and the refresh it kicked off lands shortly after.
+        await asyncio.sleep(0.05)
+        third = await cache.cached("k", build, ttl=0.01)
+        return first, second, third
 
-    first, second = asyncio.run(run())
-    assert (first, second) == (1, 2)
+    first, second, third = asyncio.run(run())
+    assert (first, second) == (1, 1), "a stale value must not block on a rebuild"
+    assert third == 2, "the background refresh must actually replace it"
+
+
+def test_a_value_past_the_stale_window_is_not_served():
+    # Stale-while-revalidate is a courtesy for a couple of minutes, not a
+    # licence to hand back something from an hour ago.
+    import time as _time
+
+    cache._entries["k"] = (
+        _time.monotonic() - cache.STALE_WHILE_REVALIDATE_SECONDS - 60, "ancient",
+    )
+    assert cache.peek("k", ttl=cache.DEFAULT_TTL_SECONDS) is None
+    assert cache.peek(
+        "k", ttl=cache.DEFAULT_TTL_SECONDS + cache.STALE_WHILE_REVALIDATE_SECONDS,
+    ) is None
+
+
+def test_keeping_a_key_warm_rebuilds_it_without_anyone_asking():
+    # The whole point: nobody should ever be the reader who pays for a cold
+    # cache after a deploy or a quiet spell.
+    calls = {"n": 0}
+
+    async def build():
+        calls["n"] += 1
+        return calls["n"]
+
+    async def run():
+        task = asyncio.create_task(cache.keep_warm("k", build, every=0.01))
+        await asyncio.sleep(0.05)
+        task.cancel()
+        return cache.peek("k", ttl=1.0)
+
+    value = asyncio.run(run())
+    assert value is not None, "the key was never built"
+    assert calls["n"] >= 2, "it built once and stopped rather than looping"
 
 
 def test_different_keys_do_not_share_a_result():
