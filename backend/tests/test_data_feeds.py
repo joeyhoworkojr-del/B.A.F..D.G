@@ -380,3 +380,28 @@ def test_status_flags_a_season_that_is_not_the_current_one(monkeypatch):
     assert report["loaded"][0]["is_current_season"] is False
     assert str(old) in report["note"]
     nflverse.reset_cache()
+
+
+def test_the_sources_receipt_says_whether_state_is_shared_across_machines():
+    """
+    This is the question that decides whether the API can run on more than one
+    machine. Sessions and the graded ledger live in this store: with a
+    per-machine SQLite file a second machine logs people out at random and
+    splits the track record, and nothing on the site would say so.
+    """
+    from fastapi.testclient import TestClient
+
+    from src.api.main import app
+
+    body = TestClient(app).get("/api/v1/data/sources").json()
+    storage = body["storage"]
+
+    assert storage["backend"] in ("sqlite", "postgres", "redis", "unavailable")
+    # Only a shared store may be scaled out, and the flag must agree with the
+    # backend rather than being set independently of it.
+    assert storage["shared_across_machines"] == (
+        storage["backend"] in ("redis", "postgres")
+    )
+    # Names and scheme validity only — never a value.
+    assert "config" in storage
+    assert "checked" in storage["config"]

@@ -26,7 +26,7 @@ from src.ingest.espn import (
 )
 from src.ingest import cfbd, nflverse
 from src.predict import priors
-from src.track import ledger, win_history
+from src.track import ledger, store, win_history
 import asyncio
 from src.ingest.weather import (
     CFL_INDOOR_TEAMS,
@@ -328,6 +328,16 @@ async def data_sources() -> dict:
             },
         ],
         "model_priors": priors.status(),
+        # Where state actually lives. This decides whether the API can run on
+        # more than one machine: sessions and the graded ledger sit in this
+        # store, so a per-machine SQLite file would log people out at random
+        # and split the track record in two.
+        "storage": {
+            "backend": ledger.storage_backend(),
+            "durable": ledger.storage_durable(),
+            "shared_across_machines": ledger.storage_backend() in ("redis", "postgres"),
+            "config": store.config_report(),
+        },
         "fetched_at": datetime.now(timezone.utc).isoformat(),
     }
 
