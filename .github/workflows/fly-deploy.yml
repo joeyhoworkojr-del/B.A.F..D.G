@@ -50,9 +50,42 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN || secrets.ORG || secrets.FLY_ORG || secrets.ORG_TOKEN || secrets.FLY_ORG_TOKEN }}
       - name: Deploy combined app
+        # --ha=false so the deploy itself does not decide how many machines
+        # exist; the count is set explicitly in the next step instead, where it
+        # is visible and idempotent rather than a side effect of a flag.
         run: flyctl deploy --remote-only --ha=false
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN || secrets.ORG || secrets.FLY_ORG || secrets.ORG_TOKEN || secrets.FLY_ORG_TOKEN }}
+
+      # Two machines, so one slow or restarting instance is not the whole site.
+      #
+      # Only safe because the API keeps no state of its own: sessions and the
+      # graded ledger both live in Redis, which every machine shares. On the
+      # SQLite fallback this would log people out at random as requests landed
+      # on one machine or the other, and split the track record in two — so the
+      # step below checks that before it scales, and refuses rather than
+      # trading a slow site for a broken one.
+      - name: Run two machines, once state is shared
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN || secrets.ORG || secrets.FLY_ORG || secrets.ORG_TOKEN || secrets.FLY_ORG_TOKEN }}
+        run: |
+          storage=$(curl -sS --max-time 20 \
+            https://statedge-api.fly.dev/api/v1/data/sources || echo '{}')
+          shared=$(python3 -c "
+          import json, sys
+          try:
+              d = json.loads(sys.argv[1])
+          except Exception:
+              d = {}
+          print('yes' if (d.get('storage') or {}).get('shared_across_machines') else 'no')
+          " "$storage")
+          if [ "$shared" != "yes" ]; then
+            echo "::warning::State is not shared across machines — staying on one."
+            echo "Set REDIS_URL or DATABASE_URL before scaling out." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          flyctl scale count 2 --yes
+          flyctl status
 
       # Which optional keys the running app can actually see, reported after
       # every deploy. The endpoints below return names and booleans only — no
