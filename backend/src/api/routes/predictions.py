@@ -62,6 +62,7 @@ from src.predict.gridiron import live_projection, predict_nfl_game, win_probabil
 from src.predict.soccer import predict_match
 from src.predict import priors
 from src.predict import quarterback as qb_model
+from src.api import cache as response_cache
 from src.chat import events as chat_events
 from src.track import ledger, ratings, win_history
 from src.value.edge import american_to_decimal
@@ -592,6 +593,26 @@ def _map_code(league: str, abbr: str) -> Optional[str]:
         return code
     except KeyError:
         return None
+
+
+# How many games are modelled at once. Each one can touch the weather feed, so
+# doing them in a row made a board wait on a chain of round trips; doing them
+# all at once would open sixty sockets from a shared-cpu machine. Eight keeps
+# the wall time down without becoming the thing that is slow.
+SLATE_CONCURRENCY = 8
+
+
+async def _slate_entries(league: str, games: list, poly, *, snapshot: bool = False) -> list[dict]:
+    """Model a slate concurrently, preserving the order it was given in."""
+    if not games:
+        return []
+    limit = asyncio.Semaphore(SLATE_CONCURRENCY)
+
+    async def one(game):
+        async with limit:
+            return await _slate_entry(league, game, poly, snapshot=snapshot)
+
+    return list(await asyncio.gather(*(one(g) for g in games)))
 
 
 # ─── Upset detection ──────────────────────────────────────────────────────────
@@ -1301,7 +1322,13 @@ async def today(league: str) -> dict:
     league = league.lower()
     if league not in _TEAM_GETTERS:
         raise HTTPException(status_code=404, detail="league must be one of: nfl, cfl, mlb")
+    # Same answer for everyone who asks, so a burst of traffic costs one build
+    # rather than one per reader. Grading still runs on every build, and the
+    # scheduled job grades regardless of whether anyone loads a page.
+    return await response_cache.cached(f"today:{league}", lambda: _build_today(league))
 
+
+async def _build_today(league: str) -> dict:
     board, poly_markets = await asyncio.gather(
         fetch_scoreboard(league),
         fetch_league_markets(league),
@@ -1312,7 +1339,7 @@ async def today(league: str) -> dict:
     ledger.grade_board(league, board.games)
     ratings.reconcile()
     current = [g for g in board.games if is_current(g)]
-    out_games = [await _slate_entry(league, g, poly_markets) for g in current]
+    out_games = await _slate_entries(league, current, poly_markets)
 
     return {
         "league": league,
@@ -1358,7 +1385,7 @@ async def upcoming(league: str, days: int = 7) -> dict:
         fetch_league_markets(league),
     )
     predicted = board.games[:MAX_UPCOMING_PREDICTIONS]
-    out_games = [await _slate_entry(league, g, poly_markets) for g in predicted]
+    out_games = await _slate_entries(league, predicted, poly_markets)
     for entry in out_games:
         entry["projected"] = True
 
@@ -1430,9 +1457,15 @@ async def board(days: int = BOARD_LOOKAHEAD_DAYS) -> dict:
     on a Wednesday wants to know what is on — not to discover that one of two
     tabs is empty and guess which. Live games sort to the top of their day,
     then kickoff order.
+
+    Identical for everyone who asks, so it is built at most once every few
+    seconds however many people ask at once — see `api.cache`.
     """
     days = max(1, min(int(days), 14))
+    return await response_cache.cached(f"board:{days}", lambda: _build_board(days))
 
+
+async def _build_board(days: int) -> dict:
     boards = await asyncio.gather(*(
         asyncio.gather(fetch_scoreboard(lg), fetch_upcoming(lg, days))
         for lg in FOCUS_LEAGUES
@@ -1470,7 +1503,8 @@ async def board(days: int = BOARD_LOOKAHEAD_DAYS) -> dict:
 
     collected.sort(key=sort_key)
 
-    poly = {lg: await fetch_league_markets(lg) for lg in FOCUS_LEAGUES}
+    poly_results = await asyncio.gather(*(fetch_league_markets(lg) for lg in FOCUS_LEAGUES))
+    poly = dict(zip(FOCUS_LEAGUES, poly_results))
 
     grouped: dict[str, list[dict]] = {}
     predicted = 0
