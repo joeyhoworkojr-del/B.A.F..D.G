@@ -1562,6 +1562,38 @@ async def _build_board(days: int) -> dict:
     }
 
 
+# How often the boards are rebuilt in the background. Slightly under the
+# response cache's TTL, so a warm copy is always fresh rather than merely
+# recent — the point is that nobody ever arrives to a cold key.
+BOARD_WARM_SECONDS = 6.0
+
+
+async def keep_boards_warm() -> None:
+    """
+    Keep the homepage board and both league slates built and waiting.
+
+    "It does not load straight away" is a cold cache: the first person after a
+    deploy, a restart, or a quiet spell pays for every upstream feed while
+    everyone behind them does not. Building on a loop moves that cost off the
+    request path entirely.
+    """
+    async def board_build():
+        return await _build_board(BOARD_LOOKAHEAD_DAYS)
+
+    warmers = [
+        response_cache.keep_warm(
+            f"board:{BOARD_LOOKAHEAD_DAYS}", board_build, BOARD_WARM_SECONDS,
+        ),
+    ]
+    for league in FOCUS_LEAGUES:
+        warmers.append(response_cache.keep_warm(
+            f"today:{league}",
+            (lambda lg: lambda: _build_today(lg))(league),
+            BOARD_WARM_SECONDS,
+        ))
+    await asyncio.gather(*warmers)
+
+
 # ─── Best bets scanner ────────────────────────────────────────────────────────
 
 _LEAGUE_FLAGS = {"nfl": "🏈", "ncaaf": "🏈"}
@@ -1661,6 +1693,16 @@ def _american_from_decimal(dec: float) -> int:
     return round(-100.0 / (dec - 1.0))
 
 
+# A parlay is built from what is still to be played, not just from today. On a
+# Saturday evening today's games have all kicked off and the page had nothing
+# to show until the next morning.
+PARLAY_LOOKAHEAD_DAYS = 7
+
+# Enough of the week to choose from without modelling a whole college slate for
+# a three-leg ticket.
+PARLAY_MAX_GAMES = 40
+
+
 async def _scan_parlay_legs() -> list[ParlayLeg]:
     """One strongest qualifying leg per upcoming football game.
 
@@ -1671,15 +1713,33 @@ async def _scan_parlay_legs() -> list[ParlayLeg]:
     """
     legs: list[ParlayLeg] = []
     for lg in FOCUS_LEAGUES:
-        board, poly = await asyncio.gather(
+        # Today's board *and* the week ahead. Looking only at today meant the
+        # page went blank the moment the day's games kicked off — on a Saturday
+        # evening there is nothing left to build a parlay from until Sunday,
+        # even though Sunday's slate is right there. The board already shows a
+        # week; this was still reading a day.
+        board, ahead, poly = await asyncio.gather(
             fetch_scoreboard(lg),
+            fetch_upcoming(lg, PARLAY_LOOKAHEAD_DAYS),
             fetch_league_markets(lg),
         )
         ledger.grade_board(lg, board.games)
-        for g in board.games:
-            if g.state != "pre" or not is_current(g):
+
+        seen: set[str] = set()
+        candidates = []
+        for g in list(board.games) + list(ahead.games):
+            # A game can appear on both feeds; it is still one game.
+            if str(g.event_id) in seen or g.state != "pre":
                 continue
-            entry = await _slate_entry(lg, g, poly)
+            seen.add(str(g.event_id))
+            candidates.append(g)
+        # Soonest first, so a ticket is built from games that are about to be
+        # played rather than whatever the feed happened to list.
+        candidates.sort(key=lambda g: g.kickoff or "")
+        candidates = candidates[:PARLAY_MAX_GAMES]
+
+        entries = await _slate_entries(lg, candidates, poly)
+        for g, entry in zip(candidates, entries):
             if not entry["mapped"]:
                 continue
             best = None

@@ -6,12 +6,14 @@ is kept here rather than accumulated in the browser. Each reading is appended
 as the live model produces one, and a game's series can be read back for a
 chart or handed to Edge AI when someone asks why a number moved.
 
-Deliberately in memory and bounded. This is a chart of a game in progress, not
-a record of anything the product claims accountability for — the graded record
-lives in the ledger and is durable. Losing a timeline to a restart costs a
-chart; nothing that is graded or published depends on it. Keeping it out of
-durable storage also keeps a high-frequency write off the same backend the
-ledger relies on.
+Shared when Redis is configured, in memory otherwise, and bounded either way.
+
+The in-memory version was fine while the API ran on one machine: losing a
+timeline to a restart cost a chart and nothing that is graded depends on it.
+On two machines it is worse than lost — each records roughly half the readings
+and a reader gets whichever half the request lands on, so the chart is *wrong*
+rather than absent. Writes are already deduplicated to roughly one per game
+per twenty seconds, so the volume this puts on the shared backend is small.
 
 Readings are deduplicated: the live board is polled far faster than the
 probability actually moves, and appending an identical point every few seconds
@@ -19,6 +21,7 @@ would produce a flat line made of thousands of samples.
 """
 from __future__ import annotations
 
+import logging
 import math
 import threading
 import time
@@ -56,12 +59,41 @@ class WinPoint:
     scored: bool = False    # this reading is the first after the score changed
 
 
+log = logging.getLogger(__name__)
+
 _series: dict[str, list[WinPoint]] = {}
 _last_write: dict[str, float] = {}
+
+_REDIS_PREFIX = "statedge:wp"
+# A timeline outlives the game it belongs to by long enough to be read after
+# the final whistle, and no longer.
+_REDIS_TTL_SECONDS = 12 * 3600
 
 
 def _key(league: str, event_id: str) -> str:
     return f"{league.lower()}:{event_id}"
+
+
+def _shared():
+    """The Redis client, when one is configured. None means single-machine."""
+    try:
+        from src.track import store
+
+        if not store.redis_url():
+            return None
+        import redis
+
+        return redis.from_url(store.redis_url(), decode_responses=True)
+    except Exception:                       # never break a live page over this
+        return None
+
+
+def _redis_key(key: str) -> str:
+    return f"{_REDIS_PREFIX}:{key}"
+
+
+def _anchor_key(key: str) -> str:
+    return f"{_REDIS_PREFIX}:anchor:{key}"
 
 
 def record(
@@ -110,20 +142,49 @@ def record(
                 if not (scored or moved or waited):
                     return
 
-            points.append(WinPoint(
+            point = WinPoint(
                 at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 home_win=round(probability, 4),
                 home_score=int(home_score), away_score=int(away_score),
                 period=period, clock=clock, possession=possession,
                 note=note, scored=scored,
-            ))
+            )
+            points.append(point)
             _last_write[key] = now
             if len(points) > MAX_POINTS_PER_GAME:
                 # Drop from the middle rather than the start: the opening
                 # reading is the pre-game anchor the chart is measured against.
                 del points[1:len(points) - MAX_POINTS_PER_GAME + 1]
+
+        # Written through to the shared store so every machine appends to one
+        # timeline. Outside the lock: this is a network call, and holding a
+        # process-wide lock across it would serialise every live game behind it.
+        _write_shared(key, point)
     except Exception:                                    # pragma: no cover
         return
+
+
+def _write_shared(key: str, point: "WinPoint") -> None:
+    """Append one reading to the shared timeline, if there is one."""
+    client = _shared()
+    if client is None:
+        return
+    try:
+        import json as _json
+
+        encoded = _json.dumps(asdict(point))
+        pipe = client.pipeline()
+        # The opening reading is the anchor the chart is measured against, and
+        # a trim from the head would eventually drop it. Kept separately so the
+        # list can be trimmed freely; setnx means only the first write wins.
+        pipe.setnx(_anchor_key(key), encoded)
+        pipe.expire(_anchor_key(key), _REDIS_TTL_SECONDS)
+        pipe.rpush(_redis_key(key), encoded)
+        pipe.ltrim(_redis_key(key), -MAX_POINTS_PER_GAME, -1)
+        pipe.expire(_redis_key(key), _REDIS_TTL_SECONDS)
+        pipe.execute()
+    except Exception as exc:              # the chart is not worth an error page
+        log.debug("win history write failed: %s", type(exc).__name__)
 
 
 def _evict_oldest_locked() -> None:
@@ -136,9 +197,42 @@ def _evict_oldest_locked() -> None:
 
 
 def series(league: str, event_id: str) -> list[dict]:
-    """Every stored reading for one game, oldest first."""
+    """
+    Every stored reading for one game, oldest first.
+
+    Read from the shared store when there is one, because this process only
+    ever saw the readings that happened to land on it. Falls back to local
+    memory when Redis is not configured or is unreachable — half a chart beats
+    no chart, and it is what a single-machine deployment has anyway.
+    """
+    key = _key(league, event_id)
+    client = _shared()
+    if client is not None:
+        try:
+            import json as _json
+
+            raw = client.lrange(_redis_key(key), 0, -1) or []
+            out = []
+            for item in raw:
+                try:
+                    out.append(_json.loads(item))
+                except Exception:
+                    continue              # one bad row must not lose the rest
+            if out:
+                # Put the opening reading back if a trim has since dropped it.
+                try:
+                    anchor_raw = client.get(_anchor_key(key))
+                    if anchor_raw:
+                        anchor = _json.loads(anchor_raw)
+                        if out[0].get("at") != anchor.get("at"):
+                            out.insert(0, anchor)
+                except Exception:
+                    pass
+                return out[:MAX_POINTS_PER_GAME]
+        except Exception as exc:
+            log.debug("win history read failed: %s", type(exc).__name__)
     with _LOCK:
-        return [asdict(p) for p in _series.get(_key(league, event_id), [])]
+        return [asdict(p) for p in _series.get(key, [])]
 
 
 def swing(league: str, event_id: str) -> Optional[dict]:

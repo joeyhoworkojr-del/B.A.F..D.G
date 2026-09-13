@@ -73,3 +73,92 @@ def test_the_threshold_stays_where_it_was_fitted():
     # Measured over 799 games: 0.58 flags ~10% of the slate at a 47% hit rate
     # against a 31.8% base. Loosening it is what makes the board cry upset.
     assert UPSET_MIN_DOG_PROB >= 0.55
+
+
+# ─── The parlay builds from the week, not from today ──────────────────────────
+
+def test_a_parlay_still_has_legs_once_todays_games_have_kicked_off():
+    """
+    Saturday evening: today's board is all "in" or "post", and the parlay page
+    went blank — even though Sunday's slate was right there. The board had
+    already moved to showing a week; this was still reading a day.
+    """
+    import asyncio
+    from unittest.mock import patch
+
+    from src.api.routes import predictions as pred
+    from src.ingest.espn import LiveGame, Scoreboard
+
+    def game(i, state, kickoff):
+        return LiveGame(
+            league="nfl", event_id=f"g{i}", home="Chiefs", away="Ravens",
+            home_abbr="KC", away_abbr="BAL",
+            home_score=21 if state != "pre" else None,
+            away_score=17 if state != "pre" else None,
+            state=state, detail="", kickoff=kickoff,
+            market_spread=-3.5, market_over_under=47.5,
+            market_home_ml=-180, market_away_ml=150,
+        )
+
+    async def played_out(league, *_a, **_k):
+        return Scoreboard(
+            league=league,
+            games=[game(i, "post", "2026-09-13T20:00:00Z") for i in range(3)],
+            fetched_at="now", ok=True,
+        )
+
+    async def week_ahead(league, days=7, *_a, **_k):
+        return Scoreboard(
+            league=league,
+            games=[game(10 + i, "pre", "2026-09-14T20:00:00Z") for i in range(3)],
+            fetched_at="now", ok=True,
+        )
+
+    async def no_markets(_league, *_a, **_k):
+        return []
+
+    async def no_qb(_h, _a):
+        return None, None
+
+    with patch.object(pred, "fetch_scoreboard", played_out), \
+         patch.object(pred, "fetch_upcoming", week_ahead), \
+         patch.object(pred, "fetch_league_markets", no_markets), \
+         patch.object(pred.qb_model, "changes_for", no_qb):
+        legs = asyncio.run(pred._scan_parlay_legs())
+
+    assert legs, "no legs from a full slate tomorrow"
+    # And nothing already played is ever a leg.
+    assert all(leg.fixture_id.split(":")[1].startswith("g1") for leg in legs)
+
+
+def test_a_game_on_both_feeds_is_only_one_leg():
+    import asyncio
+    from unittest.mock import patch
+
+    from src.api.routes import predictions as pred
+    from src.ingest.espn import LiveGame, Scoreboard
+
+    same = LiveGame(
+        league="nfl", event_id="dup", home="Chiefs", away="Ravens",
+        home_abbr="KC", away_abbr="BAL", home_score=None, away_score=None,
+        state="pre", detail="", kickoff="2026-09-14T20:00:00Z",
+        market_spread=-3.5, market_over_under=47.5,
+        market_home_ml=-180, market_away_ml=150,
+    )
+
+    async def both(league, *_a, **_k):
+        return Scoreboard(league=league, games=[same], fetched_at="now", ok=True)
+
+    async def no_markets(_league, *_a, **_k):
+        return []
+
+    async def no_qb(_h, _a):
+        return None, None
+
+    with patch.object(pred, "fetch_scoreboard", both), \
+         patch.object(pred, "fetch_upcoming", both), \
+         patch.object(pred, "fetch_league_markets", no_markets), \
+         patch.object(pred.qb_model, "changes_for", no_qb):
+        legs = asyncio.run(pred._scan_parlay_legs())
+
+    assert len(legs) <= 1, "the same game was offered twice"
