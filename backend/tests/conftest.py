@@ -24,6 +24,7 @@ def _clear_live_caches():
     network access an earlier test can populate the cache with live data and
     starve later mocked tests — clear between tests for determinism.
     """
+    from src.api import cache as response_cache
     from src.ingest import espn, polymarket, weather
 
     from src.track import ledger, ratings
@@ -31,9 +32,14 @@ def _clear_live_caches():
     weather._weather_cache.clear()
     espn._cache.clear()
     polymarket._cache.clear()
+    # Board and slate responses are cached for a few seconds in production.
+    # A test that calls the same endpoint twice with different mocked feeds is
+    # testing the builder, not the cache, and must see its own feeds.
+    response_cache.clear()
     ledger.reset()
     ratings.reset()
     yield
     weather._weather_cache.clear()
     espn._cache.clear()
     polymarket._cache.clear()
+    response_cache.clear()
