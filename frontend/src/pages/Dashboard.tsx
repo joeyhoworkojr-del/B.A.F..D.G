@@ -4,6 +4,7 @@ import { DataFreshnessBadge } from '../components/game/DataFreshnessBadge'
 import { PropsStrip } from '../components/props/PropsStrip'
 import { NewsStrip } from '../components/news/NewsStrip'
 import { UpsetWatch } from '../components/game/UpsetWatch'
+import { BestLivePicks } from '../components/game/BestLivePicks'
 import { FaqList } from '../components/faq/FaqList'
 import { oddsSourceSentence } from '../components/OddsSource'
 import { FAQ, FAQ_PREVIEW_IDS } from '../content/faq'
@@ -487,6 +488,10 @@ export function Dashboard() {
 
         {error && <div className="rounded-2xl border border-signal-red/40 bg-terminal-surface p-4 text-sm text-signal-red">Couldn’t load games: {error}</div>}
         {loading && !data && <div className="space-y-4"><div className="skeleton h-40 rounded-2xl" /><div className="skeleton h-44 rounded-2xl" /></div>}
+
+        {/* Games in progress first — they are the reason someone has the page
+            open — then the disagreements on what has yet to be played. */}
+        <BestLivePicks entries={liveGames} />
 
         {/* Where the model reads a game differently from the market. Short by
             design — the rule fires on roughly one game in ten. */}

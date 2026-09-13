@@ -250,7 +250,36 @@ export interface UpsetOut {
   /** How often market underdogs win in general, for comparison. */
   rule_base_rate: number
 }
+/**
+ * The model's read on a game in progress.
+ *
+ * `market_repriced` is the load-bearing field. A sportsbook feed does not
+ * necessarily reprice in play, and comparing a live model against a pre-game
+ * price manufactures an enormous edge out of a stale number — so a read is
+ * only ever presented as a pick when the book has demonstrably followed the
+ * game. `model_move_pp` and `market_move_pp` are how that was decided.
+ *
+ * `graded` is always false: in-game probabilities are recalculated from the
+ * score and clock, never snapshotted, and never graded. They are no part of
+ * the track record and must not be shown as if they were.
+ */
+export interface LiveReadOut {
+  team: string
+  side: 'home' | 'away'
+  model_prob: number
+  market_prob: number
+  edge_pp: number
+  market_repriced: boolean
+  actionable: boolean
+  model_move_pp: number | null
+  market_move_pp: number | null
+  note: string
+  graded: boolean
+}
+
 export interface TodayModelOut {
+  /** Present only while a game is in progress. */
+  live_read?: LiveReadOut | null
   /** Present only when the model disagrees with the market on the winner. */
   upset?: UpsetOut | null
   home_win_prob: number
