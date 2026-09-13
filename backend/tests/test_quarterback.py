@@ -111,3 +111,83 @@ def test_the_newest_depth_chart_wins():
 def test_a_name_matches_across_the_two_feeds_that_spell_it_differently():
     # Weekly stats say "D.Maye"; depth charts say "Drake Maye".
     assert qb._norm("D.Maye") == qb._norm("Drake Maye")
+
+
+# ─── Never in front of a page render ──────────────────────────────────────────
+
+def test_a_cold_cache_answers_immediately_instead_of_downloading(monkeypatch):
+    """
+    The regression that made the site slow on a Saturday.
+
+    A board asks for this once per NFL game and every deploy starts cold. With
+    no guard, eight concurrent requests each downloaded the same several
+    megabytes — seventeen seconds instead of four, on a 512 MB machine.
+    """
+    import asyncio
+
+    calls = {"n": 0}
+
+    async def never_finishes():
+        calls["n"] += 1
+        await asyncio.sleep(30)
+
+    qb.reset_cache()
+    monkeypatch.setattr(qb, "_load", never_finishes)
+
+    async def run():
+        return await asyncio.wait_for(
+            asyncio.gather(*(qb.changes_for("KC", "BAL") for _ in range(8))),
+            timeout=2.0,
+        )
+
+    results = asyncio.run(run())
+    # Every caller is answered without waiting on the feed...
+    assert results == [(None, None)] * 8
+    # ...and they did not each start their own download.
+    assert calls["n"] <= 1
+
+
+def test_stale_data_keeps_being_served_while_it_refreshes(monkeypatch):
+    import asyncio
+    import time as _time
+
+    ratings = qb.parse_qb_ratings(STATS)
+    expected = qb.parse_expected_starters(STATS)
+    depth = {**qb.parse_depth_chart_starters(DEPTH), "NE": qb._norm("Josh Backup")}
+
+    qb.reset_cache()
+    # Present, but older than the TTL.
+    qb._cache["qb"] = (_time.monotonic() - qb.TTL_SECONDS - 1, (ratings, expected, depth))
+
+    async def never_finishes():
+        await asyncio.sleep(30)
+
+    monkeypatch.setattr(qb, "_load", never_finishes)
+
+    async def run():
+        return await asyncio.wait_for(qb.changes_for("NE", "TEN"), timeout=2.0)
+
+    home, _away = asyncio.run(run())
+    # Out-of-date beats nothing at all, and it still does not block.
+    assert home is not None and home.points < 0
+
+
+def test_a_season_that_exists_but_is_empty_is_not_used():
+    """
+    A season's file is published the day the season opens.
+
+    In September 2026 it held six quarterbacks and nobody with enough attempts
+    to have established anything — and taking the newest file that merely
+    existed silently switched the adjustment off for months.
+    """
+    opening_week = (
+        "player_name,position,season_type,team,attempts,passing_epa\n"
+        "A.Rookie,QB,REG,NE,12,3.0\n"
+    )
+    assert len(qb.parse_expected_starters(opening_week)) < qb.MIN_ESTABLISHED_TEAMS
+    # Where a full season clears the bar comfortably.
+    full = "".join(
+        f"Q{i}.Starter,QB,REG,T{i},400,20.0\n" for i in range(qb.MIN_ESTABLISHED_TEAMS)
+    )
+    header = "player_name,position,season_type,team,attempts,passing_epa\n"
+    assert len(qb.parse_expected_starters(header + full)) >= qb.MIN_ESTABLISHED_TEAMS
