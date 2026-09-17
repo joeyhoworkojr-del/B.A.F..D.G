@@ -603,7 +603,15 @@ SLATE_CONCURRENCY = 8
 
 
 async def _slate_entries(league: str, games: list, poly, *, snapshot: bool = False) -> list[dict]:
-    """Model a slate concurrently, preserving the order it was given in."""
+    """
+    Model a slate concurrently, preserving the order it was given in.
+
+    A game that fails is dropped, not raised. `asyncio.gather` propagates the
+    first exception by default, which meant one bad game anywhere in sixty
+    emptied the whole board — and because the background warm loop swallows
+    what it catches, the cache then never filled and every reader got nothing
+    at all. A board missing one game is worth far more than no board.
+    """
     if not games:
         return []
     limit = asyncio.Semaphore(SLATE_CONCURRENCY)
@@ -612,7 +620,19 @@ async def _slate_entries(league: str, games: list, poly, *, snapshot: bool = Fal
         async with limit:
             return await _slate_entry(league, game, poly, snapshot=snapshot)
 
-    return list(await asyncio.gather(*(one(g) for g in games)))
+    results = await asyncio.gather(
+        *(one(g) for g in games), return_exceptions=True,
+    )
+    out: list[dict] = []
+    for game, result in zip(games, results):
+        if isinstance(result, BaseException):
+            log.warning(
+                "slate entry failed for %s:%s — %s",
+                league, game.event_id, type(result).__name__,
+            )
+            continue
+        out.append(result)
+    return out
 
 
 # ─── Live picks ───────────────────────────────────────────────────────────────
@@ -1616,9 +1636,23 @@ async def _build_board(days: int) -> dict:
         if day < today:
             continue
         if predicted < BOARD_MAX_PREDICTED:
-            entry = await _slate_entry(league, game, poly[league])
-            entry["projected"] = True
-            predicted += 1
+            try:
+                entry = await _slate_entry(league, game, poly[league])
+            except Exception as exc:
+                # One game must never cost the board. It still appears, with
+                # its teams and kickoff, simply without a projection.
+                log.warning(
+                    "board entry failed for %s:%s — %s",
+                    league, game.event_id, type(exc).__name__,
+                )
+                entry = {
+                    "game": LiveGameOut(**game.__dict__).model_dump(),
+                    "mapped": False, "model": None, "edges": [],
+                    "polymarket": None, "projected": False,
+                }
+            else:
+                entry["projected"] = True
+                predicted += 1
         else:
             entry = {
                 "game": LiveGameOut(**game.__dict__).model_dump(),

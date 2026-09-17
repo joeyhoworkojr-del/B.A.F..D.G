@@ -197,3 +197,35 @@ def test_beyond_the_projection_cap_games_are_still_listed():
     assert data["predicted"] == pred.BOARD_MAX_PREDICTED
     unprojected = [g for d in data["days"] for g in d["games"] if not g["projected"]]
     assert len(unprojected) == 12
+
+
+def test_one_failing_game_does_not_empty_the_whole_board():
+    """
+    The regression behind "data is no longer pulling".
+
+    `asyncio.gather` propagates the first exception, so once the slate was
+    modelled concurrently a single bad game anywhere in sixty took the entire
+    board down. The background warm loop then swallowed the error, the cache
+    never filled, and every reader got nothing at all.
+    """
+    from unittest.mock import patch
+
+    from src.api.routes import predictions as pred
+
+    games = [game(str(i), "nfl", hours=2) for i in range(4)]
+    real_entry = pred._slate_entry
+
+    async def one_bad(league, g, poly, snapshot=False):
+        if str(g.event_id) == "2":
+            raise RuntimeError("one upstream hiccup")
+        return await real_entry(league, g, poly, snapshot=snapshot)
+
+    with board_with({"nfl": games}, {}), patch.object(pred, "_slate_entry", one_bad):
+        data = get_board()
+
+    listed = [e for day in data["days"] for e in day["games"]]
+    # Every game is still on the board...
+    assert len(listed) == len(games)
+    # ...and the one that failed appears without a projection rather than
+    # taking the other three with it.
+    assert sum(1 for e in listed if e["projected"]) == len(games) - 1
