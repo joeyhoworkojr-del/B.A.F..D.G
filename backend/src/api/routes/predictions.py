@@ -1689,16 +1689,63 @@ async def _build_board(days: int) -> dict:
             (g.market_provider for _, g in collected if g.market_provider), ""
         ),
         "fetched_at": datetime.now(timezone.utc).isoformat(),
-        # Said plainly rather than implied by an empty page: there is a
-        # difference between "no games" and "no games today".
-        "note": "" if day_list else f"No games scheduled in the next {days} days.",
+        # An empty board has two completely different causes and they must not
+        # look the same. "No games scheduled" is a claim about the world; when
+        # the feed is unreachable we do not know what is scheduled, and saying
+        # it anyway is stating something false as fact — on a Thursday in
+        # September, with the NFL playing on Sunday, it is plainly wrong.
+        "note": (
+            ""
+            if day_list
+            else f"No games scheduled in the next {days} days."
+            if ok
+            else "The live schedule feed is unreachable, so what is on cannot "
+                 "be listed right now. This is a feed problem, not an empty "
+                 "schedule."
+        ),
     }
 
 
 # How often the boards are rebuilt in the background. Slightly under the
-# response cache's TTL, so a warm copy is always fresh rather than merely
-# recent — the point is that nobody ever arrives to a cold key.
+# response cache's TTL while a game is in progress, so a warm copy is always
+# fresh rather than merely recent — the point is that nobody ever arrives to a
+# cold key.
 BOARD_WARM_SECONDS = 6.0
+
+# With nothing in progress there is nothing moving at six-second resolution: a
+# kickoff time does not change, and a line moves in minutes. This is still well
+# inside the stale-while-revalidate window, so a reader is still never the one
+# who waits — it just stops us polling a keyless public feed 600 times an hour,
+# from every machine, around the clock, for answers that did not change.
+BOARD_IDLE_WARM_SECONDS = 45.0
+
+# The feed answered with a failure rather than raising. Retrying hard against a
+# source that is refusing or rate-limiting us is how we stay refused.
+BOARD_FEED_DOWN_WARM_SECONDS = 90.0
+
+
+def _value_has_live(value: object) -> bool:
+    """Is anything in this built payload actually in progress right now?"""
+    if not isinstance(value, dict):
+        return False
+    if "live_count" in value:
+        return bool(value.get("live_count"))
+    return any(
+        (entry.get("game") or {}).get("state") == "in"
+        for entry in value.get("games") or []
+        if isinstance(entry, dict)
+    )
+
+
+def _warm_every(value: object) -> float:
+    """Run each warm loop at the rate its own content actually changes."""
+    if isinstance(value, dict) and value.get("source_ok") is False:
+        return BOARD_FEED_DOWN_WARM_SECONDS
+    if _value_has_live(value):
+        return BOARD_WARM_SECONDS
+    # `None` is the pre-first-build case: assume live, so a restart during a
+    # Sunday afternoon does not idle its way to a slow first board.
+    return BOARD_WARM_SECONDS if value is None else BOARD_IDLE_WARM_SECONDS
 
 
 async def keep_boards_warm() -> None:
@@ -1709,20 +1756,24 @@ async def keep_boards_warm() -> None:
     deploy, a restart, or a quiet spell pays for every upstream feed while
     everyone behind them does not. Building on a loop moves that cost off the
     request path entirely.
+
+    The loop paces itself against what it just built, rather than running flat
+    out: fast while a game is live, slow when the board is only fixtures, and
+    slower still while the feed is unhappy with us.
     """
     async def board_build():
         return await _build_board(BOARD_LOOKAHEAD_DAYS)
 
     warmers = [
         response_cache.keep_warm(
-            f"board:{BOARD_LOOKAHEAD_DAYS}", board_build, BOARD_WARM_SECONDS,
+            f"board:{BOARD_LOOKAHEAD_DAYS}", board_build, _warm_every,
         ),
     ]
     for league in FOCUS_LEAGUES:
         warmers.append(response_cache.keep_warm(
             f"today:{league}",
             (lambda lg: lambda: _build_today(lg))(league),
-            BOARD_WARM_SECONDS,
+            _warm_every,
         ))
     await asyncio.gather(*warmers)
 

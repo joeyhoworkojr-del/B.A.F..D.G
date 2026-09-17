@@ -24,7 +24,7 @@ from src.ingest.espn import (
     fetch_playbyplay,
     fetch_scoreboard,
 )
-from src.ingest import cfbd, nflverse
+from src.ingest import cfbd, espn, nflverse
 from src.predict import priors
 from src.track import ledger, store, win_history
 import asyncio
@@ -316,6 +316,11 @@ async def data_sources() -> dict:
                 "configured": True,
                 "leagues": ["nfl", "ncaaf"],
                 "used_for": "live scores, clock, play-by-play, box scores, news",
+                # Raw events returned next to games parsed. An empty board
+                # because the schedule is empty and an empty board because we
+                # could not read the feed are different failures, and only this
+                # tells them apart from outside the machine.
+                "last_fetch": espn.fetch_report(),
             },
             {**nflverse.status(), "used_for": "NFL team EPA priors and player form"},
             {**cfbd.status(), "used_for": "NCAAF SP+/PPA priors and player game logs"},

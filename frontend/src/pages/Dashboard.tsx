@@ -364,6 +364,10 @@ export function Dashboard() {
       .finally(() => setLoading(false))
   }, [])
 
+  // The board came back, but the schedule feed behind it did not answer. That
+  // is not the same as a quiet week, and the page must not say it is.
+  const feedDown = data?.source_ok === false
+
   useEffect(() => { api.accuracy().then(setAcc).catch(() => {}) }, [])
   useEffect(() => {
     load()
@@ -544,14 +548,31 @@ export function Dashboard() {
           </div>
         )}
 
+        {/* An empty board has two unrelated causes and they must never read
+            the same. "Nothing is scheduled" is a claim about the world; when
+            the schedule feed is down we do not know what is scheduled, and
+            saying it anyway states something false as fact. */}
         {!loading && dayGames.length === 0 && !error && (
           <div className="rounded-2xl border border-dashed border-terminal-border bg-terminal-surface p-10 text-center">
-            <p className="font-display text-lg font-bold text-zinc-100">Nothing on the board</p>
+            <p className="font-display text-lg font-bold text-zinc-100">
+              {feedDown ? 'Schedule feed is unreachable' : 'Nothing on the board'}
+            </p>
             <p className="mx-auto mt-1 max-w-sm text-sm text-zinc-500">
               {query.trim()
                 ? `No NFL or college game in the next week matches “${query.trim()}”.`
-                : data?.note || 'No NFL or college football scheduled in the next week. This fills in automatically as the schedule is released.'}
+                : data?.note || (feedDown
+                    ? 'We cannot reach the live schedule right now, so we cannot say what is on. This is a feed problem, not an empty schedule.'
+                    : 'No NFL or college football scheduled in the next week. This fills in automatically as the schedule is released.')}
             </p>
+            {feedDown && !query.trim() && (
+              <button
+                type="button"
+                onClick={() => { setLoading(true); load() }}
+                className="tap mt-4 rounded-xl border border-terminal-border px-4 py-2 text-sm font-bold text-zinc-200 hover:text-zinc-100"
+              >
+                Try again
+              </button>
+            )}
           </div>
         )}
 

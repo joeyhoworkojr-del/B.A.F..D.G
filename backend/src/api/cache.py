@@ -114,10 +114,26 @@ async def cached(
         return result
 
 
+# A warm loop that keeps hammering a feed which has started refusing us is the
+# fastest way to stay refused. On failure the interval doubles, up to this, and
+# snaps back to normal the moment a build succeeds.
+WARM_BACKOFF_CEILING_SECONDS = 300.0
+
+
+def _interval(every: float | Callable[[Any], float], value: Any) -> float:
+    """Resolve a fixed interval, or one chosen from what was just built."""
+    if callable(every):
+        try:
+            return float(every(value))
+        except Exception:
+            return DEFAULT_TTL_SECONDS
+    return float(every)
+
+
 async def keep_warm(
     key: str,
     build: Callable[[], Awaitable[Any]],
-    every: float,
+    every: float | Callable[[Any], float],
 ) -> None:
     """
     Rebuild a key on a loop so no reader is ever the one who pays for it.
@@ -126,16 +142,36 @@ async def keep_warm(
     person after a deploy, a restart, or a quiet spell waits for the feeds
     while everyone after them does not. Each machine keeps its own, so each
     machine warms its own.
+
+    `every` may be a callable, given the value just built, so a loop can run at
+    the rate its own content changes — fast while a game is in progress, slow
+    when the board is only fixtures. Polling an upstream feed every few seconds
+    around the clock, from every machine, is how a keyless feed decides it has
+    had enough of us.
     """
+    delay = _interval(every, None)   # only used if the first build raises
+    failures = 0
     while True:
         try:
             async with _lock_for(key):
-                _store(key, await build())
+                value = await build()
+                _store(key, value)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            log.warning("cache warm for %s failed: %s", key, type(exc).__name__)
-        await asyncio.sleep(every)
+            failures += 1
+            delay = min(
+                _interval(every, None) * (2 ** failures),
+                WARM_BACKOFF_CEILING_SECONDS,
+            )
+            log.warning(
+                "cache warm for %s failed (%d in a row): %s — retrying in %.0fs",
+                key, failures, type(exc).__name__, delay,
+            )
+        else:
+            failures = 0
+            delay = _interval(every, value)
+        await asyncio.sleep(delay)
 
 
 def clear() -> None:

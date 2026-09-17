@@ -288,6 +288,30 @@ def is_current(game: "LiveGame", now: Optional[datetime] = None) -> bool:
     return kickoff - now <= timedelta(hours=48)
 
 
+# What the last call to each feed actually did. An empty board has several
+# very different causes — the feed refused us, the feed answered with nothing,
+# or the feed answered and we failed to read any of it — and from the outside
+# they look identical. Recording the raw event count next to the parsed count
+# is what tells them apart, and none of it is worth guessing at in hindsight.
+_last_fetch: dict[str, dict] = {}
+
+
+def _record(kind: str, league: str, *, ok: bool,
+            events: int = 0, parsed: int = 0, error: str = "") -> None:
+    _last_fetch[f"{kind}:{league}"] = {
+        "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "ok": ok,
+        "events_returned": events,
+        "games_parsed": parsed,
+        "error": error,
+    }
+
+
+def fetch_report() -> dict[str, dict]:
+    """Last outcome per feed and league, for the public data-sources page."""
+    return dict(_last_fetch)
+
+
 async def fetch_scoreboard(league: str) -> Scoreboard:
     """Fetch today's games for a league. Never raises — ok=False on failure."""
     league = league.lower()
@@ -309,11 +333,19 @@ async def fetch_scoreboard(league: str) -> Scoreboard:
             )
             resp.raise_for_status()
             data = resp.json()
-        games = [g for g in (_parse_event(league, ev) for ev in data.get("events", [])) if g]
+        events = data.get("events", []) or []
+        games = [g for g in (_parse_event(league, ev) for ev in events) if g]
+        _record("scoreboard", league, ok=True, events=len(events), parsed=len(games))
+        if events and not games:
+            log.error(
+                "ESPN scoreboard returned %d events for %s and none parsed — "
+                "the feed shape has probably changed", len(events), league,
+            )
         _cache[league] = (time.monotonic(), games)
         return Scoreboard(league=league, games=games, fetched_at=now_iso)
     except Exception as exc:
         log.error("ESPN scoreboard fetch failed for %s: %s", league, exc)
+        _record("scoreboard", league, ok=False, error=f"{type(exc).__name__}: {exc}"[:200])
         return Scoreboard(league=league, ok=False, fetched_at=now_iso,
                           source="ESPN (temporarily unreachable)")
 
@@ -362,15 +394,23 @@ async def fetch_upcoming(league: str, days: int = 7) -> Scoreboard:
             )
             resp.raise_for_status()
             data = resp.json()
-        games = [g for g in (_parse_event(league, ev) for ev in data.get("events", [])) if g]
+        events = data.get("events", []) or []
+        games = [g for g in (_parse_event(league, ev) for ev in events) if g]
         games = sorted(
             (g for g in games if g.state == "pre"),
             key=lambda g: g.kickoff or "",
         )
+        _record("upcoming", league, ok=True, events=len(events), parsed=len(games))
+        if events and not games:
+            log.error(
+                "ESPN upcoming returned %d events for %s and none survived "
+                "parsing/filtering", len(events), league,
+            )
         _upcoming_cache[key] = (time.monotonic(), games)
         return Scoreboard(league=league, games=games, fetched_at=now_iso)
     except Exception as exc:
         log.error("ESPN upcoming fetch failed for %s: %s", league, exc)
+        _record("upcoming", league, ok=False, error=f"{type(exc).__name__}: {exc}"[:200])
         return Scoreboard(league=league, ok=False, fetched_at=now_iso,
                           source="ESPN (temporarily unreachable)")
 
