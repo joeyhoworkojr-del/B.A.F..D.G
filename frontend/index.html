@@ -8,6 +8,26 @@
          mobile browser chrome dark against a white site. -->
     <meta name="theme-color" content="#ffffff" />
 
+    <!-- The board request starts here, before the bundle has even been
+         downloaded. Previously the first fetch could not begin until the app
+         had loaded and mounted, so the page shell appeared quickly and then
+         sat empty waiting on a round trip it had not started yet. Same-origin
+         and relative on purpose: Vercel forwards /api to the Fly API, so this
+         is correct in every environment. -->
+    <script>
+      (function () {
+        try {
+          window.__statedgeBoard = fetch(
+            "/api/v1/board?days=8&_=" + Date.now(),
+            { credentials: "include" }
+          ).then(function (r) { return r.ok ? r.json() : null })
+           .catch(function () { return null });
+        } catch (e) {
+          window.__statedgeBoard = null;
+        }
+      })();
+    </script>
+
     <title>StatEdge — NFL &amp; college football model projections</title>
     <meta
       name="description"
