@@ -197,7 +197,8 @@ jobs:
                           "feed shape has changed")
                   good = False
               else:
-                  note = f"returned {returned} events, kept {parsed}"
+                  how = last.get("query") or "range"
+                  note = f"returned {returned} events, kept {parsed} (via {how})"
                   good = True
               row(f"Schedule feed {key}", True, good, note)
 

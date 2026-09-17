@@ -124,3 +124,96 @@ def test_the_public_data_sources_page_carries_the_diagnosis():
         p for p in body["providers"] if p["provider"] == "ESPN site API"
     )
     assert "last_fetch" in espn_entry
+
+
+def _client_by_dates(answers: dict[str, list]):
+    """A patched client that answers each `dates=` value differently."""
+    calls: list[str] = []
+
+    async def get(url, params=None, **kw):
+        dates = (params or {}).get("dates", "")
+        calls.append(dates)
+        response = MagicMock()
+        response.json.return_value = {"events": answers.get(dates, [])}
+        response.raise_for_status.return_value = None
+        return response
+
+    ctx = patch("httpx.AsyncClient")
+    started = ctx.start()
+    client = AsyncMock()
+    client.get.side_effect = get
+    started.return_value.__aenter__.return_value = client
+    return ctx, calls
+
+
+@pytest.mark.asyncio
+async def test_an_empty_date_range_is_re_asked_one_day_at_a_time():
+    """
+    The bug this exists for: a ranged `dates=` query is the cheap way to ask,
+    but the range form is not honoured identically across ESPN's leagues, and
+    when it is not the answer is an empty list — indistinguishable from a week
+    with no football in it. A board went blank in mid-September this way.
+
+    A single-day `dates=` is the form the API supports everywhere, so an empty
+    range is re-asked day by day before we tell anyone the schedule is empty.
+    """
+    today = espn.datetime.now(espn._ET).date()
+    sunday = today + espn.timedelta(days=3)
+    ctx, calls = _client_by_dates({f"{sunday:%Y%m%d}": [_one_event()]})
+    try:
+        board = await espn.fetch_upcoming("nfl", days=8)
+    finally:
+        ctx.stop()
+
+    # The range was tried first and came back empty...
+    assert calls[0] == f"{today:%Y%m%d}-{today + espn.timedelta(days=8):%Y%m%d}"
+    # ...so every day in it was asked individually, and Sunday had a game.
+    assert len(board.games) == 1
+    report = espn.fetch_report()["upcoming:nfl"]
+    assert report["query"] == "day-by-day"
+    assert report["games_parsed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_a_range_that_answers_is_not_re_asked_day_by_day():
+    # The fallback is for the failure, not the normal path: one request must
+    # stay one request when the range works.
+    today = espn.datetime.now(espn._ET).date()
+    span = f"{today:%Y%m%d}-{today + espn.timedelta(days=8):%Y%m%d}"
+    ctx, calls = _client_by_dates({span: [_one_event()]})
+    try:
+        board = await espn.fetch_upcoming("nfl", days=8)
+    finally:
+        ctx.stop()
+
+    assert len(board.games) == 1
+    assert calls == [span]
+    assert espn.fetch_report()["upcoming:nfl"]["query"] == "range"
+
+
+@pytest.mark.asyncio
+async def test_the_day_sweep_does_not_list_a_game_twice():
+    """A game appearing in more than one day's answer is still one game."""
+    everywhere = _one_event()
+    calls: list[str] = []
+
+    async def get(url, params=None, **kw):
+        dates = (params or {}).get("dates", "")
+        calls.append(dates)
+        response = MagicMock()
+        # The range answers with nothing; every single day answers with the
+        # same game, which is what the sweep has to survive.
+        response.json.return_value = {
+            "events": [] if "-" in dates else [everywhere]
+        }
+        response.raise_for_status.return_value = None
+        return response
+
+    with patch("httpx.AsyncClient") as cls:
+        client = AsyncMock()
+        client.get.side_effect = get
+        cls.return_value.__aenter__.return_value = client
+        board = await espn.fetch_upcoming("ncaaf", days=8)
+
+    assert len(calls) == 1 + 9        # the range, then each of nine days
+    assert len(board.games) == 1      # deduplicated by event id

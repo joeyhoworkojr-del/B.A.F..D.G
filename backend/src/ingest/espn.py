@@ -18,7 +18,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 from zoneinfo import ZoneInfo
 
@@ -262,15 +262,15 @@ def _parse_event(league: str, ev: dict) -> Optional[LiveGame]:
         return None
 
 
-def _dates_window() -> str:
-    """Explicit yesterday→tomorrow (ET) range for the scoreboard request.
+def _dates_window() -> tuple[date, date]:
+    """Explicit yesterday→tomorrow (ET) span for the scoreboard request.
 
     Without a `dates` param ESPN returns the whole *current week* for
     football leagues, so a Saturday CFL board would still be full of
     Thursday's finals presented as if they were current.
     """
     today = datetime.now(_ET).date()
-    return f"{today - timedelta(days=1):%Y%m%d}-{today + timedelta(days=1):%Y%m%d}"
+    return today - timedelta(days=1), today + timedelta(days=1)
 
 
 def is_current(game: "LiveGame", now: Optional[datetime] = None) -> bool:
@@ -296,13 +296,14 @@ def is_current(game: "LiveGame", now: Optional[datetime] = None) -> bool:
 _last_fetch: dict[str, dict] = {}
 
 
-def _record(kind: str, league: str, *, ok: bool,
-            events: int = 0, parsed: int = 0, error: str = "") -> None:
+def _record(kind: str, league: str, *, ok: bool, events: int = 0,
+            parsed: int = 0, error: str = "", via: str = "") -> None:
     _last_fetch[f"{kind}:{league}"] = {
         "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "ok": ok,
         "events_returned": events,
         "games_parsed": parsed,
+        "query": via,
         "error": error,
     }
 
@@ -310,6 +311,66 @@ def _record(kind: str, league: str, *, ok: bool,
 def fetch_report() -> dict[str, dict]:
     """Last outcome per feed and league, for the public data-sources page."""
     return dict(_last_fetch)
+
+
+async def _scoreboard_events(client, path: str, league: str, dates: str) -> list[dict]:
+    """One scoreboard request. Raises on transport or HTTP failure."""
+    resp = await client.get(
+        f"{ESPN_BASE}/{path}/scoreboard",
+        params={"dates": dates, **LEAGUE_PARAMS.get(league, {})},
+    )
+    resp.raise_for_status()
+    return resp.json().get("events", []) or []
+
+
+async def _events_over(
+    client, path: str, league: str, first: date, last: date,
+) -> tuple[list[dict], str]:
+    """
+    Every event between two ET dates, and how we had to ask for it.
+
+    One request with a `20260917-20260925` range is the cheap way, and it is
+    what we ask for first. But that range form is not honoured identically
+    across ESPN's leagues, and when it is not, the answer is not an error — it
+    is an empty list, which reads exactly like a week with no football in it.
+    A single `dates=20260920` is the form the API supports everywhere, so an
+    empty range is re-asked one day at a time before we are willing to tell
+    anyone the schedule is empty.
+
+    The fallback only runs on the empty path, and its result is cached like any
+    other, so a genuinely quiet week costs one sweep per cache period.
+    """
+    span = max(0, (last - first).days)
+    ranged = await _scoreboard_events(
+        client, path, league, f"{first:%Y%m%d}-{last:%Y%m%d}",
+    )
+    if ranged or span == 0:
+        return ranged, "range"
+
+    log.warning(
+        "ESPN %s returned nothing for %s over %s-%s — re-asking day by day",
+        path, league, f"{first:%Y%m%d}", f"{last:%Y%m%d}",
+    )
+    days = [first + timedelta(days=i) for i in range(span + 1)]
+    results = await asyncio.gather(
+        *(_scoreboard_events(client, path, league, f"{d:%Y%m%d}") for d in days),
+        return_exceptions=True,
+    )
+
+    seen: set[str] = set()
+    out: list[dict] = []
+    for day, result in zip(days, results):
+        if isinstance(result, BaseException):
+            log.warning("ESPN %s %s day %s failed: %s", path, league,
+                        f"{day:%Y%m%d}", type(result).__name__)
+            continue
+        for ev in result:
+            key = str(ev.get("id", ""))
+            if key and key in seen:
+                continue
+            seen.add(key)
+            out.append(ev)
+    return out, "day-by-day"
 
 
 async def fetch_scoreboard(league: str) -> Scoreboard:
@@ -325,17 +386,13 @@ async def fetch_scoreboard(league: str) -> Scoreboard:
     if cached and time.monotonic() - cached[0] < _board_ttl(cached[1]):
         return Scoreboard(league=league, games=cached[1], fetched_at=now_iso)
 
+    first, last = _dates_window()
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
-            resp = await client.get(
-                f"{ESPN_BASE}/{path}/scoreboard",
-                params={"dates": _dates_window(), **LEAGUE_PARAMS.get(league, {})},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-        events = data.get("events", []) or []
+            events, via = await _events_over(client, path, league, first, last)
         games = [g for g in (_parse_event(league, ev) for ev in events) if g]
-        _record("scoreboard", league, ok=True, events=len(events), parsed=len(games))
+        _record("scoreboard", league, ok=True, events=len(events),
+                parsed=len(games), via=via)
         if events and not games:
             log.error(
                 "ESPN scoreboard returned %d events for %s and none parsed — "
@@ -359,10 +416,10 @@ MAX_UPCOMING_DAYS = 14
 _upcoming_cache: dict[str, tuple[float, list["LiveGame"]]] = {}
 
 
-def _upcoming_window(days: int) -> str:
-    """Today through `days` ahead, in ET, as ESPN's date-range parameter."""
+def _upcoming_window(days: int) -> tuple[date, date]:
+    """Today through `days` ahead, in ET."""
     today = datetime.now(_ET).date()
-    return f"{today:%Y%m%d}-{today + timedelta(days=days):%Y%m%d}"
+    return today, today + timedelta(days=days)
 
 
 async def fetch_upcoming(league: str, days: int = 7) -> Scoreboard:
@@ -386,21 +443,17 @@ async def fetch_upcoming(league: str, days: int = 7) -> Scoreboard:
     if cached and time.monotonic() - cached[0] < UPCOMING_TTL_SECONDS:
         return Scoreboard(league=league, games=cached[1], fetched_at=now_iso)
 
+    first, last = _upcoming_window(days)
     try:
         async with httpx.AsyncClient(timeout=12.0) as client:
-            resp = await client.get(
-                f"{ESPN_BASE}/{path}/scoreboard",
-                params={"dates": _upcoming_window(days), **LEAGUE_PARAMS.get(league, {})},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-        events = data.get("events", []) or []
+            events, via = await _events_over(client, path, league, first, last)
         games = [g for g in (_parse_event(league, ev) for ev in events) if g]
         games = sorted(
             (g for g in games if g.state == "pre"),
             key=lambda g: g.kickoff or "",
         )
-        _record("upcoming", league, ok=True, events=len(events), parsed=len(games))
+        _record("upcoming", league, ok=True, events=len(events),
+                parsed=len(games), via=via)
         if events and not games:
             log.error(
                 "ESPN upcoming returned %d events for %s and none survived "
