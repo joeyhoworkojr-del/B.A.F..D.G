@@ -315,10 +315,10 @@ def fetch_report() -> dict[str, dict]:
 
 async def _scoreboard_events(client, path: str, league: str, dates: str) -> list[dict]:
     """One scoreboard request. Raises on transport or HTTP failure."""
-    resp = await client.get(
-        f"{ESPN_BASE}/{path}/scoreboard",
-        params={"dates": dates, **LEAGUE_PARAMS.get(league, {})},
-    )
+    params = dict(LEAGUE_PARAMS.get(league, {}))
+    if dates:
+        params["dates"] = dates
+    resp = await client.get(f"{ESPN_BASE}/{path}/scoreboard", params=params)
     resp.raise_for_status()
     return resp.json().get("events", []) or []
 
@@ -329,48 +329,84 @@ async def _events_over(
     """
     Every event between two ET dates, and how we had to ask for it.
 
-    One request with a `20260917-20260925` range is the cheap way, and it is
-    what we ask for first. But that range form is not honoured identically
-    across ESPN's leagues, and when it is not, the answer is not an error — it
-    is an empty list, which reads exactly like a week with no football in it.
-    A single `dates=20260920` is the form the API supports everywhere, so an
-    empty range is re-asked one day at a time before we are willing to tell
-    anyone the schedule is empty.
+    One request for a `dates=20260917-20260925` range is the cheap way to ask,
+    and it is still what we try first. But ESPN now answers that range with a
+    flat **400 Bad Request** — on both leagues, for both the today window and
+    the week ahead. That is what emptied the board: every schedule call failed,
+    while news from the same host kept working, so the site looked up and had
+    nothing to show.
 
-    The fallback only runs on the empty path, and its result is cached like any
-    other, so a genuinely quiet week costs one sweep per cache period.
+    So there are three ways of asking, in increasing order of cost, and we stop
+    at the first that answers:
+
+      1. the date range, one request;
+      2. `dates=20260920`, one request per day — the single-day form is the one
+         the API has always supported;
+      3. no `dates` at all, which returns the current week. Coarser than we
+         asked for, but everything downstream filters by day anyway, so a
+         board built from it is still correct.
+
+    A tier is tried when the one before it *failed* as well as when it came
+    back empty — treating a 400 as "nothing is scheduled" is exactly the bug
+    this exists to prevent. If every tier fails the error is raised, because
+    "the feed is down" and "there is no football this week" must not be
+    reported as the same thing.
     """
     span = max(0, (last - first).days)
-    ranged = await _scoreboard_events(
-        client, path, league, f"{first:%Y%m%d}-{last:%Y%m%d}",
-    )
-    if ranged or span == 0:
-        return ranged, "range"
+    failure: BaseException | None = None
 
-    log.warning(
-        "ESPN %s returned nothing for %s over %s-%s — re-asking day by day",
-        path, league, f"{first:%Y%m%d}", f"{last:%Y%m%d}",
-    )
+    # 1. One request for the whole range.
+    try:
+        ranged = await _scoreboard_events(
+            client, path, league, f"{first:%Y%m%d}-{last:%Y%m%d}",
+        )
+        if ranged:
+            return ranged, "range"
+        log.warning("ESPN %s returned nothing for %s over %s-%s — asking again",
+                    path, league, f"{first:%Y%m%d}", f"{last:%Y%m%d}")
+    except Exception as exc:
+        failure = exc
+        log.warning("ESPN %s rejected the %s-%s range for %s (%s) — asking again",
+                    path, f"{first:%Y%m%d}", f"{last:%Y%m%d}", league,
+                    type(exc).__name__)
+
+    # 2. One request per day in the window.
     days = [first + timedelta(days=i) for i in range(span + 1)]
     results = await asyncio.gather(
         *(_scoreboard_events(client, path, league, f"{d:%Y%m%d}") for d in days),
         return_exceptions=True,
     )
-
+    answered = 0
     seen: set[str] = set()
     out: list[dict] = []
     for day, result in zip(days, results):
         if isinstance(result, BaseException):
+            failure = failure or result
             log.warning("ESPN %s %s day %s failed: %s", path, league,
                         f"{day:%Y%m%d}", type(result).__name__)
             continue
+        answered += 1
         for ev in result:
             key = str(ev.get("id", ""))
             if key and key in seen:
                 continue
             seen.add(key)
             out.append(ev)
-    return out, "day-by-day"
+    if out:
+        return out, "day-by-day"
+
+    # 3. No date filter at all: whatever the feed considers current.
+    if answered:
+        # Every day answered and every day was empty. That is a real answer
+        # about the schedule, not a failure, so take it at its word.
+        return [], "day-by-day"
+
+    log.warning("ESPN %s: every dated query failed for %s — asking undated",
+                path, league)
+    try:
+        return await _scoreboard_events(client, path, league, ""), "undated"
+    except Exception as exc:
+        raise failure or exc
 
 
 async def fetch_scoreboard(league: str) -> Scoreboard:
