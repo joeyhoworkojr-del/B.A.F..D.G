@@ -217,3 +217,132 @@ async def test_the_day_sweep_does_not_list_a_game_twice():
 
     assert len(calls) == 1 + 9        # the range, then each of nine days
     assert len(board.games) == 1      # deduplicated by event id
+
+
+def _tiered_client(answer):
+    """A client whose response depends on the `dates` value it was asked for.
+
+    `answer(dates)` returns a list of events, or raises to simulate an HTTP
+    error for that particular query shape. `dates` is "" for the undated tier.
+    """
+    calls: list[str] = []
+
+    async def get(url, params=None, **kw):
+        dates = (params or {}).get("dates", "")
+        calls.append(dates)
+        events = answer(dates)          # may raise
+        response = MagicMock()
+        response.json.return_value = {"events": events}
+        response.raise_for_status.return_value = None
+        return response
+
+    cls = patch("httpx.AsyncClient")
+    started = cls.start()
+    client = AsyncMock()
+    client.get.side_effect = get
+    started.return_value.__aenter__.return_value = client
+    return cls, calls
+
+
+def _http_400(url: str) -> Exception:
+    import httpx
+    return httpx.HTTPStatusError(
+        f"Client error '400 Bad Request' for url '{url}'",
+        request=httpx.Request("GET", url),
+        response=httpx.Response(400, request=httpx.Request("GET", url)),
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_400_on_the_range_falls_through_to_single_days():
+    """
+    What actually took the board down, from the deploy report:
+
+        HTTPStatusError: Client error '400 Bad Request' for url
+        '.../nfl/scoreboard?dates=20260917-20260925'
+
+    The range is not answered with an empty list — it is rejected outright. A
+    fallback that only runs on an empty answer never runs at all, so every
+    schedule call failed while news from the same host kept working.
+    """
+    today = espn.datetime.now(espn._ET).date()
+    sunday = today + espn.timedelta(days=3)
+
+    def answer(dates):
+        if "-" in dates:
+            raise _http_400(f"scoreboard?dates={dates}")
+        return [_one_event()] if dates == f"{sunday:%Y%m%d}" else []
+
+    cls, calls = _tiered_client(answer)
+    try:
+        board = await espn.fetch_upcoming("nfl", days=8)
+    finally:
+        cls.stop()
+
+    assert board.ok
+    assert len(board.games) == 1
+    assert espn.fetch_report()["upcoming:nfl"]["query"] == "day-by-day"
+    assert len(calls) == 1 + 9          # the rejected range, then each day
+
+
+@pytest.mark.asyncio
+async def test_every_dated_query_failing_falls_through_to_no_date_filter():
+    """Last resort: ask for whatever the feed considers current."""
+    def answer(dates):
+        if dates:
+            raise _http_400(f"scoreboard?dates={dates}")
+        return [_one_event()]
+
+    cls, calls = _tiered_client(answer)
+    try:
+        board = await espn.fetch_upcoming("nfl", days=8)
+    finally:
+        cls.stop()
+
+    assert board.ok
+    assert len(board.games) == 1
+    assert espn.fetch_report()["upcoming:nfl"]["query"] == "undated"
+    assert calls[-1] == ""              # the undated request came last
+
+
+@pytest.mark.asyncio
+async def test_a_feed_that_rejects_everything_is_reported_as_down_not_empty():
+    """
+    The distinction the whole change exists for. If every way of asking fails,
+    we do not know what is scheduled, and "no games this week" would be a
+    false claim rather than a cautious one.
+    """
+    def answer(dates):
+        raise _http_400(f"scoreboard?dates={dates}")
+
+    cls, _ = _tiered_client(answer)
+    try:
+        board = await espn.fetch_upcoming("ncaaf", days=8)
+    finally:
+        cls.stop()
+
+    assert board.ok is False
+    report = espn.fetch_report()["upcoming:ncaaf"]
+    assert report["ok"] is False
+    assert "400" in report["error"]
+
+
+@pytest.mark.asyncio
+async def test_days_that_all_answer_empty_are_believed():
+    """Nine days that each answer "nothing" is a real answer about a quiet
+    week, and must not escalate to an undated request that would drag in
+    games from outside the window."""
+    def answer(dates):
+        if "-" in dates:
+            raise _http_400(f"scoreboard?dates={dates}")
+        return []
+
+    cls, calls = _tiered_client(answer)
+    try:
+        board = await espn.fetch_upcoming("nfl", days=8)
+    finally:
+        cls.stop()
+
+    assert board.ok and board.games == []
+    assert "" not in calls              # no undated request was made
+    assert espn.fetch_report()["upcoming:nfl"]["query"] == "day-by-day"
