@@ -31,6 +31,7 @@ def _clear_live_caches():
 
     weather._weather_cache.clear()
     espn._cache.clear()
+    espn._upcoming_cache.clear()
     polymarket._cache.clear()
     # Board and slate responses are cached for a few seconds in production.
     # A test that calls the same endpoint twice with different mocked feeds is
@@ -41,5 +42,6 @@ def _clear_live_caches():
     yield
     weather._weather_cache.clear()
     espn._cache.clear()
+    espn._upcoming_cache.clear()
     polymarket._cache.clear()
     response_cache.clear()

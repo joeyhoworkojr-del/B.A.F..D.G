@@ -164,3 +164,47 @@ describe('Homepage personalisation', () => {
     expect(await screen.findByText(/none of the teams you follow/i)).toBeInTheDocument()
   })
 })
+
+describe('An empty board', () => {
+  it('does not claim nothing is scheduled when the feed is down', async () => {
+    // The screenshot version of this bug: a Thursday in September, the NFL
+    // playing on Sunday, and the page asserting "No games scheduled in the
+    // next 8 days" because it could not reach the schedule at all.
+    vi.spyOn(api, 'board').mockResolvedValue({
+      ...mergedBoard([]),
+      source_ok: false,
+      note: 'The live schedule feed is unreachable, so what is on cannot be listed right now.',
+    } as never)
+
+    renderDashboard()
+
+    expect(await screen.findByText('Schedule feed is unreachable')).toBeInTheDocument()
+    expect(screen.queryByText(/no games scheduled/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/nothing on the board/i)).not.toBeInTheDocument()
+  })
+
+  it('still says so plainly when the schedule really is empty', async () => {
+    vi.spyOn(api, 'board').mockResolvedValue({
+      ...mergedBoard([]),
+      source_ok: true,
+      note: 'No games scheduled in the next 8 days.',
+    } as never)
+
+    renderDashboard()
+
+    expect(await screen.findByText(/nothing on the board/i)).toBeInTheDocument()
+    expect(screen.getByText(/no games scheduled in the next 8 days/i)).toBeInTheDocument()
+  })
+
+  it('offers a retry when the feed is the problem', async () => {
+    const board = vi.spyOn(api, 'board').mockResolvedValue({
+      ...mergedBoard([]), source_ok: false, note: 'Feed unreachable.',
+    } as never)
+
+    renderDashboard()
+    const retry = await screen.findByRole('button', { name: /try again/i })
+    await userEvent.click(retry)
+
+    await waitFor(() => expect(board.mock.calls.length).toBeGreaterThan(1))
+  })
+})

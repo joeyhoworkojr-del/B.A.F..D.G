@@ -229,3 +229,77 @@ def test_one_failing_game_does_not_empty_the_whole_board():
     # ...and the one that failed appears without a projection rather than
     # taking the other three with it.
     assert sum(1 for e in listed if e["projected"]) == len(games) - 1
+
+
+def board_with_dead_feed():
+    """Both schedule feeds unreachable: ok=False, no games, no exception."""
+    async def down(league, days=7):
+        return Scoreboard(league=league, games=[], fetched_at="now", ok=False,
+                          source="ESPN (temporarily unreachable)")
+
+    async def fake_markets(league):
+        return []
+
+    return patch.multiple(
+        pred,
+        fetch_scoreboard=lambda league: down(league),
+        fetch_upcoming=down,
+        fetch_league_markets=fake_markets,
+    )
+
+
+def test_a_dead_feed_is_never_reported_as_an_empty_schedule():
+    """
+    The two reasons a board is empty are not interchangeable.
+
+    "No games scheduled in the next 8 days" is a claim about the world. When
+    the feed is unreachable we do not know what is scheduled, and saying it
+    anyway states something false as fact — on a Thursday in September, with
+    the NFL playing on Sunday, it is simply wrong.
+    """
+    with board_with_dead_feed():
+        data = get_board()
+
+    assert data["days"] == []
+    assert data["source_ok"] is False
+    assert "No games scheduled" not in data["note"]
+    assert "feed" in data["note"].lower()
+
+
+def test_a_genuinely_empty_schedule_still_says_so():
+    with board_with({}, {}):
+        data = get_board()
+
+    assert data["source_ok"] is True
+    assert "No games scheduled" in data["note"]
+
+
+# ─── How hard the background warmer is allowed to poll ───────────────────────
+
+def test_the_warm_loop_slows_down_when_nothing_is_in_progress():
+    live = {"live_count": 1, "source_ok": True}
+    idle = {"live_count": 0, "source_ok": True}
+
+    assert pred._warm_every(live) == pred.BOARD_WARM_SECONDS
+    assert pred._warm_every(idle) == pred.BOARD_IDLE_WARM_SECONDS
+    assert pred._warm_every(idle) > pred._warm_every(live)
+
+
+def test_the_warm_loop_backs_off_while_the_feed_is_unhappy():
+    unhappy = {"live_count": 1, "source_ok": False}
+    assert pred._warm_every(unhappy) == pred.BOARD_FEED_DOWN_WARM_SECONDS
+    assert pred._warm_every(unhappy) > pred.BOARD_WARM_SECONDS
+
+
+def test_the_first_build_after_a_restart_is_not_paced_as_idle():
+    # Nothing has been built yet, so nothing is known. Assuming quiet would
+    # make a restart during a Sunday afternoon slow to catch up.
+    assert pred._warm_every(None) == pred.BOARD_WARM_SECONDS
+
+
+def test_a_league_slate_is_paced_by_its_own_games():
+    playing = {"source_ok": True, "games": [{"game": {"state": "in"}}]}
+    finished = {"source_ok": True, "games": [{"game": {"state": "post"}}]}
+
+    assert pred._warm_every(playing) == pred.BOARD_WARM_SECONDS
+    assert pred._warm_every(finished) == pred.BOARD_IDLE_WARM_SECONDS

@@ -177,6 +177,31 @@ jobs:
                   provider.get("last_error") or provider.get("note") or "ok",
               )
 
+          # The schedule feed, reported as counts rather than a verdict. An
+          # empty board because the week is quiet and an empty board because we
+          # can no longer read the feed look identical from outside, and only
+          # "returned N, parsed 0" tells them apart.
+          espn = next(
+              (p for p in sources.get("providers") or []
+               if p.get("provider") == "ESPN site API"),
+              {},
+          )
+          for key, last in sorted((espn.get("last_fetch") or {}).items()):
+              returned = last.get("events_returned", 0)
+              parsed = last.get("games_parsed", 0)
+              if not last.get("ok"):
+                  note = last.get("error") or "unreachable"
+                  good = False
+              elif returned and not parsed:
+                  note = (f"returned {returned} events and none parsed — the "
+                          "feed shape has changed")
+                  good = False
+              else:
+                  how = last.get("query") or "range"
+                  note = f"returned {returned} events, kept {parsed} (via {how})"
+                  good = True
+              row(f"Schedule feed {key}", True, good, note)
+
           if not ai and not sources:
               print("")
               print("The API did not answer in time. Not necessarily broken — "
