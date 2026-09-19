@@ -83,6 +83,15 @@ export function gameDetail(overrides: Partial<GameDetailOut> = {}): GameDetailOu
       proj_home_score: 27.4, proj_away_score: 24.9,
       total_estimate: 52.3, over_prob: 0.57, under_prob: 0.43,
       home_cover_prob: 0.70, total_line: 52.5, conditions: [], live: false,
+      // The spread pick here is the home side at -3; the outright winner is
+      // the same team, but the two are separate fields answering separate
+      // questions and the fixture keeps both.
+      winner: {
+        side: 'home', team: 'Florida State', abbr: 'FSU', opponent: 'Clemson',
+        win_prob: 0.56, model_prob: 0.58, market_prob: 0.53,
+        market_prob_is_implied: false, price_american: -125,
+        market_agrees: true, band: 'lean', live: false, graded: true,
+      },
     },
     edges: [],
     markets: [moneylineMarket, spreadMarket, totalMarket],
@@ -122,12 +131,25 @@ export function boardEntry(
   overrides: Partial<LiveGameOut> = {},
 ): BoardEntry {
   const detail = gameDetail()
+  const game = { ...pregameGame, league, ...overrides }
   return {
     league,
     projected: true,
-    game: { ...pregameGame, league, ...overrides },
+    game,
     mapped: true,
-    model: detail.model,
+    // The outright winner has to be one of the two teams actually playing.
+    // Carrying the shared fixture's team through unchanged put a college side
+    // on an NFL card, which is the sort of mismatch a fixture should expose
+    // rather than manufacture.
+    model: detail.model && {
+      ...detail.model,
+      winner: detail.model.winner && {
+        ...detail.model.winner,
+        team: detail.model.winner.side === 'home' ? game.home : game.away,
+        abbr: detail.model.winner.side === 'home' ? game.home_abbr : game.away_abbr,
+        opponent: detail.model.winner.side === 'home' ? game.away : game.home,
+      },
+    },
     edges: [],
     polymarket: null,
   }

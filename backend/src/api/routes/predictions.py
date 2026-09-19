@@ -672,6 +672,99 @@ LIVE_MIN_MODEL_MOVE_PP = 5.0
 LIVE_PICKS_GRADED = False
 
 
+# ─── Who wins outright ───────────────────────────────────────────────────────
+
+# Straight-up win probability bands, for wording only. A projection of 51% and
+# one of 84% are both "the home team", and a reader should not have to work out
+# from the number alone which of those is worth anything. The bands sit on the
+# probability the model actually produced; they do not change it.
+WINNER_BANDS = (
+    (0.55, "toss-up"),
+    (0.62, "lean"),
+    (0.72, "clear"),
+    (1.01, "strong"),
+)
+
+
+def _winner_band(prob: float) -> str:
+    for ceiling, label in WINNER_BANDS:
+        if prob < ceiling:
+            return label
+    return "strong"
+
+
+def _winner_read(
+    game,
+    home_prob: float,
+    *,
+    model_home_prob: Optional[float] = None,
+    live: bool = False,
+) -> Optional[dict]:
+    """
+    Which team the model expects to win the game, regardless of the spread.
+
+    This is deliberately a different question from the spread pick, and the two
+    disagree all the time: a 9-point favourite the model makes 7 is still the
+    team that wins outright, while the spread pick is the underdog. Naming only
+    the cover leaves the plainest question on the board unanswered.
+
+    Nothing here is a bet. It reports a probability, the price beside it where
+    the book published one, and whether the market names the same side.
+
+    Returns None for a game with no usable probability — a finished game is not
+    given a "projected" winner, because the winner is a fact by then and
+    dressing a result up as a forecast would be inventing a track record.
+    """
+    if home_prob is None:
+        return None
+    if getattr(game, "state", "") == "post":
+        return None
+
+    home = home_prob >= 0.5
+    prob = home_prob if home else 1.0 - home_prob
+
+    market_home = _no_vig_home_prob(game)
+    implied_only = False
+    if market_home is None and game.market_spread is not None:
+        # No published moneyline, but a spread implies a winner well enough to
+        # say whether the market agrees. Flagged, because it is our conversion
+        # of their line and not a price they quoted.
+        market_home = _spread_to_home_prob(game.market_spread, game.league)
+        implied_only = True
+
+    market_prob = None
+    agrees = None
+    if market_home is not None:
+        market_prob = market_home if home else 1.0 - market_home
+        agrees = (market_home >= 0.5) == home
+
+    price = game.market_home_ml if home else game.market_away_ml
+    raw = None
+    if model_home_prob is not None:
+        raw = model_home_prob if home else 1.0 - model_home_prob
+
+    return {
+        "side": "home" if home else "away",
+        "team": game.home if home else game.away,
+        "abbr": (game.home_abbr if home else game.away_abbr) or "",
+        "opponent": game.away if home else game.home,
+        "win_prob": round(prob, 4),
+        # The raw model, before the market anchor. Present pre-game so the two
+        # can be compared; a live read has no anchor to strip out.
+        "model_prob": round(raw, 4) if raw is not None else None,
+        "market_prob": round(market_prob, 4) if market_prob is not None else None,
+        "market_prob_is_implied": implied_only,
+        "price_american": int(price) if price is not None else None,
+        "market_agrees": agrees,
+        "band": _winner_band(prob),
+        # A live number is recalculated from the score and clock. It is never
+        # snapshotted and never graded, so it carries no track record and the
+        # page has to be able to say which kind it is showing.
+        "live": bool(live),
+        "graded": not live,
+    }
+
+
 def _live_read(game, live_home_win: float, snapshot: Optional[dict]) -> Optional[dict]:
     """
     The model's live read on a game in progress, and whether the book is
@@ -1089,6 +1182,10 @@ async def _slate_entry(
             # Present only when the model actually disagrees with the market
             # about the winner, by more than a coin flip.
             "upset": _upset_read(g, pred.home_win_prob),
+            # The plainest question on the board, and a different one from the
+            # spread: who wins the game. Anchored to the market like the rest
+            # of the headline numbers, with the raw model kept beside it.
+            "winner": _winner_read(g, cal_home, model_home_prob=pred.home_win_prob),
         }
 
         # ── Live in-game update: revise win prob + projected score from the
@@ -1122,6 +1219,11 @@ async def _slate_entry(
                 "live": True,
                 "live_home_win": live["home_win"],
                 "live_away_win": live["away_win"],
+                # Who wins from here, given the score and the clock. This
+                # replaces the pre-game call rather than sitting beside it:
+                # once a game is under way the kickoff projection is not the
+                # answer to "who wins" any more.
+                "winner": _winner_read(g, live["home_win"], live=True),
                 "live_proj_home": live["proj_home"],
                 "live_proj_away": live["proj_away"],
                 "time_remaining_pct": live["time_remaining_pct"],

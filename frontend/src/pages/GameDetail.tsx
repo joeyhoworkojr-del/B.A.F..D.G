@@ -5,6 +5,7 @@ import { useGameDetail } from '../hooks/useGameDetail'
 import { MatchupBanner } from '../components/game/MatchupBanner'
 import { GameTabs, type GameTabKey } from '../components/game/GameTabs'
 import { WhoWins } from '../components/game/WhoWins'
+import { WinnerCall } from '../components/game/WinnerCall'
 import { KeyPlayers } from '../components/game/KeyPlayers'
 import { Panel } from '../components/game/Panel'
 import { PrimaryEdgeCard } from '../components/game/PrimaryEdgeCard'
@@ -196,6 +197,15 @@ export function GameDetail() {
                     onExplain={explain}
                   />
                 )}
+
+                {/* Who wins the game, spread aside — a different question from
+                    the edge above it, and often a different team.
+
+                    It sits below the primary edge rather than above it because
+                    above it costs the edge its place on a 390×844 screen:
+                    measured, the edge moved from y=838 to y=917 with this card
+                    in front of it, and the fold is 844. */}
+                {data?.model?.winner && <WinnerCall winner={data.model.winner} boxed />}
 
                 {eventId && <KeyPlayers league={league} eventId={eventId} />}
 
