@@ -16,6 +16,27 @@ from src.predict.soccer import predict_match
 client = TestClient(app)
 
 
+def staff_client(monkeypatch, username="lineupboss"):
+    """Setting availability is a staff action, so these tests sign in as one.
+
+    Reading it stays public — only the writes moved behind the check.
+    """
+    import importlib
+    from src.accounts import models, service
+    monkeypatch.setenv("ADMIN_USERNAMES", username)
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    importlib.reload(models)
+    importlib.reload(service)
+    import src.api.routes.auth as auth
+    importlib.reload(auth)
+    c = TestClient(app)
+    c.post("/api/v1/auth/register", json={
+        "username": username, "email": f"{username}@example.com",
+        "password": "a-strong-passphrase"})
+    return c
+
+
 def _weather(**kw) -> WeatherReport:
     defaults = dict(
         venue="Test Stadium", temperature_c=20.0, temperature_f=68.0,
@@ -121,7 +142,8 @@ def test_lineup_get_endpoint() -> None:
     assert all(p["status"] == "fit" for p in players)
 
 
-def test_lineup_set_and_reset() -> None:
+def test_lineup_set_and_reset(monkeypatch) -> None:
+    client = staff_client(monkeypatch)
     resp = client.post(
         "/api/v1/lineups/nfl/KC",
         json={"player": "P. Mahomes", "status": "out"},
@@ -146,7 +168,8 @@ def test_lineup_set_and_reset() -> None:
     assert pred2["conditions"] == []
 
 
-def test_lineup_unknown_player_404() -> None:
+def test_lineup_unknown_player_404(monkeypatch) -> None:
+    client = staff_client(monkeypatch, "lineupboss2")
     resp = client.post(
         "/api/v1/lineups/soccer/ARG",
         json={"player": "Nobody Real", "status": "out"},
@@ -154,7 +177,8 @@ def test_lineup_unknown_player_404() -> None:
     assert resp.status_code == 404
 
 
-def test_lineup_invalid_status_422() -> None:
+def test_lineup_invalid_status_422(monkeypatch) -> None:
+    client = staff_client(monkeypatch, "lineupboss3")
     resp = client.post(
         "/api/v1/lineups/soccer/ARG",
         json={"player": "L. Messi", "status": "injured-ish"},

@@ -1,7 +1,7 @@
 """Live data API routes — weather, scores, and lineup availability."""
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from datetime import datetime, timezone
@@ -17,6 +17,8 @@ from src.api.schemas import (
     ScoreboardOut,
     SetPlayerStatusRequest,
 )
+from src.api.routes.auth import require_staff
+from src.accounts.models import User
 from src.data import lineups
 from src.ingest.news import fetch_news, fetch_news_multi
 from src.ingest.espn import (
@@ -28,6 +30,7 @@ from src.ingest import cfbd, espn, nflverse
 from src.predict import priors
 from src.track import ledger, store, win_history
 import asyncio
+import logging
 from src.ingest.weather import (
     CFL_INDOOR_TEAMS,
     CFL_STADIUM_COORDS,
@@ -40,6 +43,8 @@ from src.ingest.weather import (
     fetch_gridiron_weather,
     fetch_weather,
 )
+
+log = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -273,8 +278,18 @@ def get_team_lineup(sport: str, team_code: str) -> list[KeyPlayerOut]:
     return [_player_out(sport, team_code, p) for p in players]
 
 
+# Reading who is available is public; deciding it is not. These two writes
+# change what the model publishes — the docstring below is literal, an
+# override lands on every subsequent prediction for that team — so leaving
+# them unauthenticated let any visitor rule a starting quarterback out and
+# move StatEdge's public numbers. Staff only, checked on the server.
 @router.post("/lineups/{sport}/{team_code}", response_model=KeyPlayerOut, tags=["Lineups"])
-def set_player_status(sport: str, team_code: str, req: SetPlayerStatusRequest) -> KeyPlayerOut:
+def set_player_status(
+    sport: str,
+    team_code: str,
+    req: SetPlayerStatusRequest,
+    staff: User = Depends(require_staff),
+) -> KeyPlayerOut:
     """
     Mark a key player fit/doubtful/out. Takes effect immediately on every
     subsequent prediction involving this team.
@@ -287,13 +302,20 @@ def set_player_status(sport: str, team_code: str, req: SetPlayerStatusRequest) -
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    log.info("lineup override by %s: %s %s %s = %s",
+             staff.username, sport, team_code, req.player, req.status)
     return _player_out(sport, team_code, player)
 
 
 @router.delete("/lineups/{sport}/{team_code}", tags=["Lineups"])
-def reset_team_lineup(sport: str, team_code: str) -> dict:
+def reset_team_lineup(
+    sport: str, team_code: str, staff: User = Depends(require_staff),
+) -> dict:
     """Reset all availability overrides for a team back to fit."""
+    if sport not in VALID_SPORTS:
+        raise HTTPException(status_code=404, detail=f"Unknown sport: {sport!r}")
     lineups.reset_team(sport, team_code)
+    log.info("lineup reset by %s: %s %s", staff.username, sport, team_code)
     return {"status": "reset", "team": team_code.upper(), "sport": sport}
 
 

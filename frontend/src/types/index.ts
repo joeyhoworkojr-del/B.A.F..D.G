@@ -465,7 +465,11 @@ export interface AccuracyBucket {
 
 export interface PerformanceOut {
   total_picks: number
+  wins?: number
+  losses?: number
   win_rate?: number | null
+  /** How many graded picks had a book price, and so could be priced for ROI. */
+  priced_picks?: number
   avg_edge_pp?: number | null
   profit_units?: number | null
   roi_pct?: number | null

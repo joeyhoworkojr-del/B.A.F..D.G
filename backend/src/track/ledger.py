@@ -342,7 +342,8 @@ def accuracy_summary() -> dict:
 
 
 _EMPTY_PERFORMANCE = {
-    "total_picks": 0, "win_rate": None, "avg_edge_pp": None,
+    "total_picks": 0, "wins": 0, "losses": 0, "win_rate": None,
+    "priced_picks": 0, "avg_edge_pp": None,
     "profit_units": None, "roi_pct": None, "series": [],
 }
 
@@ -406,7 +407,17 @@ def performance() -> dict:
         # Rows that could be settled, not rows on file — a win rate divided by
         # a denominator that includes unsettleable rows is understated.
         "total_picks": usable,
+        # Stated, not inferred. The page used to rebuild the split by
+        # multiplying a rounded rate back out by the total, which is a derived
+        # number presented as a record.
+        "wins": wins,
+        "losses": usable - wins,
         "win_rate": (wins / usable) if usable else None,
+        # How many of those could be priced. ROI needs a book price on the
+        # side we took; without one there is no stake and no return, and a
+        # blank ROI beside a healthy win rate needs to say why rather than
+        # leaving an unexplained dash.
+        "priced_picks": staked,
         "avg_edge_pp": (edge_sum / edge_n) if edge_n else None,
         "profit_units": round(cum, 2) if staked else None,
         "roi_pct": round(100 * cum / staked, 1) if staked else None,
