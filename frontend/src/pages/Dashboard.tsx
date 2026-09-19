@@ -5,6 +5,7 @@ import { PropsStrip } from '../components/props/PropsStrip'
 import { NewsStrip } from '../components/news/NewsStrip'
 import { UpsetWatch } from '../components/game/UpsetWatch'
 import { BestLivePicks } from '../components/game/BestLivePicks'
+import { WinnerCall } from '../components/game/WinnerCall'
 import { FaqList } from '../components/faq/FaqList'
 import { oddsSourceSentence } from '../components/OddsSource'
 import { FAQ, FAQ_PREVIEW_IDS } from '../content/faq'
@@ -185,6 +186,13 @@ function LiveCard({ entry }: { entry: BoardEntry }) {
           </div>
         )}
       </div>
+      {/* The column above gives a percentage without saying whose it is.
+          This names the team, which is the thing being asked. */}
+      {m?.winner && (
+        <div className="border-t border-terminal-border px-4 py-2">
+          <WinnerCall winner={m.winner} />
+        </div>
+      )}
       {/* Who has it and where. The live projection reads this, so showing it
           here is what makes a probability move legible from the board. */}
       {(g.possession_abbr || g.down_distance) && (
@@ -264,6 +272,15 @@ function EdgeCard({ entry }: { entry: BoardEntry }) {
           </div>
         </div>
       </div>
+
+      {/* Who actually wins the game. The pills above answer the spread and the
+          total; this answers the question most people arrive with, and it
+          routinely names a different team from the spread pick. */}
+      {m?.winner && (
+        <div className="mt-3 border-t border-terminal-border/70 pt-3">
+          <WinnerCall winner={m.winner} />
+        </div>
+      )}
 
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-terminal-border/70 pt-3">
         {e ? (

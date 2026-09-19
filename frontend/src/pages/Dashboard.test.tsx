@@ -57,8 +57,10 @@ function renderDashboard() {
 describe('The merged board', () => {
   it('shows NFL and college games together, not on separate tabs', async () => {
     renderDashboard()
-    expect(await screen.findByText('Chiefs')).toBeInTheDocument()
-    expect(screen.getByText('Florida State')).toBeInTheDocument()
+    // A team now appears twice on its card — in the matchup, and again as the
+    // side named to win outright — so these count rather than expect one.
+    expect((await screen.findAllByText('Chiefs')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Florida State').length).toBeGreaterThan(0)
     expect(screen.getAllByText('NFL').length).toBeGreaterThan(0)
     expect(screen.getAllByText('NCAAF').length).toBeGreaterThan(0)
   })
@@ -83,12 +85,12 @@ describe('The merged board', () => {
       },
     ]) as never)
     renderDashboard()
-    expect(await screen.findByText('Chiefs')).toBeInTheDocument()
-    expect(screen.queryByText('Florida State')).not.toBeInTheDocument()
+    expect((await screen.findAllByText('Chiefs')).length).toBeGreaterThan(0)
+    expect(screen.queryAllByText('Florida State')).toHaveLength(0)
 
     await userEvent.click(screen.getByRole('tab', { name: /saturday 12 sep/i }))
-    expect(await screen.findByText('Florida State')).toBeInTheDocument()
-    expect(screen.queryByText('Chiefs')).not.toBeInTheDocument()
+    expect((await screen.findAllByText('Florida State')).length).toBeGreaterThan(0)
+    expect(screen.queryAllByText('Chiefs')).toHaveLength(0)
   })
 
   it('sorts a live game above the rest of its day', async () => {

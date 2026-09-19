@@ -277,11 +277,43 @@ export interface LiveReadOut {
   graded: boolean
 }
 
+/**
+ * Which team the model expects to win the game, spread aside.
+ *
+ * A different question from the cover, and the two disagree often: a 9-point
+ * favourite the model makes 7 still wins outright, while the spread pick is
+ * the underdog. Nothing here is a wager — a probability, the published price
+ * beside it where there is one, and whether the market names the same side.
+ *
+ * `live` marks a call recalculated from the score and clock. Those are never
+ * snapshotted and never graded, so `graded` is false for them and the page
+ * must not show them as part of the record.
+ */
+export interface WinnerOut {
+  side: 'home' | 'away'
+  team: string
+  abbr: string
+  opponent: string
+  win_prob: number
+  /** The raw model, before the market anchor. Null on a live call. */
+  model_prob: number | null
+  market_prob: number | null
+  /** True when market_prob was converted from the spread, not a quoted price. */
+  market_prob_is_implied: boolean
+  price_american: number | null
+  market_agrees: boolean | null
+  band: 'toss-up' | 'lean' | 'clear' | 'strong'
+  live: boolean
+  graded: boolean
+}
+
 export interface TodayModelOut {
   /** Present only while a game is in progress. */
   live_read?: LiveReadOut | null
   /** Present only when the model disagrees with the market on the winner. */
   upset?: UpsetOut | null
+  /** Who wins the game outright. Absent once the game is over. */
+  winner?: WinnerOut | null
   home_win_prob: number
   away_win_prob: number
   calibrated_home_win?: number

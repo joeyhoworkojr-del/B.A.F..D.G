@@ -54,6 +54,15 @@ const detail = {
     proj_home_score: 27.4, proj_away_score: 24.9, total_estimate: 52.3,
     over_prob: 0.57, under_prob: 0.43, home_cover_prob: 0.7,
     total_line: 52.5, conditions: [], live: false,
+    // The outright winner card sits above the markets on the Scorecast tab,
+    // so it has to be in this stub — otherwise the above-the-fold check below
+    // is passing on a page that is missing the thing being measured.
+    winner: {
+      side: 'home', team: 'Florida State', abbr: 'FSU', opponent: 'Clemson',
+      win_prob: 0.56, model_prob: 0.58, market_prob: 0.53,
+      market_prob_is_implied: false, price_american: -125,
+      market_agrees: true, band: 'lean', live: false, graded: true,
+    },
   },
   edges: [],
   markets: [
