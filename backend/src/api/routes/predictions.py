@@ -1420,14 +1420,12 @@ async def snapshot_pregame(league: str) -> int:
     )
     ledger.grade_board(league, board.games)
     ratings.reconcile()
-    n = 0
-    for g in board.games:
-        if g.state != "pre" or not is_current(g):
-            continue
-        entry = await _slate_entry(league, g, poly, snapshot=True)
-        if entry["mapped"]:
-            n += 1
-    return n
+    due = [g for g in board.games if g.state == "pre" and is_current(g)]
+    # Concurrent, and tolerant of one game failing: `_slate_entries` drops a
+    # game that raises rather than letting it cost the rest of the slate its
+    # snapshot. The ledger serialises its own writes.
+    entries = await _slate_entries(league, due, poly, snapshot=True)
+    return sum(1 for e in entries if e["mapped"])
 
 
 @router.get("/today/{league}", tags=["Predictions"])
@@ -1544,7 +1542,60 @@ BOARD_LOOKAHEAD_DAYS = 8
 
 # Games carrying a full projection. Beyond this they still appear with teams,
 # kickoff and line; a schedule that stops is not a schedule.
-BOARD_MAX_PREDICTED = 60
+#
+# This was 60, which was sized for a cost that is not there. Measured on a
+# real slate with the models run concurrently and the weather cache warm:
+#
+#     60 games   25 ms      98 games   34 ms      120 games   42 ms
+#
+# The 22 seconds a full Saturday used to take was almost entirely the weather
+# feed, and that is per stadium, cached for 15 minutes, and NFL-only — college
+# football does not use it at all. So the ceiling is now high enough that a
+# normal weekend is projected in full, and exists only to bound the absurd.
+BOARD_MAX_PREDICTED = 200
+
+
+def _projection_budget(
+    items: list[tuple[str, str, "LiveGame"]], limit: int,
+) -> set[tuple[str, str]]:
+    """Which games get a full projection when there are more than we can model.
+
+    "The first N by kickoff" is wrong on a Saturday, and wrong in a way that
+    hides an entire league. College football fills the whole of Saturday — 81
+    games in one day is a normal week — so the budget was spent before Sunday
+    had been reached, and every NFL game on the board showed without a
+    projection. The board exists to be both leagues at once; the budget has to
+    be shared the same way.
+
+    So it is handed out a game at a time, rotating between each day-and-league
+    on the board, in kickoff order within each. Games in progress go first
+    whatever day they belong to: a game being played is the reason someone
+    opened the page.
+
+    Returns the `(league, event_id)` pairs to model.
+    """
+    live: dict[tuple[str, str], list] = {}
+    later: dict[tuple[str, str], list] = {}
+    for day, league, game in items:
+        bucket = live if game.state == "in" else later
+        bucket.setdefault((day, league), []).append(game)
+
+    chosen: set[tuple[str, str]] = set()
+    for queues in (live, later):
+        keys = sorted(queues)
+        while len(chosen) < limit:
+            handed_out = 0
+            for key in keys:
+                if len(chosen) >= limit:
+                    break
+                queue = queues[key]
+                if not queue:
+                    continue
+                chosen.add((key[1], str(queue.pop(0).event_id)))
+                handed_out += 1
+            if not handed_out:      # every queue is empty
+                break
+    return chosen
 
 
 def _et_day(kickoff: str) -> str:
@@ -1625,40 +1676,51 @@ async def _build_board(days: int) -> dict:
     poly_results = await asyncio.gather(*(fetch_league_markets(lg) for lg in FOCUS_LEAGUES))
     poly = dict(zip(FOCUS_LEAGUES, poly_results))
 
+    # A game in progress belongs to today whatever day it kicked off on. A late
+    # kickoff crosses ET midnight while it is still being played, and grouping
+    # it by kickoff dropped it off the board entirely at exactly the moment
+    # people were watching it.
+    dated = [
+        (today if g.state == "in" else (_et_day(g.kickoff) or today), lg, g)
+        for lg, g in collected
+    ]
+    dated = [(day, lg, g) for day, lg, g in dated if day >= today]
+
+    budget = _projection_budget(dated, BOARD_MAX_PREDICTED)
+
+    # Model the chosen games concurrently rather than one after another. Sixty
+    # sequential model runs is the difference between a board that is built
+    # before anyone asks for it and one that is still being built when they do.
+    modelled: dict[tuple[str, str], dict] = {}
+    for league in FOCUS_LEAGUES:
+        wanted = [
+            g for _, lg, g in dated
+            if lg == league and (league, str(g.event_id)) in budget
+        ]
+        entries = await _slate_entries(league, wanted, poly[league])
+        for entry in entries:
+            modelled[(league, str(entry["game"]["event_id"]))] = entry
+
+    def unprojected(game) -> dict:
+        """On the board with its teams, kickoff and line — just no model."""
+        return {
+            "game": LiveGameOut(**game.__dict__).model_dump(),
+            "mapped": False, "model": None, "edges": [],
+            "polymarket": None, "projected": False,
+        }
+
     grouped: dict[str, list[dict]] = {}
     predicted = 0
-    for league, game in collected:
-        # A game in progress belongs to today whatever day it kicked off on.
-        # A late kickoff crosses ET midnight while it is still being played,
-        # and grouping it by kickoff dropped it off the board entirely at
-        # exactly the moment people were watching it.
-        day = today if game.state == "in" else (_et_day(game.kickoff) or today)
-        if day < today:
-            continue
-        if predicted < BOARD_MAX_PREDICTED:
-            try:
-                entry = await _slate_entry(league, game, poly[league])
-            except Exception as exc:
-                # One game must never cost the board. It still appears, with
-                # its teams and kickoff, simply without a projection.
-                log.warning(
-                    "board entry failed for %s:%s — %s",
-                    league, game.event_id, type(exc).__name__,
-                )
-                entry = {
-                    "game": LiveGameOut(**game.__dict__).model_dump(),
-                    "mapped": False, "model": None, "edges": [],
-                    "polymarket": None, "projected": False,
-                }
-            else:
-                entry["projected"] = True
-                predicted += 1
+    for day, league, game in dated:
+        # A game inside the budget whose model failed is not in `modelled` —
+        # `_slate_entries` drops it rather than letting one bad game empty the
+        # board — so it falls back to appearing without a projection.
+        entry = modelled.get((league, str(game.event_id)))
+        if entry is None:
+            entry = unprojected(game)
         else:
-            entry = {
-                "game": LiveGameOut(**game.__dict__).model_dump(),
-                "mapped": False, "model": None, "edges": [],
-                "polymarket": None, "projected": False,
-            }
+            entry = {**entry, "projected": True}
+            predicted += 1
         entry["league"] = league
         grouped.setdefault(day, []).append(entry)
 

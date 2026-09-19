@@ -208,3 +208,45 @@ describe('An empty board', () => {
     await waitFor(() => expect(board.mock.calls.length).toBeGreaterThan(1))
   })
 })
+
+describe('The headline record', () => {
+  const withPerformance = (perf: Record<string, unknown>) => {
+    vi.spyOn(api, 'accuracy').mockResolvedValue({ performance: perf } as never)
+    renderDashboard()
+  }
+
+  it('states the win/loss split rather than inferring it from a rounded rate', async () => {
+    withPerformance({ total_picks: 103, wins: 88, losses: 15, win_rate: 88 / 103, roi_pct: null })
+    expect(await screen.findByText('88–15')).toBeInTheDocument()
+  })
+
+  it('does not call a straight-up hit rate "accuracy"', async () => {
+    // "Accuracy 85%" reads as "StatEdge is right 85% of the time". What it
+    // counts is how often the favoured side won, which is a different claim.
+    withPerformance({ total_picks: 103, wins: 88, losses: 15, win_rate: 88 / 103, roi_pct: null })
+    expect(await screen.findByText('85%')).toBeInTheDocument()
+    expect(screen.getByText(/winner called/i)).toBeInTheDocument()
+    expect(screen.queryByText(/^accuracy$/i)).not.toBeInTheDocument()
+  })
+
+  it('says why ROI is blank instead of leaving a bare dash', async () => {
+    withPerformance({ total_picks: 103, wins: 88, losses: 15, win_rate: 88 / 103, roi_pct: null })
+    expect(await screen.findByText(/needs a published price/i)).toBeInTheDocument()
+    expect(screen.getByText(/not a betting return/i)).toBeInTheDocument()
+  })
+
+  it('drops the ROI caveat once there is a real return to show', async () => {
+    withPerformance({
+      total_picks: 103, wins: 88, losses: 15, win_rate: 88 / 103,
+      priced_picks: 103, roi_pct: 4.2,
+    })
+    expect(await screen.findByText('+4.2%')).toBeInTheDocument()
+    expect(screen.queryByText(/needs a published price/i)).not.toBeInTheDocument()
+  })
+
+  it('says nothing at all about a record it does not have', async () => {
+    withPerformance({ total_picks: 0, wins: 0, losses: 0, win_rate: null, roi_pct: null })
+    expect(await screen.findByText('0–0')).toBeInTheDocument()
+    expect(screen.queryByText(/not a betting return/i)).not.toBeInTheDocument()
+  })
+})

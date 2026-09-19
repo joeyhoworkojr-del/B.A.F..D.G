@@ -85,28 +85,54 @@ function ScoresStrip({ games }: { games: BoardEntry[] }) {
 }
 
 // ─── Stat bar ─────────────────────────────────────────────────────────────────
+/**
+ * The record, stated as the thing it actually measures.
+ *
+ * This said "Accuracy 85%", which reads as "StatEdge is right 85% of the
+ * time". What it counts is how often the side the model favoured went on to
+ * win — dominated by correctly picking heavy college favourites, and not a
+ * measure of whether following it made money. The number beside it that would
+ * answer that, ROI, is blank whenever the book published no price for the side
+ * we took, and a blank next to a flattering percentage is the misleading half
+ * of the pair. Both now say what they are.
+ */
 function StatBar({ acc }: { acc: AccuracyResponse | null }) {
   const perf = acc?.performance
   const total = perf?.total_picks ?? 0
   const wr = perf?.win_rate ?? null
-  const wins = wr != null ? Math.round(wr * total) : 0
-  const record = total > 0 ? `${wins}–${total - wins}` : '0–0'
+  // Stated by the API rather than rebuilt from a rounded rate.
+  const wins = perf?.wins ?? 0
+  const losses = perf?.losses ?? Math.max(0, total - wins)
+  const record = total > 0 ? `${wins}–${losses}` : '0–0'
   const roi = perf?.roi_pct
   const roiStr = roi == null ? '—' : `${roi >= 0 ? '+' : ''}${roi.toFixed(1)}%`
-  const acc_ = wr == null ? '—' : `${Math.round(wr * 100)}%`
+  const hit = wr == null ? '—' : `${Math.round(wr * 100)}%`
   const cells: [string, string, string][] = [
     ['Record', record, 'text-zinc-100'],
     ['ROI', roiStr, (roi ?? 0) >= 0 ? 'text-signal-green' : 'text-signal-red'],
-    ['Accuracy', acc_, 'text-zinc-100'],
+    ['Winner called', hit, 'text-zinc-100'],
   ]
   return (
-    <div className="grid grid-cols-3 overflow-hidden rounded-2xl border border-terminal-border bg-terminal-surface">
-      {cells.map(([l, v, c], i) => (
-        <div key={l} className={`px-4 py-3 text-center ${i > 0 ? 'border-l border-terminal-border' : ''}`}>
-          <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">{l}</p>
-          <p className={`mt-0.5 font-mono text-2xl font-black tabular-nums ${c}`}>{v}</p>
-        </div>
-      ))}
+    <div>
+      <div className="grid grid-cols-3 overflow-hidden rounded-2xl border border-terminal-border bg-terminal-surface">
+        {cells.map(([l, v, c], i) => (
+          <div key={l} className={`px-4 py-3 text-center ${i > 0 ? 'border-l border-terminal-border' : ''}`}>
+            <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">{l}</p>
+            <p className={`mt-0.5 font-mono text-2xl font-black tabular-nums ${c}`}>{v}</p>
+          </div>
+        ))}
+      </div>
+      {total > 0 && (
+        <p className="mt-1.5 px-1 text-center text-xs leading-relaxed text-zinc-500">
+          How often the side the model favoured won, over {total} graded
+          pre-game {total === 1 ? 'pick' : 'picks'}. It is not a betting return.
+          {roi == null && ' ROI needs a published price on the side we took; with none on file it stays blank rather than being estimated.'}
+          {' '}
+          <Link to="/results" className="font-semibold text-brand hover:underline">
+            Full record ›
+          </Link>
+        </p>
+      )}
     </div>
   )
 }

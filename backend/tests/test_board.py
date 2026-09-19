@@ -303,3 +303,96 @@ def test_a_league_slate_is_paced_by_its_own_games():
 
     assert pred._warm_every(playing) == pred.BOARD_WARM_SECONDS
     assert pred._warm_every(finished) == pred.BOARD_IDLE_WARM_SECONDS
+
+
+# ─── Who gets a projection when there are more games than we can model ───────
+
+def saturday_slate(ncaaf_games=81, nfl_games=17):
+    """A real September Saturday, as the deploy report measured one:
+    81 college games today, 17 NFL games tomorrow."""
+    college = [game(f"c{i}", "ncaaf", hours=2 + i * 0.1) for i in range(ncaaf_games)]
+    pro = [game(f"n{i}", "nfl", hours=26 + i * 0.1) for i in range(nfl_games)]
+    return college, pro
+
+
+def _projected_by_league(data):
+    counts: dict[str, int] = {}
+    for day in data["days"]:
+        for entry in day["games"]:
+            if entry.get("projected"):
+                counts[entry["league"]] = counts.get(entry["league"], 0) + 1
+    return counts
+
+
+def capped_at(n):
+    """Force the budget to bite, so these test the sharing and not the ceiling."""
+    return patch.object(pred, "BOARD_MAX_PREDICTED", n)
+
+
+def test_a_college_saturday_does_not_starve_sundays_nfl_slate():
+    """
+    The bug: the budget was spent in kickoff order, so Saturday's college
+    games used all of it and every NFL game on the board showed without a
+    projection — an entire league, silently unmodelled, on the one day of the
+    week most people come to look at it.
+    """
+    college, pro = saturday_slate()
+    with board_with({}, {"ncaaf": college, "nfl": pro}), capped_at(60):
+        data = get_board()
+
+    counts = _projected_by_league(data)
+    assert counts.get("nfl") == len(pro), "every NFL game should be projected"
+    assert counts.get("ncaaf", 0) > 0, "college should not be starved either"
+    assert data["predicted"] == 60
+
+
+def test_the_whole_budget_is_still_spent():
+    # Sharing it must not mean leaving any of it unused.
+    college, pro = saturday_slate()
+    with board_with({}, {"ncaaf": college, "nfl": pro}), capped_at(60):
+        data = get_board()
+    assert data["predicted"] == 60
+    assert data["total_games"] == len(college) + len(pro)
+
+
+def test_a_normal_weekend_is_projected_in_full():
+    # 98 games is a normal September weekend, and the real ceiling is well
+    # above it: nothing on a board that size should be missing a projection.
+    college, pro = saturday_slate()
+    with board_with({}, {"ncaaf": college, "nfl": pro}):
+        data = get_board()
+    assert data["predicted"] == data["total_games"] == 98
+    assert all(e.get("projected") for d in data["days"] for e in d["games"])
+
+
+def test_games_in_progress_are_projected_before_anything_else():
+    """A game being played is the reason someone opened the page."""
+    playing = [game(f"L{i}", "ncaaf", state="in", hours=-1) for i in range(3)]
+    queued = [game(f"q{i}", "ncaaf", hours=2 + i * 0.1) for i in range(40)]
+    with board_with({"ncaaf": playing}, {"ncaaf": queued}), capped_at(5):
+        data = get_board()
+
+    live_entries = [
+        e for d in data["days"] for e in d["games"]
+        if e["game"]["event_id"].startswith("L")
+    ]
+    assert len(live_entries) == 3
+    assert all(e.get("projected") for e in live_entries), \
+        "live games must win the budget over anything not yet kicked off"
+
+
+def test_the_budget_rotates_rather_than_front_loading_one_day():
+    # Three days of college football, all oversized. Every day on the board
+    # should carry projections, not just the first one.
+    slate = {
+        "ncaaf": [game(f"d{d}g{i}", "ncaaf", hours=d * 24 + 2 + i * 0.1)
+                  for d in range(3) for i in range(40)],
+    }
+    with board_with({}, slate), capped_at(30):
+        data = get_board()
+
+    with_projections = [
+        d["label"] for d in data["days"]
+        if any(e.get("projected") for e in d["games"])
+    ]
+    assert len(with_projections) >= 3, with_projections
