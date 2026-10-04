@@ -271,6 +271,38 @@ async def refresh_forever(interval: float = REFRESH_SECONDS) -> None:
         await asyncio.sleep(interval)
 
 
+def team_rank(league: str, code: str) -> Optional[dict]:
+    """
+    Where a team sits in its league on the feed's own numbers.
+
+    Returned so the page can say "3rd of 32 on play-by-play EPA" rather than
+    quoting a rating nobody has a feel for. `None` means the feed has nothing
+    for this team, which must read as absent rather than as average — the
+    difference between "we looked and they are mid-table" and "we never saw
+    them" is the difference between a reason and a guess.
+    """
+    lp = _priors.get((league or "").lower())
+    if lp is None or not lp.ok:
+        return None
+    team = lp.teams.get((code or "").upper())
+    if team is None:
+        return None
+
+    ordered = sorted(lp.teams.values(), key=lambda t: t.points, reverse=True)
+    rank = next(
+        (i for i, t in enumerate(ordered, start=1) if t.code == team.code), None
+    )
+    if rank is None:
+        return None
+    return {
+        "rank": rank,
+        "of": len(ordered),
+        "points": round(team.points, 2),
+        "games": team.games,
+        "source": team.source,
+    }
+
+
 def status() -> dict:
     """
     What is actually driving the priors right now.

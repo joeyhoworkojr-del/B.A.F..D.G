@@ -45,6 +45,8 @@ FIELDS = (
     "home_won", "graded_at", "home_code", "away_code", "home_elo", "away_elo",
     "elo_applied", "consensus_home_prob", "model_version", "book_source",
     "closing_spread", "closing_total", "closing_home_prob",
+    "opening_spread", "opening_total", "opening_home_prob",
+    "pick_spread_side", "pick_total_side",
 )
 
 
@@ -83,9 +85,19 @@ class SqlStore:
             "crowd_home_prob", "market_spread", "market_total",
             "home_code", "away_code", "home_elo", "away_elo",
             "consensus_home_prob", "model_version", "book_source",
+            "opening_spread", "opening_total", "opening_home_prob",
+            "pick_spread_side", "pick_total_side",
         ]
-        refresh = [c for c in cols if c not in ("event_id", "league", "kickoff",
-                                                "home", "away", "model_version")]
+        # `market_*` is the line as it stands now and is refreshed every
+        # snapshot; `opening_*` and the sides taken are what we actually
+        # recommended at, and must never move. Keeping both is the whole of
+        # closing line value: with only the refreshed line on file, the
+        # closing line equals the recommendation by construction and CLV is
+        # always zero, which is what it was.
+        frozen = ("event_id", "league", "kickoff", "home", "away",
+                  "model_version", "opening_spread", "opening_total",
+                  "opening_home_prob", "pick_spread_side", "pick_total_side")
+        refresh = [c for c in cols if c not in frozen]
         sets = ",\n                ".join(f"{c} = excluded.{c}" for c in refresh)
         with self._connect() as conn:
             conn.execute(
@@ -124,6 +136,17 @@ class SqlStore:
                 f"SELECT * FROM {self._table} WHERE event_id = ?", (event_id,),
             ).fetchone()
             return dict(row) if row else None
+
+    def get_many(self, event_ids: list[str]) -> dict[str, dict]:
+        if not event_ids:
+            return {}
+        marks = ", ".join("?" for _ in event_ids)
+        with self._connect() as conn:
+            found = conn.execute(
+                f"SELECT * FROM {self._table} WHERE event_id IN ({marks})",
+                tuple(event_ids),
+            ).fetchall()
+        return {str(dict(r)["event_id"]): dict(r) for r in found}
 
     def rows(self, graded: Optional[bool] = None) -> list[dict]:
         clause = "" if graded is None else f" WHERE graded = {1 if graded else 0}"
@@ -169,7 +192,9 @@ class RedisStore:
          and incoming['model_version'] and incoming['model_version'] ~= cjson.null
          and prev['model_version'] ~= incoming['model_version'] then return 0 end
       for _, f in ipairs({'graded','home_score','away_score','home_won','graded_at',
-                          'closing_spread','closing_total','closing_home_prob'}) do
+                          'closing_spread','closing_total','closing_home_prob',
+                          'opening_spread','opening_total','opening_home_prob',
+                          'pick_spread_side','pick_total_side'}) do
         if prev[f] ~= nil then incoming[f] = prev[f] end
       end
     end
@@ -245,6 +270,26 @@ class RedisStore:
     def get(self, event_id: str) -> Optional[dict]:
         raw = self._redis().get(_KEY_PREFIX + event_id)
         return json.loads(raw) if raw else None
+
+    def get_many(self, event_ids: list[str]) -> dict[str, dict]:
+        """
+        Several rows in one round trip, by id.
+
+        The alternative — reading every row and filtering in Python — costs the
+        whole ledger over the wire on each call, and the ledger only grows. A
+        board asks about the games on it, so it should fetch the games on it.
+        """
+        if not event_ids:
+            return {}
+        raws = self._redis().mget([_KEY_PREFIX + str(i) for i in event_ids])
+        out: dict[str, dict] = {}
+        for raw in raws:
+            if not raw:
+                continue
+            row = json.loads(raw)
+            if row.get("event_id") is not None:
+                out[str(row["event_id"])] = row
+        return out
 
     def rows(self, graded: Optional[bool] = None) -> list[dict]:
         client = self._redis()

@@ -21,6 +21,7 @@ import functools
 import logging
 import os
 import threading
+import time
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -60,7 +61,12 @@ CREATE TABLE IF NOT EXISTS predictions (
     book_source     TEXT,
     closing_spread  REAL,
     closing_total   REAL,
-    closing_home_prob REAL
+    closing_home_prob REAL,
+    opening_spread  REAL,
+    opening_total   REAL,
+    opening_home_prob REAL,
+    pick_spread_side TEXT,
+    pick_total_side  TEXT
 );
 """
 
@@ -79,6 +85,14 @@ _MIGRATIONS = [
     ("book_source", "TEXT"),
     ("closing_spread", "REAL"),
     ("closing_total", "REAL"),
+    # The line we actually recommended at, and the side we took. Frozen on the
+    # first snapshot; `market_*` keeps moving. Without these, closing line
+    # value cannot be computed at all.
+    ("opening_spread", "REAL"),
+    ("opening_total", "REAL"),
+    ("opening_home_prob", "REAL"),
+    ("pick_spread_side", "TEXT"),
+    ("pick_total_side", "TEXT"),
     ("closing_home_prob", "REAL"),
 ]
 
@@ -182,6 +196,8 @@ def record_pregame(
     consensus_home_prob: Optional[float] = None,
     model_version: Optional[str] = None,
     book_source: Optional[str] = None,
+    pick_spread_side: Optional[str] = None,
+    pick_total_side: Optional[str] = None,
 ) -> None:
     """Upsert the latest pre-game snapshot; frozen once the game is graded.
 
@@ -205,6 +221,14 @@ def record_pregame(
             "home_elo": home_elo, "away_elo": away_elo,
             "consensus_home_prob": consensus_home_prob,
             "model_version": model_version, "book_source": book_source,
+            # Sent on every snapshot; the store refuses to refresh them, so
+            # what sticks is the line and the side from the first one. That is
+            # the recommendation closing line value is measured against.
+            "opening_spread": market_spread,
+            "opening_total": market_total,
+            "opening_home_prob": book_home_prob,
+            "pick_spread_side": pick_spread_side,
+            "pick_total_side": pick_total_side,
         })
 
 
@@ -341,10 +365,127 @@ def accuracy_summary() -> dict:
     }
 
 
+@_safe(dict)
+def openings_for(event_ids: list[str]) -> dict[str, dict]:
+    """
+    The frozen opening line and side for the games asked about, in one read.
+
+    Scoped to the ids the caller needs rather than scanning the whole ledger:
+    the board wants a hundred games, and the ledger holds every game of the
+    season and keeps growing. Reading all of it twice a minute to answer a
+    question about today would get slower every week.
+    """
+    ids = [str(i) for i in event_ids if i]
+    if not ids:
+        return {}
+    with _LOCK:
+        found = _get_store().get_many(ids)
+    return {
+        key: {
+            "opening_spread": r.get("opening_spread"),
+            "opening_total": r.get("opening_total"),
+            "opening_home_prob": r.get("opening_home_prob"),
+            "pick_spread_side": r.get("pick_spread_side"),
+            "pick_total_side": r.get("pick_total_side"),
+            "snapshot_at": r.get("snapshot_at"),
+        }
+        for key, r in found.items()
+    }
+
+
+# ─── Closing line value, and the spread / total records ──────────────────────
+
+def _num(v) -> Optional[float]:
+    try:
+        return None if v is None else float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def clv_points(row: dict) -> Optional[float]:
+    """
+    How many points better than the close the recommended spread was.
+
+    Signed from the point of view of the side we took. Backing the home team
+    at -3.5 into a -4.5 close is a point in hand, so +1.0; backing the away
+    team at +3.5 into that same close is a point given away, so -1.0.
+
+    This is worth tracking separately from win and loss because it is the one
+    number that says whether the model is finding real value rather than
+    getting lucky: a bet can lose and still have beaten the close, and a model
+    that consistently beats the close is doing something.
+
+    Returns None when there is nothing to compare — no opening line on file, no
+    close, or no side taken. None is not zero, and averaging it in as zero
+    would quietly dilute the figure towards "no edge".
+    """
+    opening = _num(row.get("opening_spread"))
+    closing = _num(row.get("closing_spread"))
+    side = (row.get("pick_spread_side") or "").lower()
+    if opening is None or closing is None or side not in ("home", "away"):
+        return None
+    delta = opening - closing
+    return round(delta if side == "home" else -delta, 2)
+
+
+def _ats_result(row: dict) -> Optional[str]:
+    """
+    Did the recommended spread side cover the line we took? "push" is neither.
+
+    Graded against `opening_spread` — the line the recommendation was made at —
+    not against the close. Grading against a line we never had would flatter or
+    punish the record for a move that happened afterwards.
+    """
+    line = _num(row.get("opening_spread"))
+    side = (row.get("pick_spread_side") or "").lower()
+    hs, as_ = _num(row.get("home_score")), _num(row.get("away_score"))
+    if line is None or side not in ("home", "away") or hs is None or as_ is None:
+        return None
+    # A home line of -3.5 means the home team must win by more than 3.5.
+    margin = hs - as_
+    edge = margin + line          # >0 home covers, <0 away covers, ==0 push
+    if edge == 0:
+        return "push"
+    home_covered = edge > 0
+    return "win" if home_covered == (side == "home") else "loss"
+
+
+def _total_result(row: dict) -> Optional[str]:
+    """Did the recommended over/under hit, against the line we took?"""
+    line = _num(row.get("opening_total"))
+    side = (row.get("pick_total_side") or "").lower()
+    hs, as_ = _num(row.get("home_score")), _num(row.get("away_score"))
+    if line is None or side not in ("over", "under") or hs is None or as_ is None:
+        return None
+    combined = hs + as_
+    if combined == line:
+        return "push"
+    went_over = combined > line
+    return "win" if went_over == (side == "over") else "loss"
+
+
+def _record_of(results: list[str]) -> dict:
+    wins = sum(1 for r in results if r == "win")
+    losses = sum(1 for r in results if r == "loss")
+    pushes = sum(1 for r in results if r == "push")
+    decided = wins + losses
+    return {
+        "wins": wins, "losses": losses, "pushes": pushes,
+        # A push is not a loss, so it is out of the denominator rather than
+        # dragging the rate down.
+        "win_rate": (wins / decided) if decided else None,
+        "graded": len(results),
+    }
+
+
+_EMPTY_RECORD = {"wins": 0, "losses": 0, "pushes": 0, "win_rate": None, "graded": 0}
+
 _EMPTY_PERFORMANCE = {
     "total_picks": 0, "wins": 0, "losses": 0, "win_rate": None,
     "priced_picks": 0, "avg_edge_pp": None,
     "profit_units": None, "roi_pct": None, "series": [],
+    "ats": dict(_EMPTY_RECORD), "totals": dict(_EMPTY_RECORD),
+    "avg_clv_points": None, "clv_tracked": 0, "clv_beat_close": 0,
 }
 
 
@@ -403,10 +544,26 @@ def performance() -> dict:
             staked += 1
             series.append(round(cum, 3))
 
+    # ── The spread and total records, and closing line value ──
+    # Separate from the moneyline record above, because they are separate bets
+    # graded against separate lines, and a single blended "record" hides which
+    # of them the model is actually good at.
+    ats = _record_of([r for r in (_ats_result(x) for x in rows) if r])
+    totals = _record_of([r for r in (_total_result(x) for x in rows) if r])
+    clvs = [c for c in (clv_points(x) for x in rows) if c is not None]
+
     return {
         # Rows that could be settled, not rows on file — a win rate divided by
         # a denominator that includes unsettleable rows is understated.
         "total_picks": usable,
+        "ats": ats,
+        "totals": totals,
+        # Averaged over the rows that have both an opening and a closing line,
+        # which is said rather than implied: a thin denominator is a weaker
+        # claim than a fat one and the page should be able to show which.
+        "avg_clv_points": round(sum(clvs) / len(clvs), 2) if clvs else None,
+        "clv_tracked": len(clvs),
+        "clv_beat_close": sum(1 for c in clvs if c > 0),
         # Stated, not inferred. The page used to rebuild the split by
         # multiplying a rounded rate back out by the total, which is a derived
         # number presented as a record.

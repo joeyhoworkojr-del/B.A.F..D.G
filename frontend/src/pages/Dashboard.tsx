@@ -6,6 +6,7 @@ import { NewsStrip } from '../components/news/NewsStrip'
 import { UpsetWatch } from '../components/game/UpsetWatch'
 import { BestLivePicks } from '../components/game/BestLivePicks'
 import { WinnerCall } from '../components/game/WinnerCall'
+import { FairLine } from '../components/game/FairLine'
 import { FaqList } from '../components/faq/FaqList'
 import { oddsSourceSentence } from '../components/OddsSource'
 import { FAQ, FAQ_PREVIEW_IDS } from '../content/faq'
@@ -272,6 +273,16 @@ function EdgeCard({ entry }: { entry: BoardEntry }) {
           </div>
         </div>
       </div>
+
+      {/* The line StatEdge would set, the line on offer, and the gap. The
+          pills above give probabilities; this gives the number those
+          probabilities come from, which is what a reader is actually
+          comparing against their sportsbook. */}
+      {entry.value && (
+        <div className="mt-3 border-t border-terminal-border/70 pt-3">
+          <FairLine value={entry.value} compact />
+        </div>
+      )}
 
       {/* Who actually wins the game. The pills above answer the spread and the
           total; this answers the question most people arrive with, and it

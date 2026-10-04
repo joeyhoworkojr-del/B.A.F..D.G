@@ -6,6 +6,8 @@ import { MatchupBanner } from '../components/game/MatchupBanner'
 import { GameTabs, type GameTabKey } from '../components/game/GameTabs'
 import { WhoWins } from '../components/game/WhoWins'
 import { WinnerCall } from '../components/game/WinnerCall'
+import { FairLine } from '../components/game/FairLine'
+import { WhyThisEdge } from '../components/game/WhyThisEdge'
 import { KeyPlayers } from '../components/game/KeyPlayers'
 import { Panel } from '../components/game/Panel'
 import { PrimaryEdgeCard } from '../components/game/PrimaryEdgeCard'
@@ -206,6 +208,12 @@ export function GameDetail() {
                     measured, the edge moved from y=838 to y=917 with this card
                     in front of it, and the fold is 844. */}
                 {data?.model?.winner && <WinnerCall winner={data.model.winner} boxed />}
+
+                {/* The fair line, then the reasons for it. Both sit below the
+                    primary edge so that card keeps its place above the fold on
+                    a phone — measured, not assumed. */}
+                {data?.value && <FairLine value={data.value} />}
+                {data?.why && <WhyThisEdge why={data.why} />}
 
                 {eventId && <KeyPlayers league={league} eventId={eventId} />}
 

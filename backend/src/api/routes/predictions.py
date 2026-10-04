@@ -615,10 +615,16 @@ async def _slate_entries(league: str, games: list, poly, *, snapshot: bool = Fal
     if not games:
         return []
     limit = asyncio.Semaphore(SLATE_CONCURRENCY)
+    # One read for the whole slate rather than one per game: the opening lines
+    # live in the ledger, which is Redis in production.
+    openings = ledger.openings_for([f"{league}:{g.event_id}" for g in games])
 
     async def one(game):
         async with limit:
-            return await _slate_entry(league, game, poly, snapshot=snapshot)
+            return await _slate_entry(
+                league, game, poly, snapshot=snapshot,
+                opening=openings.get(f"{league}:{game.event_id}") or {},
+            )
 
     results = await asyncio.gather(
         *(one(g) for g in games), return_exceptions=True,
@@ -1000,11 +1006,17 @@ def _selection(
         dec = None
     ev = (model_prob * (dec - 1.0) - (1.0 - model_prob)) if dec else None
     edge_pp = (model_prob - book_prob) * 100.0 if book_prob is not None else None
+    # The win rate this price needs just to break even. Stated separately from
+    # the model's probability on purpose: "56.8% to win, 52.4% to break even"
+    # is a claim a reader can check, where one blended confidence number is
+    # not. It is a property of the price alone, and includes the vig.
+    break_even = (1.0 / dec) if dec else None
     return {
         "label": label,
         "side": side,
         "model_prob": round(model_prob, 4),
         "model_prob_raw": round(model_prob_raw, 4),
+        "break_even_prob": round(break_even, 4) if break_even is not None else None,
         "book_prob": round(book_prob, 4) if book_prob is not None else None,
         "crowd_prob": round(crowd_prob, 4) if crowd_prob is not None else None,
         "price_american": int(price),
@@ -1014,6 +1026,319 @@ def _selection(
         "ev_per_unit": round(ev, 4) if ev is not None else None,
         "grade": edge_rating(edge_pp) if edge_pp is not None else "-",
     }
+
+
+# ─── Fair line vs the market ─────────────────────────────────────────────────
+
+def _fmt_line(abbr: str, line: float) -> str:
+    """A spread as a bettor reads it: "BUF -4.8", never "margin +4.8"."""
+    return f"{abbr} {line:+.1f}"
+
+
+def _spread_read(g: LiveGame, pred, home: str, away: str) -> Optional[dict]:
+    """
+    StatEdge's fair spread beside the market's, and the gap between them.
+
+    Conventions matter here and they differ by one sign. The model produces a
+    margin — positive means the home team is expected to win by that much. A
+    sportsbook quotes a line — negative means the home team is laying points.
+    So the fair line is the negated margin, and mixing the two up would invert
+    every recommendation on the board.
+
+    `edge_points` is signed on the home side: positive means the market is
+    offering more points on the home team than the model thinks it should, so
+    the value is on the home team. Negative puts it on the away team.
+    """
+    fair = -round(pred.predicted_spread, 1)
+    home_abbr = g.home_abbr or home
+    away_abbr = g.away_abbr or away
+    market = g.market_spread
+
+    out = {
+        "fair": fair,
+        "fair_label": _fmt_line(home_abbr if fair < 0 else away_abbr, -abs(fair)),
+        "market": market,
+        "market_label": (
+            _fmt_line(home_abbr if market < 0 else away_abbr, -abs(market))
+            if market is not None else ""
+        ),
+        "edge_points": None,
+        "side": None,
+        "side_abbr": "",
+        "points": None,
+    }
+    if market is None:
+        return out
+
+    edge = round(market - fair, 1)
+    out["edge_points"] = edge
+    # A gap of nothing is not an edge on either side, and forcing one would be
+    # inventing a lean the model does not have.
+    if edge:
+        out["side"] = "home" if edge > 0 else "away"
+        out["side_abbr"] = home_abbr if edge > 0 else away_abbr
+        out["points"] = abs(edge)
+    return out
+
+
+def _total_read(g: LiveGame, pred) -> Optional[dict]:
+    """
+    The same comparison for the total, where the sign is the plain one: a fair
+    total above the market's means the over, below means the under.
+    """
+    fair = round(pred.total_points_estimate, 1)
+    market = g.market_over_under
+    out = {
+        "fair": fair, "market": market,
+        "edge_points": None, "side": None, "points": None,
+    }
+    if market is None:
+        return out
+    edge = round(fair - market, 1)
+    out["edge_points"] = edge
+    if edge:
+        out["side"] = "over" if edge > 0 else "under"
+        out["points"] = abs(edge)
+    return out
+
+
+# ─── Model confidence, which is not a probability ────────────────────────────
+
+# Which inputs the model had for this game. This is deliberately NOT derived
+# from the probability: "high confidence" must never be read as "high chance of
+# winning", which is the single most misleading thing a page like this can do.
+# It answers a different question — how much of what the model wants to look at
+# was actually available for this fixture.
+CONFIDENCE_LEVELS = ((0.8, "high"), (0.5, "medium"), (0.0, "low"))
+
+
+def _confidence_level(share: float) -> str:
+    for floor, label in CONFIDENCE_LEVELS:
+        if share >= floor:
+            return label
+    return "low"
+
+
+def _data_confidence(league: str, g: LiveGame, pred, home: str, away: str) -> dict:
+    """
+    How well covered this game's inputs are, input by input, named.
+
+    A reader can audit this: every line says what was wanted, whether it was
+    there, and where it came from. A missing college prior is reported as
+    missing rather than quietly treated as neutral.
+    """
+    home_prior = priors.prior_elo(league, home, _TEAM_GETTERS[league](home).elo)[1]
+    away_prior = priors.prior_elo(league, away, _TEAM_GETTERS[league](away).elo)[1]
+    quoted = g.market_home_ml is not None and g.market_away_ml is not None
+    anchored = quoted or g.market_spread is not None
+    conditions = [c for c in (pred.conditions or [])]
+
+    inputs = [
+        {
+            "name": "Team ratings from play-by-play",
+            "present": home_prior != "static" and away_prior != "static",
+            "note": (
+                f"{home_prior} / {away_prior}"
+                if home_prior != "static" or away_prior != "static"
+                else "static ratings only — no feed data for either team"
+            ),
+        },
+        {
+            "name": "Quoted moneyline prices",
+            "present": quoted,
+            "note": (g.market_provider or "book") if quoted
+                    else "no published moneyline; spread priced at the standard -110",
+        },
+        {
+            "name": "Market line to anchor to",
+            "present": anchored,
+            "note": "spread and/or moneyline" if anchored else "no line published yet",
+        },
+        {
+            "name": "Conditions and availability",
+            "present": bool(conditions),
+            "note": (
+                ", ".join(c.label for c in conditions[:3]) if conditions
+                else "nothing applied"
+                if league == "nfl"
+                else "not modelled for college football"
+            ),
+        },
+    ]
+    present = sum(1 for i in inputs if i["present"])
+    share = present / len(inputs)
+    return {
+        "level": _confidence_level(share),
+        "inputs_present": present,
+        "inputs_total": len(inputs),
+        "inputs": inputs,
+        # Said in the payload so no surface has to remember to add the caveat.
+        "means": (
+            "How much of the model's input was available for this game. "
+            "Not the chance a bet wins."
+        ),
+    }
+
+
+# ─── Why StatEdge likes it ───────────────────────────────────────────────────
+
+# Below this, a spread disagreement is noise rather than an edge. Half a point
+# on a football spread is inside the rounding the books themselves work in.
+EDGE_MIN_POINTS = 1.0
+
+
+def _line_state(opening: Optional[float], current: Optional[dict]) -> dict:
+    """
+    What the market has done since we first priced the game, and whether the
+    edge survived it.
+
+    This is the question a bettor actually has by Sunday morning: the model
+    said one thing on Thursday, the line has moved since, and is there still
+    anything in it. "Still value" and "edge gone" are both useful answers; an
+    unlabelled pair of numbers is not.
+    """
+    now = (current or {}).get("market")
+    edge = (current or {}).get("edge_points")
+    out = {
+        "opening": opening,
+        "current": now,
+        "moved_points": (
+            round(now - opening, 1)
+            if opening is not None and now is not None else None
+        ),
+        "state": "unknown",
+        "note": "",
+    }
+    if edge is None:
+        out["note"] = "No line published, so there is nothing to compare."
+        return out
+    if abs(edge) >= EDGE_MIN_POINTS:
+        out["state"] = "value"
+        out["note"] = (
+            f"StatEdge still has {abs(edge):.1f} "
+            f"{'point' if abs(edge) == 1 else 'points'} on "
+            f"{(current or {}).get('side_abbr') or 'this side'}."
+        )
+    else:
+        out["state"] = "gone"
+        out["note"] = (
+            "The market has caught up — the gap is inside the half-point of "
+            "noise a spread is quoted in, so no edge is claimed."
+        )
+    return out
+
+
+def _why_read(
+    league: str, g: LiveGame, pred, home: str, away: str,
+    value: dict, snapshot: Optional[dict],
+) -> dict:
+    """
+    The reasons behind the number, drawn only from inputs the model used.
+
+    Every entry here is something the model actually read. Nothing is written
+    because it sounds like analysis: where an input is missing — college teams
+    with no play-by-play feed, a game with no published line — that is said as
+    an absence, because an invented reason is worse than a short list. The
+    point of the section is to stop the model being a black box, and a
+    plausible-sounding fabrication would defeat it entirely.
+    """
+    reasons: list[dict] = []
+
+    # ── Ratings, with the league rank the feed implies ──
+    home_rank = priors.team_rank(league, home)
+    away_rank = priors.team_rank(league, away)
+    if home_rank or away_rank:
+        for code, abbr, rank in (
+            (home, g.home_abbr or home, home_rank),
+            (away, g.away_abbr or away, away_rank),
+        ):
+            if not rank:
+                continue
+            reasons.append({
+                "label": f"{abbr} rated {_ordinal(rank['rank'])} of {rank['of']}",
+                "detail": (
+                    f"{rank['points']:+.1f} points per game against an average "
+                    f"team over {rank['games']} games ({rank['source']})"
+                ),
+                "impact_points": None,
+                "source": "ratings",
+            })
+    else:
+        reasons.append({
+            "label": "No play-by-play ratings for either team",
+            "detail": (
+                "Running on base ratings alone. College priors need "
+                "CFBD_API_KEY, which is not set."
+                if league == "ncaaf"
+                else "The ratings feed has not loaded for this matchup."
+            ),
+            "impact_points": None,
+            "source": "missing",
+        })
+
+    # ── Conditions, each with the points it actually moved ──
+    for c in pred.conditions or []:
+        delta = round(c.home_pts_delta - c.away_pts_delta, 1)
+        reasons.append({
+            "label": c.label,
+            "detail": c.detail,
+            # Signed on the home team, so a reader can see which way it pushed
+            # and by how much, rather than being told an injury "matters".
+            "impact_points": delta or None,
+            "source": c.source,
+        })
+
+    # ── What the market did, and whether the edge survived it ──
+    spread = value.get("spread") or {}
+    line = _line_state((snapshot or {}).get("opening_spread"), spread)
+    if line["moved_points"]:
+        reasons.append({
+            "label": (
+                f"Market moved {line['opening']:+.1f} → {line['current']:+.1f}"
+            ),
+            "detail": line["note"],
+            "impact_points": None,
+            "source": "line",
+        })
+
+    # ── The anchor, said out loud: the headline number is not the raw model ──
+    if spread.get("market") is not None:
+        weight = _MARKET_ANCHOR_BY_LEAGUE.get(league, MARKET_ANCHOR_WEIGHT)
+        reasons.append({
+            "label": f"Shrunk {weight:.0%} toward the market price",
+            "detail": (
+                "The published line is the sharpest single estimate available, "
+                "so the headline probability is pulled toward it rather than "
+                "being the raw model's own."
+            ),
+            "impact_points": None,
+            "source": "anchor",
+        })
+
+    return {
+        "fair_label": spread.get("fair_label") or "",
+        "side": spread.get("side"),
+        "side_abbr": spread.get("side_abbr") or "",
+        "points": spread.get("points"),
+        "line": line,
+        "reasons": reasons,
+        # Said in the payload so no surface has to remember the caveat: this is
+        # a list of inputs, not a causal story about the game.
+        "basis": (
+            "Every line here is an input the model read. Where an input was "
+            "missing it is listed as missing rather than left out."
+        ),
+    }
+
+
+_ORDINAL_SUFFIX = {1: "st", 2: "nd", 3: "rd"}
+
+
+def _ordinal(n: int) -> str:
+    """3 → "3rd". The teens are the exception that catches everyone."""
+    if 10 <= n % 100 <= 20:
+        return f"{n}th"
+    return f"{n}{_ORDINAL_SUFFIX.get(n % 10, 'th')}"
 
 
 def _build_markets(league: str, g: LiveGame, pred, home: str, away: str, pm: Optional[dict]) -> list[dict]:
@@ -1109,7 +1434,8 @@ def _best_selection(markets: list[dict]) -> Optional[dict]:
 
 
 async def _slate_entry(
-    league: str, g: LiveGame, poly_markets, *, snapshot: bool = False,
+    league: str, g: LiveGame, poly_markets, *,
+    snapshot: bool = False, opening: Optional[dict] = None,
 ) -> dict:
     """Model + live-market comparison for one scoreboard game.
 
@@ -1311,6 +1637,29 @@ async def _slate_entry(
         entry["markets"] = _build_markets(league, g, pred, home, away, pm)
         entry["best_edge"] = _best_selection(entry["markets"])
 
+        # The headline comparison: what StatEdge thinks the line should be,
+        # what the market is offering, and the gap. This is the thing a reader
+        # opens the page for, and it was only ever available by inference from
+        # a probability before.
+        spread_read = _spread_read(g, pred, home, away)
+        entry["value"] = {
+            "spread": spread_read,
+            "total": _total_read(g, pred),
+            "confidence": _data_confidence(league, g, pred, home, away),
+        }
+        # The reasons behind that number. One bulk read of the frozen opening
+        # lines covers the whole board, rather than a round trip per game.
+        # `opening` is supplied by the batch path, which reads every game on
+        # the board in one go. A lone caller — one game page — looks up its
+        # own, which is a single read either way.
+        entry["why"] = _why_read(
+            league, g, pred, home, away, entry["value"],
+            opening if opening is not None
+            else ledger.openings_for([f"{league}:{g.event_id}"]).get(
+                f"{league}:{g.event_id}"
+            ),
+        )
+
         # ── Track record: snapshot pre-game; grading happens on every board fetch ──
         # The ledger stores the RAW model prob (book_home is logged separately),
         # so the head-to-head Brier stays an honest model-vs-book comparison.
@@ -1334,6 +1683,12 @@ async def _slate_entry(
                 consensus_home_prob=cal_home,
                 model_version=MODEL_VERSION,
                 book_source=g.market_provider or None,
+                # Which side the fair line pointed at, frozen with the line it
+                # pointed at. Together they are what the spread and total
+                # records are graded against, and what closing line value is
+                # measured from.
+                pick_spread_side=entry["value"]["spread"]["side"],
+                pick_total_side=entry["value"]["total"]["side"],
             )
     except HTTPException:
         pass
@@ -1718,6 +2073,178 @@ def _day_label(day: str, today: str, tomorrow: str) -> str:
         return datetime.strptime(day, "%Y-%m-%d").strftime("%A %-d %b")
     except ValueError:
         return day
+
+
+# ─── Best edges ──────────────────────────────────────────────────────────────
+
+_CONFIDENCE_RANK = {"low": 0, "medium": 1, "high": 2}
+
+# How many rows the scan will hand back at most. A college Saturday is two
+# hundred games and three markets each; a ranked list is only useful if it
+# stops somewhere a person can read to the end of.
+EDGES_MAX_ROWS = 100
+
+
+def _edge_rows(board: dict) -> list[dict]:
+    """
+    Flatten the board into one row per market side worth considering.
+
+    Built from the board the homepage already has rather than re-fetching and
+    re-modelling the slate: the numbers on this page and the numbers on that
+    one are then the same numbers, which they were not when the old best-bets
+    scan ran its own pass over the feeds.
+    """
+    rows: list[dict] = []
+    for day in board.get("days") or []:
+        for entry in day.get("games") or []:
+            model = entry.get("model") or {}
+            value = entry.get("value") or {}
+            if not entry.get("projected") or not value:
+                continue
+            g = entry.get("game") or {}
+            if g.get("state") != "pre":
+                continue        # an edge you can no longer take is not an edge
+
+            confidence = (value.get("confidence") or {}).get("level") or "low"
+            why = entry.get("why") or {}
+            spread, total = value.get("spread") or {}, value.get("total") or {}
+
+            for market in entry.get("markets") or []:
+                kind = market.get("key")
+                for sel in market.get("selections") or []:
+                    ev = sel.get("ev_per_unit")
+                    if ev is None:
+                        continue
+                    # Points of disagreement, where the market has a number to
+                    # disagree with. The moneyline has no line, so it has none.
+                    if kind == "spread":
+                        points = (
+                            spread.get("points")
+                            if spread.get("side") == sel.get("side") else None
+                        )
+                    elif kind == "total":
+                        points = (
+                            total.get("points")
+                            if total.get("side") == sel.get("side") else None
+                        )
+                    else:
+                        points = None
+
+                    rows.append({
+                        "league": entry.get("league"),
+                        "event_id": str(g.get("event_id") or ""),
+                        "kickoff": g.get("kickoff") or "",
+                        "home": g.get("home") or "",
+                        "away": g.get("away") or "",
+                        "home_abbr": g.get("home_abbr") or "",
+                        "away_abbr": g.get("away_abbr") or "",
+                        "market": kind,
+                        "market_label": market.get("label") or "",
+                        "line": market.get("line"),
+                        "selection": sel.get("label") or "",
+                        "side": sel.get("side"),
+                        "price_american": sel.get("price_american"),
+                        # Said plainly: ESPN publishes spread and total lines
+                        # without a price, so those are priced at the standard
+                        # -110 and the EV is only as good as that assumption.
+                        "assumed_price": bool(market.get("assumed_price")),
+                        "model_prob": sel.get("model_prob"),
+                        "break_even_prob": sel.get("break_even_prob"),
+                        "ev_per_unit": ev,
+                        "edge_pp": sel.get("edge_pp"),
+                        "grade": sel.get("grade"),
+                        "fair_label": spread.get("fair_label") or "",
+                        "market_label_spread": spread.get("market_label") or "",
+                        "edge_points": points,
+                        "confidence": confidence,
+                        "source": market.get("source") or "",
+                        # The first couple of reasons, so a ranked row is not a
+                        # bare number. The full list is on the game page.
+                        "why": [r["label"] for r in (why.get("reasons") or [])[:3]],
+                    })
+    return rows
+
+
+@router.get("/edges", tags=["Predictions"])
+async def edges(
+    league: str = "all",
+    market: str = "all",
+    min_ev: float = 0.0,
+    confidence: str = "low",
+    hours: int = 0,
+    limit: int = 25,
+) -> dict:
+    """
+    Every disagreement between StatEdge and the market, ranked by expected value.
+
+    Filterable by league, market, minimum EV, minimum model confidence and how
+    soon the game kicks off. Ranked by EV rather than by raw probability: a
+    90% favourite at a 92% price is a worse bet than a 55% call at even money,
+    and ranking by probability puts the first one top.
+
+    Built from the same cached board the homepage reads, so the numbers here
+    and the numbers there cannot disagree.
+    """
+    league = (league or "all").lower()
+    market = (market or "all").lower()
+    confidence = (confidence or "low").lower()
+    limit = max(1, min(int(limit), EDGES_MAX_ROWS))
+    floor = _CONFIDENCE_RANK.get(confidence, 0)
+
+    data = await response_cache.cached(
+        f"board:{BOARD_LOOKAHEAD_DAYS}",
+        lambda: _build_board(BOARD_LOOKAHEAD_DAYS),
+    )
+    rows = _edge_rows(data)
+
+    cutoff = ""
+    if hours > 0:
+        cutoff = (
+            datetime.now(timezone.utc) + timedelta(hours=int(hours))
+        ).isoformat()
+
+    def keep(r: dict) -> bool:
+        if league != "all" and r["league"] != league:
+            return False
+        if market != "all" and r["market"] != market:
+            return False
+        if (r["ev_per_unit"] or 0) < min_ev:
+            return False
+        if _CONFIDENCE_RANK.get(r["confidence"], 0) < floor:
+            return False
+        if cutoff and (r["kickoff"] or "") > cutoff:
+            return False
+        return True
+
+    kept = [r for r in rows if keep(r)]
+    kept.sort(key=lambda r: (-(r["ev_per_unit"] or 0), r["kickoff"] or ""))
+
+    return {
+        "edges": kept[:limit],
+        "total_matching": len(kept),
+        "scanned": len(rows),
+        "filters": {
+            "league": league, "market": market, "min_ev": min_ev,
+            "confidence": confidence, "hours": hours, "limit": limit,
+        },
+        "leagues": list(FOCUS_LEAGUES),
+        "markets": list(MARKET_KINDS),
+        "source_ok": data.get("source_ok", True),
+        "market_source": data.get("market_source", ""),
+        "fetched_at": data.get("fetched_at", ""),
+        "note": (
+            ""
+            if kept
+            else "No game on the board clears these filters right now."
+            if rows
+            else "Nothing is projected on the board yet, so there is nothing to rank."
+        ),
+        # Said once, here, so the page never has to imply otherwise.
+        "ranking": (
+            "Ranked by expected value on a one-unit stake, not by how likely "
+            "the pick is to win."
+        ),
+    }
 
 
 @router.get("/board", tags=["Predictions"])
