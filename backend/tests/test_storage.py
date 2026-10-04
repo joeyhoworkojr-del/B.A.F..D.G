@@ -103,6 +103,15 @@ def test_a_prediction_round_trips_on_the_default_backend(monkeypatch):
 
 # ─── Redis / Upstash backend ─────────────────────────────────────────────────
 
+def _lua_preserved_fields(body: str) -> tuple[str, ...]:
+    """The field names the upsert script carries over from the existing row."""
+    import re
+    match = re.search(r"ipairs\(\{(.*?)\}\)", body, re.S)
+    if not match:
+        return ()
+    return tuple(re.findall(r"'([^']+)'", match.group(1)))
+
+
 class FakeRedis:
     """
     Enough Redis to exercise RedisStore without a server.
@@ -118,6 +127,12 @@ class FakeRedis:
 
     def register_script(self, body: str):
         upsert = "SADD" in body
+        # Read the preserved-field list out of the real Lua rather than
+        # restating it here. Keeping a second copy is how this harness came to
+        # disagree with the script it stands in for: fields were added to the
+        # Lua, the copy kept the old list, and the Redis path silently stopped
+        # freezing them while the tests went on passing.
+        preserved = _lua_preserved_fields(body) if upsert else ()
 
         def run(keys, args):
             import json as _json
@@ -132,9 +147,7 @@ class FakeRedis:
                     if (prev.get("model_version") and incoming.get("model_version")
                             and prev["model_version"] != incoming["model_version"]):
                         return 0
-                    for f in ("graded", "home_score", "away_score", "home_won",
-                              "graded_at", "closing_spread", "closing_total",
-                              "closing_home_prob"):
+                    for f in preserved:
                         if prev.get(f) is not None:
                             incoming[f] = prev[f]
                 self.strings[key] = _json.dumps(incoming)
@@ -454,3 +467,44 @@ def test_trailing_shell_text_is_not_silently_accepted(monkeypatch):
     # Still "usable" by scheme; the driver is what rejects it, and the
     # diagnostic reports that rather than this layer inventing a repair.
     assert store.redis_url().endswith("--app statedge-api")
+
+
+def test_redis_freezes_the_opening_line_too(redis_store):
+    """
+    Production runs on Redis, so the freeze has to hold there and not only in
+    SQLite. The two backends keep it in completely different places — a
+    non-refreshed column list in SQL, a carry-over list inside Lua — which is
+    exactly the kind of pair that drifts.
+    """
+    base = {
+        "event_id": "nfl:9", "league": "nfl", "kickoff": "2026-10-04T17:00Z",
+        "home": "Buffalo Bills", "away": "Miami Dolphins",
+        "snapshot_at": "2026-10-04T12:00:00Z", "model_home_prob": 0.63,
+        "model_version": "storage-test",
+    }
+    redis_store.upsert_pregame({
+        **base, "market_spread": -3.5, "market_total": 46.5,
+        "opening_spread": -3.5, "opening_total": 46.5,
+        "pick_spread_side": "home", "pick_total_side": "over",
+    })
+    redis_store.upsert_pregame({
+        **base, "market_spread": -4.5, "market_total": 47.5,
+        "opening_spread": -4.5, "opening_total": 47.5,
+        "pick_spread_side": "away", "pick_total_side": "under",
+    })
+
+    row = redis_store.get("nfl:9")
+    assert row["opening_spread"] == -3.5      # frozen
+    assert row["pick_spread_side"] == "home"  # frozen with it
+    assert row["market_spread"] == -4.5       # still tracking the move
+
+
+def test_the_fake_and_the_real_script_agree_on_what_is_preserved(redis_store):
+    # The harness reads this list out of the Lua. If that ever stops working
+    # the list goes empty and every freeze test would pass for the wrong
+    # reason, so assert it found something real.
+    from src.track.store import RedisStore
+    fields = _lua_preserved_fields(RedisStore._UPSERT)
+    assert "opening_spread" in fields
+    assert "pick_spread_side" in fields
+    assert "graded" in fields

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { api } from '../api/client'
 import { Sparkline } from '../components/Sparkline'
-import type { AccuracyResponse, SignalScore } from '../types'
+import type { AccuracyResponse, BetRecord, PerformanceOut, SignalScore } from '../types'
 
 const LEAGUE_LABEL: Record<string, string> = { nfl: 'NFL', cfl: 'CFL', mlb: 'MLB', wc: 'Soccer' }
 
@@ -169,6 +169,7 @@ export function TrackRecord() {
             backward-looking average, not a probability for any upcoming game — the model’s
             projection for a specific game is shown on that game’s page.
           </p>
+          <MarketRecords performance={performance} />
         </div>
       ) : (
         <div className="rounded-xl border border-dashed border-terminal-border bg-terminal-surface p-8 text-center">
@@ -287,6 +288,91 @@ export function TrackRecord() {
 
       <p className="border-t border-terminal-border pt-4 text-xs font-body italic text-zinc-500">
         {data.note}
+      </p>
+    </div>
+  )
+}
+
+/**
+ * The spread and total records, and closing line value.
+ *
+ * Kept apart from the headline because they are separate bets graded against
+ * separate lines: a single blended record hides which of them the model is
+ * actually any good at, and "season record" on its own is the number a tipping
+ * site quotes precisely because it hides that.
+ *
+ * Closing line value is here for the reason it matters — a bet can lose and
+ * still have beaten the close, and a model that beats the close consistently
+ * is finding something real. Its denominator is printed next to it, because a
+ * +0.4 average over nine games is a far weaker claim than the same number over
+ * nine hundred, and the figure alone cannot tell you which you are looking at.
+ */
+function MarketRecords({ performance }: { performance: PerformanceOut }) {
+  const ats = performance.ats
+  const totals = performance.totals
+  const clv = performance.avg_clv_points
+  const tracked = performance.clv_tracked ?? 0
+
+  const line = (label: string, r?: BetRecord) => {
+    if (!r || r.graded === 0) {
+      return (
+        <div key={label}>
+          <p className="text-xs font-body uppercase tracking-wider text-zinc-500">{label}</p>
+          <p className="font-mono text-sm text-zinc-500">—</p>
+        </div>
+      )
+    }
+    return (
+      <div key={label}>
+        <p className="text-xs font-body uppercase tracking-wider text-zinc-500">{label}</p>
+        <p className="font-mono text-sm font-semibold text-zinc-100">
+          {r.wins}–{r.losses}{r.pushes ? `–${r.pushes}` : ''}
+          {r.win_rate != null && (
+            <span className="ml-1.5 text-zinc-400">{(r.win_rate * 100).toFixed(1)}%</span>
+          )}
+        </p>
+      </div>
+    )
+  }
+
+  const nothingYet = (!ats || ats.graded === 0) && (!totals || totals.graded === 0) && tracked === 0
+  if (nothingYet) {
+    return (
+      <p className="mt-3 border-t border-terminal-border pt-3 text-xs leading-relaxed text-zinc-500">
+        Against-the-spread and total records, and closing line value, appear once
+        games graded against a recorded opening line have settled. Nothing is
+        back-filled, so the counts start from the first game recorded this way.
+      </p>
+    )
+  }
+
+  return (
+    <div className="mt-3 border-t border-terminal-border pt-3">
+      <div className="flex flex-wrap gap-x-8 gap-y-3">
+        {line('Against the spread', ats)}
+        {line('Totals', totals)}
+        <div>
+          <p className="text-xs font-body uppercase tracking-wider text-zinc-500">
+            Avg closing line value
+          </p>
+          <p className={`font-mono text-sm font-semibold ${
+            clv == null ? 'text-zinc-500' : clv >= 0 ? 'text-signal-green' : 'text-signal-red'
+          }`}>
+            {clv == null ? '—' : `${clv >= 0 ? '+' : ''}${clv.toFixed(2)} pts`}
+          </p>
+        </div>
+      </div>
+      <p className="mt-2 text-xs leading-relaxed text-zinc-500">
+        Spread and total records are graded against the line the pick was made
+        at, not the line it drifted to. A push is left out of the hit rate
+        rather than counted as a loss.
+        {tracked > 0 && (
+          <> Closing line value is averaged over {tracked} graded pick
+            {tracked === 1 ? '' : 's'} that have both an opening and a closing
+            line on file{performance.clv_beat_close != null && (
+              <>, {performance.clv_beat_close} of which beat the close</>
+            )}.</>
+        )}
       </p>
     </div>
   )

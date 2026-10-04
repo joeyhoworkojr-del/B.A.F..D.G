@@ -65,6 +65,38 @@ const detail = {
     },
   },
   edges: [],
+  // The fair-line and why panels render from these. They must be in the stub,
+  // or the above-the-fold check below measures a page missing them — which is
+  // exactly how a layout regression got through once already.
+  value: {
+    spread: {
+      fair: -4.8, fair_label: 'FSU -4.8', market: -3, market_label: 'FSU -3.0',
+      edge_points: 1.8, side: 'home', side_abbr: 'FSU', points: 1.8,
+    },
+    total: { fair: 54.1, market: 52.5, edge_points: 1.6, side: 'over', points: 1.6 },
+    confidence: {
+      level: 'medium', inputs_present: 3, inputs_total: 4,
+      inputs: [
+        { name: 'Team ratings from play-by-play', present: true, note: 'cfbd-sp+' },
+        { name: 'Quoted moneyline prices', present: true, note: 'ESPN BET' },
+        { name: 'Market line to anchor to', present: true, note: 'spread and/or moneyline' },
+        { name: 'Conditions and availability', present: false, note: 'not modelled for college football' },
+      ],
+      means: "How much of the model's input was available for this game. Not the chance a bet wins.",
+    },
+  },
+  why: {
+    fair_label: 'FSU -4.8', side: 'home', side_abbr: 'FSU', points: 1.8,
+    line: {
+      opening: -2.5, current: -3, moved_points: -0.5, state: 'value',
+      note: 'StatEdge still has 1.8 points on FSU.',
+    },
+    reasons: [
+      { label: 'FSU rated 7th of 134', detail: '+9.2 points per game against an average team over 5 games (cfbd-sp+)', impact_points: null, source: 'ratings' },
+      { label: 'Shrunk 72% toward the market price', detail: 'The published line is the sharpest single estimate available.', impact_points: null, source: 'anchor' },
+    ],
+    basis: 'Every line here is an input the model read.',
+  },
   markets: [
     { key: 'moneyline', label: 'Moneyline', question: 'Who wins the game outright?',
       probability_kind: 'win', line: null, source: 'ESPN BET', assumed_price: false,

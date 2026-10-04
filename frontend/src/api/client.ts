@@ -8,6 +8,7 @@ import type {
   SoccerMarketOdds,
   NFLMarketOdds,
   BestBetsResponse,
+  EdgesResponse,
   BestParlayResponse,
   AllScoreboardsOut,
   ScoreboardOut,
@@ -237,6 +238,20 @@ export const api = {
 
   // Value
   bestBets: () => get<BestBetsResponse>('/api/v1/best-bets'),
+  edges: (f: {
+    league?: string; market?: string; minEv?: number
+    confidence?: string; hours?: number; limit?: number
+  } = {}) => {
+    const q = new URLSearchParams({
+      league: f.league ?? 'all',
+      market: f.market ?? 'all',
+      min_ev: String(f.minEv ?? 0),
+      confidence: f.confidence ?? 'low',
+      hours: String(f.hours ?? 0),
+      limit: String(f.limit ?? 25),
+    })
+    return get<EdgesResponse>(`/api/v1/edges?${q}`)
+  },
   bestParlay: (maxLegs = 3) => get<BestParlayResponse>(`/api/v1/best-parlay?max_legs=${maxLegs}`),
 
   // Track record

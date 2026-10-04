@@ -384,12 +384,94 @@ export interface PolymarketOut {
 }
 
 
+/**
+ * StatEdge's own line against the book's, and the gap.
+ *
+ * The model produces a margin (positive = home favoured); a book quotes a line
+ * (negative = home laying points). `fair` is already in the book's convention,
+ * so the two can be shown side by side without a reader having to flip a sign.
+ *
+ * `edge_points` is signed on the home team: positive means the market is
+ * giving more points on the home side than the model thinks it should.
+ * `side`/`points` are the same thing said as "whose, and how many".
+ */
+export interface SpreadValueOut {
+  fair: number
+  /** Already written as a bettor reads it, e.g. "BUF -4.8". */
+  fair_label: string
+  market: number | null
+  market_label: string
+  edge_points: number | null
+  side: 'home' | 'away' | null
+  side_abbr: string
+  points: number | null
+}
+
+export interface TotalValueOut {
+  fair: number
+  market: number | null
+  edge_points: number | null
+  side: 'over' | 'under' | null
+  points: number | null
+}
+
+/**
+ * How much of the model's input this game had — deliberately NOT a probability.
+ *
+ * "High confidence" must never be readable as "high chance of winning". Every
+ * input is named with whether it was there and where it came from, so the
+ * level can be audited rather than taken on trust.
+ */
+export interface ConfidenceOut {
+  level: 'low' | 'medium' | 'high'
+  inputs_present: number
+  inputs_total: number
+  inputs: { name: string; present: boolean; note: string }[]
+  means: string
+}
+
+export interface ValueOut {
+  spread: SpreadValueOut
+  total: TotalValueOut
+  confidence: ConfidenceOut
+}
+
+/** One input the model read, with the points it moved where it moved any. */
+export interface WhyReasonOut {
+  label: string
+  detail: string
+  impact_points: number | null
+  source: 'ratings' | 'weather' | 'lineup' | 'line' | 'anchor' | 'missing' | string
+}
+
+export interface LineStateOut {
+  opening: number | null
+  current: number | null
+  moved_points: number | null
+  state: 'value' | 'gone' | 'unknown'
+  note: string
+}
+
+export interface WhyOut {
+  fair_label: string
+  side: 'home' | 'away' | null
+  side_abbr: string
+  points: number | null
+  line: LineStateOut
+  reasons: WhyReasonOut[]
+  basis: string
+}
+
 export interface TodayGameOut {
   game: LiveGameOut
   mapped: boolean
   model?: TodayModelOut | null
   edges: EdgeOut[]
   polymarket?: PolymarketOut | null
+  /** Fair line against the market line, and the input coverage behind it. */
+  value?: ValueOut | null
+  /** The inputs behind the number. Absent on an unprojected game. */
+  why?: WhyOut | null
 }
 
 export interface TodayResponse {
@@ -495,6 +577,71 @@ export interface AccuracyBucket {
   crowd?: SignalScore | null
 }
 
+/**
+ * One side of one market, with every number that decides whether it is worth
+ * taking kept separate.
+ *
+ * `model_prob`, `break_even_prob`, `ev_per_unit` and `confidence` are four
+ * different things and are never blended into one score. `break_even_prob` is
+ * a property of the price alone; `confidence` is how much of the model's input
+ * was available for the game, not how likely the pick is to win.
+ *
+ * `assumed_price` is load-bearing: ESPN publishes spread and total lines with
+ * no price attached, so those are priced at the standard -110 and the EV is
+ * only as good as that assumption. Presenting it as a quoted price would be
+ * inventing a number a book never offered.
+ */
+export interface EdgeRow {
+  league: FootballLeague
+  event_id: string
+  kickoff: string
+  home: string
+  away: string
+  home_abbr: string
+  away_abbr: string
+  market: 'moneyline' | 'spread' | 'total'
+  market_label: string
+  line: number | null
+  selection: string
+  side: string
+  price_american: number
+  assumed_price: boolean
+  model_prob: number
+  break_even_prob: number | null
+  ev_per_unit: number
+  edge_pp: number | null
+  grade: string
+  /** StatEdge's own fair spread for the game, e.g. "BUF -4.8". */
+  fair_label: string
+  market_label_spread: string
+  /** Points of disagreement on this side, where the market quotes a line. */
+  edge_points: number | null
+  confidence: 'low' | 'medium' | 'high'
+  source: string
+  why: string[]
+}
+
+export interface EdgesResponse {
+  edges: EdgeRow[]
+  total_matching: number
+  scanned: number
+  filters: {
+    league: string
+    market: string
+    min_ev: number
+    confidence: string
+    hours: number
+    limit: number
+  }
+  leagues: string[]
+  markets: string[]
+  source_ok: boolean
+  market_source: string
+  fetched_at: string
+  note: string
+  ranking: string
+}
+
 export interface PerformanceOut {
   total_picks: number
   wins?: number
@@ -506,6 +653,24 @@ export interface PerformanceOut {
   profit_units?: number | null
   roi_pct?: number | null
   series: number[]
+  /** Spread record, graded against the line the pick was made at. */
+  ats?: BetRecord
+  /** Over/under record, graded the same way. */
+  totals?: BetRecord
+  /** Average points by which the recommended line beat the close. */
+  avg_clv_points?: number | null
+  /** How many graded picks have both an opening and a closing line on file. */
+  clv_tracked?: number
+  clv_beat_close?: number
+}
+
+/** A win/loss/push record where a push is out of the denominator, not a loss. */
+export interface BetRecord {
+  wins: number
+  losses: number
+  pushes: number
+  win_rate: number | null
+  graded: number
 }
 
 export interface GradedRow {
@@ -737,6 +902,10 @@ export interface GameDetailOut {
   best_edge?: BestEdgeOut | null
   polymarket?: PolymarketOut | null
   snapshot?: SnapshotOut | null
+  /** Fair line against the market line, and the input coverage behind it. */
+  value?: ValueOut | null
+  /** The inputs the number came from. */
+  why?: WhyOut | null
 }
 
 // ─── News ─────────────────────────────────────────────────────────────────────

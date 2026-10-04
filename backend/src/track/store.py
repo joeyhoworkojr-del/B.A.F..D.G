@@ -45,6 +45,8 @@ FIELDS = (
     "home_won", "graded_at", "home_code", "away_code", "home_elo", "away_elo",
     "elo_applied", "consensus_home_prob", "model_version", "book_source",
     "closing_spread", "closing_total", "closing_home_prob",
+    "opening_spread", "opening_total", "opening_home_prob",
+    "pick_spread_side", "pick_total_side",
 )
 
 
@@ -83,9 +85,19 @@ class SqlStore:
             "crowd_home_prob", "market_spread", "market_total",
             "home_code", "away_code", "home_elo", "away_elo",
             "consensus_home_prob", "model_version", "book_source",
+            "opening_spread", "opening_total", "opening_home_prob",
+            "pick_spread_side", "pick_total_side",
         ]
-        refresh = [c for c in cols if c not in ("event_id", "league", "kickoff",
-                                                "home", "away", "model_version")]
+        # `market_*` is the line as it stands now and is refreshed every
+        # snapshot; `opening_*` and the sides taken are what we actually
+        # recommended at, and must never move. Keeping both is the whole of
+        # closing line value: with only the refreshed line on file, the
+        # closing line equals the recommendation by construction and CLV is
+        # always zero, which is what it was.
+        frozen = ("event_id", "league", "kickoff", "home", "away",
+                  "model_version", "opening_spread", "opening_total",
+                  "opening_home_prob", "pick_spread_side", "pick_total_side")
+        refresh = [c for c in cols if c not in frozen]
         sets = ",\n                ".join(f"{c} = excluded.{c}" for c in refresh)
         with self._connect() as conn:
             conn.execute(
@@ -169,7 +181,9 @@ class RedisStore:
          and incoming['model_version'] and incoming['model_version'] ~= cjson.null
          and prev['model_version'] ~= incoming['model_version'] then return 0 end
       for _, f in ipairs({'graded','home_score','away_score','home_won','graded_at',
-                          'closing_spread','closing_total','closing_home_prob'}) do
+                          'closing_spread','closing_total','closing_home_prob',
+                          'opening_spread','opening_total','opening_home_prob',
+                          'pick_spread_side','pick_total_side'}) do
         if prev[f] ~= nil then incoming[f] = prev[f] end
       end
     end

@@ -101,6 +101,38 @@ export function gameDetail(overrides: Partial<GameDetailOut> = {}): GameDetailOu
       source: 'ESPN BET', assumed_price: true, probability_kind: 'cover',
     },
     polymarket: null, snapshot: null,
+    value: {
+      spread: {
+        fair: -4.8, fair_label: 'FSU -4.8', market: -3, market_label: 'FSU -3.0',
+        edge_points: 1.8, side: 'home', side_abbr: 'FSU', points: 1.8,
+      },
+      total: { fair: 54.1, market: 52.5, edge_points: 1.6, side: 'over', points: 1.6 },
+      confidence: {
+        level: 'medium', inputs_present: 3, inputs_total: 4,
+        inputs: [
+          { name: 'Team ratings from play-by-play', present: true, note: 'cfbd-sp+' },
+          { name: 'Quoted moneyline prices', present: true, note: 'ESPN BET' },
+          { name: 'Market line to anchor to', present: true, note: 'spread and/or moneyline' },
+          { name: 'Conditions and availability', present: false, note: 'not modelled for college football' },
+        ],
+        means: "How much of the model's input was available for this game. Not the chance a bet wins.",
+      },
+    },
+    why: {
+      fair_label: 'FSU -4.8', side: 'home', side_abbr: 'FSU', points: 1.8,
+      line: {
+        opening: -2.5, current: -3, moved_points: -0.5, state: 'value',
+        note: 'StatEdge still has 1.8 points on FSU.',
+      },
+      reasons: [
+        {
+          label: 'FSU rated 7th of 134',
+          detail: '+9.2 points per game against an average team over 5 games (cfbd-sp+)',
+          impact_points: null, source: 'ratings',
+        },
+      ],
+      basis: 'Every line here is an input the model read.',
+    },
     ...overrides,
   }
 }
@@ -152,6 +184,21 @@ export function boardEntry(
     },
     edges: [],
     polymarket: null,
+    value: detail.value && {
+      ...detail.value,
+      spread: {
+        ...detail.value.spread,
+        // The abbreviation has to belong to a team in this game, or a card
+        // shows a side that is not playing.
+        side_abbr: detail.value.spread.side === 'home' ? game.home_abbr : game.away_abbr,
+        fair_label: `${detail.value.spread.side === 'home' ? game.home_abbr : game.away_abbr} -4.8`,
+        market_label: `${detail.value.spread.side === 'home' ? game.home_abbr : game.away_abbr} -3.0`,
+      },
+    },
+    why: detail.why && {
+      ...detail.why,
+      side_abbr: detail.why.side === 'home' ? game.home_abbr : game.away_abbr,
+    },
   }
 }
 
