@@ -18,7 +18,17 @@ function LegRow({ leg, i }: { leg: ParlayLeg; i: number }) {
       </div>
       <div className="shrink-0 text-right">
         <p className="font-mono text-sm font-bold text-signal-amber tabular-nums">{fmtAm(americanFromDecimal(leg.decimal_odds))}</p>
-        <p className="text-xs text-zinc-500">model {pct(leg.model_prob)} · <span className="text-signal-green">+{leg.edge_pp.toFixed(1)}pp</span></p>
+        <p className="text-xs text-zinc-500">
+          model {pct(leg.model_prob)}
+          {leg.break_even_prob != null && <> · break-even {pct(leg.break_even_prob)}</>}
+          {/* EV is what put this leg on the ticket, so it is the number shown
+              rather than the probability gap, which ignores the price. */}
+          {leg.ev_per_unit != null && (
+            <> · <span className={leg.ev_per_unit >= 0 ? 'text-signal-green' : 'text-signal-red'}>
+              {leg.ev_per_unit >= 0 ? '+' : ''}{(leg.ev_per_unit * 100).toFixed(1)}% EV
+            </span></>
+          )}
+        </p>
       </div>
     </div>
   )
@@ -144,10 +154,66 @@ export function Parlay() {
         </div>
       )}
 
-      <p className="mt-4 text-center text-xs text-zinc-500">
-        Combined odds multiply each leg’s price; model win % multiplies each leg’s probability (assumes independence).
-        Parlays are high-variance — the single legs on Best Bets are steadier. Bet responsibly.
-      </p>
+      {/* What a leg costs and buys, side by side.
+          A parlay page normally shows one ticket and one big price. Showing
+          every length together makes the trade visible: each leg added buys
+          price, costs probability, and hands the book more of its margin. */}
+      {data && (data.tickets?.length ?? 0) > 1 && (
+        <div className="mt-5">
+          <p className="mb-2 text-xs font-bold uppercase tracking-widest text-zinc-500">
+            What each leg costs
+          </p>
+          <div className="overflow-hidden rounded-xl border border-terminal-border bg-terminal-surface">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-terminal-border text-zinc-500">
+                  <th scope="col" className="px-3 py-2 text-left font-bold uppercase tracking-wider">Legs</th>
+                  <th scope="col" className="px-3 py-2 text-right font-bold uppercase tracking-wider">Price</th>
+                  <th scope="col" className="px-3 py-2 text-right font-bold uppercase tracking-wider">Model</th>
+                  <th scope="col" className="px-3 py-2 text-right font-bold uppercase tracking-wider">Break-even</th>
+                  <th scope="col" className="px-3 py-2 text-right font-bold uppercase tracking-wider">Hold</th>
+                  <th scope="col" className="px-3 py-2 text-right font-bold uppercase tracking-wider">EV</th>
+                </tr>
+              </thead>
+              <tbody className="font-mono tabular-nums">
+                {data.tickets!.map(t => (
+                  <tr
+                    key={t.leg_count}
+                    className={`border-b border-terminal-border/60 last:border-b-0 ${
+                      t.leg_count === data.leg_count ? 'bg-terminal-muted/40' : ''
+                    }`}
+                  >
+                    <td className="px-3 py-2 text-left font-sans font-semibold text-zinc-300">{t.leg_count}</td>
+                    <td className="px-3 py-2 text-right text-zinc-100">{fmtAm(t.american_odds)}</td>
+                    <td className="px-3 py-2 text-right text-zinc-300">{pct(t.model_prob)}</td>
+                    <td className="px-3 py-2 text-right text-zinc-400">{pct(t.implied_prob)}</td>
+                    <td className="px-3 py-2 text-right text-signal-red">
+                      {t.vig_pct == null ? '—' : `${t.vig_pct.toFixed(1)}%`}
+                    </td>
+                    <td className={`px-3 py-2 text-right ${t.ev_per_unit >= 0 ? 'text-signal-green' : 'text-signal-red'}`}>
+                      {t.ev_per_unit >= 0 ? '+' : ''}{(t.ev_per_unit * 100).toFixed(1)}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-4 space-y-1.5 text-center text-xs leading-relaxed text-zinc-500">
+        <p>
+          Legs are chosen by expected value, not by the size of the probability
+          gap — a wide gap at a bad price is not value.
+        </p>
+        {data?.independence_note && <p>{data.independence_note}</p>}
+        {data?.vig_note && <p>{data.vig_note}</p>}
+        <p>
+          Parlays are high-variance. The single plays on Best Edges are
+          steadier, and player props cannot be legs here at all: no book price
+          is available for them, so there is nothing to price a leg at.
+        </p>
+      </div>
     </div>
   )
 }

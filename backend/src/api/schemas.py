@@ -391,6 +391,32 @@ class ParlayLeg(BaseModel):
     decimal_odds: float         # price this leg pays
     edge_pp: float
     rating: str
+    # Expected value on a one-unit stake on this leg alone. This is what legs
+    # are chosen by: for independent legs a parlay's return is the product of
+    # each leg's price times its probability, so the highest-EV legs give the
+    # highest-EV ticket. Ranking by `edge_pp` instead ignores the price, and
+    # a big probability gap at a bad number is not value.
+    ev_per_unit: float = 0.0
+    # What the price alone needs, stated separately from what the model thinks.
+    break_even_prob: float = 0.0
+
+
+class ParlayTicket(BaseModel):
+    """One ticket at one leg count, priced end to end."""
+    leg_count: int
+    legs: list[ParlayLeg]
+    model_prob: float                     # combined, assuming independent legs
+    decimal_odds: float
+    american_odds: int
+    implied_prob: float                   # break-even prob at the combined price
+    edge_pp: float
+    ev_per_unit: float
+    payout_per_unit: float
+    # The book's hold on this ticket: how much worse the offered price is than
+    # the fair price implied by the no-vig legs. It grows with every leg added,
+    # which is the part a parlay page usually leaves out.
+    vig_pct: float = 0.0
+    fair_decimal_odds: float = 0.0
 
 
 class BestParlayResponse(BaseModel):
@@ -405,6 +431,13 @@ class BestParlayResponse(BaseModel):
     ev_per_unit: float                    # expected value on a 1-unit stake
     payout_per_unit: float                # profit on a 1-unit win
     pool: list[ParlayLeg] = []            # all qualifying legs to build your own
+    # One ticket per leg count, so a reader can see what a leg costs them in
+    # probability and buys them in price rather than being handed one answer.
+    tickets: list[ParlayTicket] = []
+    # Stated rather than implied. Legs are one per game, which is the standard
+    # way to keep them close to independent; it is not a guarantee of it.
+    independence_note: str = ""
+    vig_note: str = ""
 
 
 # ─── Rankings ─────────────────────────────────────────────────────────────────
