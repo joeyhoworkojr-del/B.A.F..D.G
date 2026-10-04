@@ -615,10 +615,16 @@ async def _slate_entries(league: str, games: list, poly, *, snapshot: bool = Fal
     if not games:
         return []
     limit = asyncio.Semaphore(SLATE_CONCURRENCY)
+    # One read for the whole slate rather than one per game: the opening lines
+    # live in the ledger, which is Redis in production.
+    openings = ledger.openings_for([f"{league}:{g.event_id}" for g in games])
 
     async def one(game):
         async with limit:
-            return await _slate_entry(league, game, poly, snapshot=snapshot)
+            return await _slate_entry(
+                league, game, poly, snapshot=snapshot,
+                opening=openings.get(f"{league}:{game.event_id}") or {},
+            )
 
     results = await asyncio.gather(
         *(one(g) for g in games), return_exceptions=True,
@@ -1428,7 +1434,8 @@ def _best_selection(markets: list[dict]) -> Optional[dict]:
 
 
 async def _slate_entry(
-    league: str, g: LiveGame, poly_markets, *, snapshot: bool = False,
+    league: str, g: LiveGame, poly_markets, *,
+    snapshot: bool = False, opening: Optional[dict] = None,
 ) -> dict:
     """Model + live-market comparison for one scoreboard game.
 
@@ -1642,9 +1649,15 @@ async def _slate_entry(
         }
         # The reasons behind that number. One bulk read of the frozen opening
         # lines covers the whole board, rather than a round trip per game.
+        # `opening` is supplied by the batch path, which reads every game on
+        # the board in one go. A lone caller — one game page — looks up its
+        # own, which is a single read either way.
         entry["why"] = _why_read(
             league, g, pred, home, away, entry["value"],
-            ledger.openings().get(f"{league}:{g.event_id}"),
+            opening if opening is not None
+            else ledger.openings_for([f"{league}:{g.event_id}"]).get(
+                f"{league}:{g.event_id}"
+            ),
         )
 
         # ── Track record: snapshot pre-game; grading happens on every board fetch ──

@@ -137,6 +137,17 @@ class SqlStore:
             ).fetchone()
             return dict(row) if row else None
 
+    def get_many(self, event_ids: list[str]) -> dict[str, dict]:
+        if not event_ids:
+            return {}
+        marks = ", ".join("?" for _ in event_ids)
+        with self._connect() as conn:
+            found = conn.execute(
+                f"SELECT * FROM {self._table} WHERE event_id IN ({marks})",
+                tuple(event_ids),
+            ).fetchall()
+        return {str(dict(r)["event_id"]): dict(r) for r in found}
+
     def rows(self, graded: Optional[bool] = None) -> list[dict]:
         clause = "" if graded is None else f" WHERE graded = {1 if graded else 0}"
         with self._connect() as conn:
@@ -259,6 +270,26 @@ class RedisStore:
     def get(self, event_id: str) -> Optional[dict]:
         raw = self._redis().get(_KEY_PREFIX + event_id)
         return json.loads(raw) if raw else None
+
+    def get_many(self, event_ids: list[str]) -> dict[str, dict]:
+        """
+        Several rows in one round trip, by id.
+
+        The alternative — reading every row and filtering in Python — costs the
+        whole ledger over the wire on each call, and the ledger only grows. A
+        board asks about the games on it, so it should fetch the games on it.
+        """
+        if not event_ids:
+            return {}
+        raws = self._redis().mget([_KEY_PREFIX + str(i) for i in event_ids])
+        out: dict[str, dict] = {}
+        for raw in raws:
+            if not raw:
+                continue
+            row = json.loads(raw)
+            if row.get("event_id") is not None:
+                out[str(row["event_id"])] = row
+        return out
 
     def rows(self, graded: Optional[bool] = None) -> list[dict]:
         client = self._redis()

@@ -365,33 +365,23 @@ def accuracy_summary() -> dict:
     }
 
 
-# How long the opening-line map may be reused. The board reads it once per
-# game, and a per-game round trip to Redis across a full college Saturday is a
-# hundred network hops to answer a question that changes every ten minutes —
-# which is how often the snapshot job writes. One bulk read covers all of them.
-_OPENINGS_TTL_SECONDS = 30.0
-_openings_cache: tuple[float, dict[str, dict]] = (0.0, {})
-
-
 @_safe(dict)
-def openings() -> dict[str, dict]:
+def openings_for(event_ids: list[str]) -> dict[str, dict]:
     """
-    The frozen opening line and side for every game not yet graded.
+    The frozen opening line and side for the games asked about, in one read.
 
-    Keyed by event id, in one read rather than one per game. Graded rows are
-    left out: their line cannot move again, so nothing on a board about what
-    is still to come needs them.
+    Scoped to the ids the caller needs rather than scanning the whole ledger:
+    the board wants a hundred games, and the ledger holds every game of the
+    season and keeps growing. Reading all of it twice a minute to answer a
+    question about today would get slower every week.
     """
-    global _openings_cache
-    now = time.monotonic()
-    fresh_until, cached = _openings_cache
-    if now < fresh_until:
-        return cached
-
+    ids = [str(i) for i in event_ids if i]
+    if not ids:
+        return {}
     with _LOCK:
-        rows = _get_store().rows(graded=False)
-    built = {
-        str(r.get("event_id")): {
+        found = _get_store().get_many(ids)
+    return {
+        key: {
             "opening_spread": r.get("opening_spread"),
             "opening_total": r.get("opening_total"),
             "opening_home_prob": r.get("opening_home_prob"),
@@ -399,16 +389,8 @@ def openings() -> dict[str, dict]:
             "pick_total_side": r.get("pick_total_side"),
             "snapshot_at": r.get("snapshot_at"),
         }
-        for r in rows if r.get("event_id")
+        for key, r in found.items()
     }
-    _openings_cache = (now + _OPENINGS_TTL_SECONDS, built)
-    return built
-
-
-def reset_openings() -> None:
-    """Drop the cached map — used by `reset` and by tests."""
-    global _openings_cache
-    _openings_cache = (0.0, {})
 
 
 # ─── Closing line value, and the spread / total records ──────────────────────
@@ -622,6 +604,5 @@ def recent_graded(limit: int = 25) -> list[dict]:
 
 def reset() -> None:
     """Test helper — wipe the ledger."""
-    reset_openings()
     with _LOCK:
         _get_store().clear()

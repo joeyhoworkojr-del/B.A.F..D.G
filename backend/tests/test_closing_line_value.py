@@ -154,3 +154,30 @@ def test_an_empty_ledger_claims_nothing():
     assert perf["clv_tracked"] == 0
     assert perf["ats"]["win_rate"] is None
     assert perf["totals"]["win_rate"] is None
+
+
+# ─── The read is scoped to what was asked for ────────────────────────────────
+
+def test_openings_are_fetched_by_id_not_by_scanning_the_ledger():
+    """
+    The ledger holds every game of the season and keeps growing. Reading all of
+    it to answer a question about today's board would get slower every week, so
+    the fetch takes the ids it needs.
+    """
+    for n in range(3):
+        snapshot(spread=-3.0 - n, total=44.0 + n, event=f"nfl:{n}")
+
+    got = ledger.openings_for(["nfl:1"])
+    assert set(got) == {"nfl:1"}
+    assert got["nfl:1"]["opening_spread"] == -4.0
+
+
+def test_asking_about_nothing_reads_nothing():
+    assert ledger.openings_for([]) == {}
+    assert ledger.openings_for(["", None]) == {}
+
+
+def test_a_game_with_no_snapshot_yet_is_simply_absent():
+    snapshot(spread=-3.5, total=46.5, event="nfl:1")
+    got = ledger.openings_for(["nfl:1", "nfl:does-not-exist"])
+    assert set(got) == {"nfl:1"}

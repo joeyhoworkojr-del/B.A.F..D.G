@@ -215,10 +215,10 @@ def test_one_failing_game_does_not_empty_the_whole_board():
     games = [game(str(i), "nfl", hours=2) for i in range(4)]
     real_entry = pred._slate_entry
 
-    async def one_bad(league, g, poly, snapshot=False):
+    async def one_bad(league, g, poly, **kw):
         if str(g.event_id) == "2":
             raise RuntimeError("one upstream hiccup")
-        return await real_entry(league, g, poly, snapshot=snapshot)
+        return await real_entry(league, g, poly, **kw)
 
     with board_with({"nfl": games}, {}), patch.object(pred, "_slate_entry", one_bad):
         data = get_board()
