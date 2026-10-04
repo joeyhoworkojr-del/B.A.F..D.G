@@ -16,6 +16,7 @@ from src.api.schemas import (
     BestParlayResponse,
     EdgeOut,
     ParlayLeg,
+    ParlayTicket,
     NFLPredictRequest,
     NFLPredictResponse,
     PlayerPropOut,
@@ -69,7 +70,7 @@ from src.value.edge import american_to_decimal
 from src.simulate.monte_carlo import simulate_soccer
 from src.value.edge import BetEdge, edge_rating, evaluate_market
 from src.model_version import MODEL_VERSION
-from src.ingest.player_stats import enrich_with_nflverse, fetch_player_pool
+from src.ingest.player_stats import enrich_with_nflverse, fetch_player_pool, game_logs_for
 from src.predict.player_props import project_game
 
 log = logging.getLogger(__name__)
@@ -1824,8 +1825,13 @@ async def game_player_props(league: str, event_id: str) -> dict:
     home_abbr = pool.home_abbr or game.home_abbr
     away_abbr = pool.away_abbr or game.away_abbr
 
+    # Per-market game logs, where the weekly data has them. These carry three
+    # things a season average cannot: recent form, the player's own spread for
+    # the over/under probability, and the evidence behind the number.
+    logs = await game_logs_for(pool)
+
     projections = project_game(
-        pool.players, league, home_abbr, away_abbr, home_pts, away_pts,
+        pool.players, league, home_abbr, away_abbr, home_pts, away_pts, logs,
     )
 
     return {
@@ -1853,13 +1859,34 @@ async def game_player_props(league: str, event_id: str) -> dict:
                 "market": p.market, "label": p.label,
                 "projection": p.projection, "season_avg": p.season_avg,
                 "games_played": p.games_played, "actual": p.actual,
+                # ── How the number was arrived at ──
+                "recent_avg": p.recent_avg,
+                "form_weight": p.form_weight,
+                "environment_mult": p.environment_mult,
+                "opponent_abbr": p.opponent_abbr,
+                "opponent_mult": p.opponent_mult,
+                "opponent_note": p.opponent_note,
+                # The spread the over/under probability comes out of, and
+                # whether it is this player's own or the league-wide prior.
+                "sigma": p.sigma,
+                "sigma_source": p.sigma_source,
+                "sigma_games": p.sigma_games,
+                "game_log": p.game_log,
             }
             for p in projections
         ],
         "note": (
-            "Each number is that player's published per-game usage, rescaled by "
-            "the score the model projects for his team. Players without enough "
-            "published usage are omitted rather than estimated."
+            "Each number starts from that player's published per-game usage, "
+            "pulled toward his recent form, then rescaled by the score the "
+            "model projects for his team and by the defence he is facing. "
+            "Players without enough published usage are omitted rather than "
+            "estimated."
+        ),
+        "spread_note": (
+            "Where a player's own game log is long enough, the over/under "
+            "spread is his own game-to-game variation rather than a "
+            "league-wide average for the market — two players with the same "
+            "average are not the same bet. Each projection says which it used."
         ),
     }
 
@@ -2628,56 +2655,139 @@ async def _scan_parlay_legs() -> list[ParlayLeg]:
                 if best is None or e["edge_pp"] > best["edge_pp"]:
                     best = e
             if best is not None:
+                dec = best["decimal_odds"]
                 legs.append(ParlayLeg(
                     fixture_id=f"{lg}:{g.event_id}", league=lg, kickoff=g.kickoff,
                     home=g.home, away=g.away,
                     market=f"{lg.upper()} · {best['market']}", selection=best["selection"],
                     model_prob=best["model_prob"], market_prob=best["market_prob"],
-                    decimal_odds=best["decimal_odds"], edge_pp=best["edge_pp"],
+                    decimal_odds=dec, edge_pp=best["edge_pp"],
                     rating=best["rating"],
+                    ev_per_unit=round(best["model_prob"] * dec - 1.0, 4),
+                    break_even_prob=round(1.0 / dec, 4) if dec > 0 else 0.0,
                 ))
-    legs.sort(key=lambda leg: -leg.edge_pp)
+    # Ranked by expected value, not by the probability gap.
+    #
+    # For independent legs the ticket's return is the product of each leg's
+    # price times its probability, so the highest-EV legs give the highest-EV
+    # ticket — that is arithmetic, not taste. Sorting by `edge_pp` ignored the
+    # price entirely, and a wide probability gap at a bad number is not value.
+    legs.sort(key=lambda leg: -leg.ev_per_unit)
     return legs
+
+
+# Leg counts offered. Two is the shortest thing that is still a parlay; past
+# four the price looks exciting and the probability is doing all the work in
+# the other direction, so showing more would be flattering the format.
+PARLAY_LEG_COUNTS = (2, 3, 4)
+
+
+def _price_ticket(legs: list[ParlayLeg]) -> ParlayTicket:
+    """
+    One ticket, priced end to end.
+
+    Three numbers that a parlay page usually shows one of. The offered price,
+    the fair price the no-vig legs imply, and the gap between them — which is
+    the book's hold, and it compounds with every leg. A four-leg ticket at
+    -110 a side keeps far more than four times a single bet's hold, and that
+    is the single most important thing about the format.
+    """
+    dec = 1.0
+    fair_dec = 1.0
+    model_p = 1.0
+    for leg in legs:
+        dec *= leg.decimal_odds
+        model_p *= leg.model_prob
+        if leg.market_prob > 0:
+            fair_dec *= 1.0 / leg.market_prob
+
+    implied = 1.0 / dec if dec > 0 else 0.0
+    ev = model_p * dec - 1.0
+    vig = ((fair_dec - dec) / fair_dec * 100.0) if fair_dec > 0 else 0.0
+
+    return ParlayTicket(
+        leg_count=len(legs),
+        legs=legs,
+        model_prob=round(model_p, 4),
+        decimal_odds=round(dec, 2),
+        american_odds=_american_from_decimal(dec),
+        implied_prob=round(implied, 4),
+        edge_pp=round((model_p - implied) * 100, 1),
+        ev_per_unit=round(ev, 3),
+        payout_per_unit=round(dec - 1.0, 2),
+        vig_pct=round(max(vig, 0.0), 1),
+        fair_decimal_odds=round(fair_dec, 2),
+    )
+
+
+INDEPENDENCE_NOTE = (
+    "One leg per game. That is the standard way to keep legs close to "
+    "independent, and the combined probability below multiplies them as if "
+    "they were — it is not a guarantee that they are. Games on the same slate "
+    "still share weather, pace and officiating."
+)
+
+VIG_NOTE = (
+    "A parlay multiplies the book's margin as well as the price. Each ticket "
+    "shows the fair price its own legs imply, so the hold is visible rather "
+    "than buried in a big American number."
+)
 
 
 @router.get("/best-parlay", response_model=BestParlayResponse, tags=["Predictions"])
 async def best_parlay(max_legs: int = 3) -> BestParlayResponse:
     """
-    Build the model's best-value parlay from today's NFL + NCAA football slate:
-    the strongest de-biased edges the model both favours to win and sees value
-    on, combined into one ticket with honest combined odds and expected value.
+    The model's best-value parlays from the upcoming NFL and college slate.
+
+    Legs are the plays the model both favours to win and prices as value, one
+    per game, chosen by expected value. A ticket is offered at each leg count
+    so the cost of adding a leg is visible: more price, less probability, and
+    more of the book's margin.
     """
     max_legs = max(2, min(max_legs, 5))
     pool = await _scan_parlay_legs()
-    featured = pool[:max_legs]
 
-    if not featured:
+    if not pool:
         return BestParlayResponse(
-            generated_with="No qualifying value legs on the board right now — the model only parlays plays it both favours and prices as value.",
-            legs=[], leg_count=0, model_prob=0.0, decimal_odds=1.0, american_odds=0,
-            implied_prob=0.0, edge_pp=0.0, ev_per_unit=0.0, payout_per_unit=0.0, pool=pool,
+            generated_with=(
+                "No qualifying value legs on the board right now — the model "
+                "only parlays plays it both favours and prices as value."
+            ),
+            legs=[], leg_count=0, model_prob=0.0, decimal_odds=1.0,
+            american_odds=0, implied_prob=0.0, edge_pp=0.0, ev_per_unit=0.0,
+            payout_per_unit=0.0, pool=[], tickets=[],
+            independence_note=INDEPENDENCE_NOTE, vig_note=VIG_NOTE,
         )
 
-    dec = 1.0
-    mp = 1.0
-    for leg in featured:
-        dec *= leg.decimal_odds
-        mp *= leg.model_prob
-    implied = 1.0 / dec
-    ev = mp * (dec - 1.0) - (1.0 - mp)
+    # The pool is already in EV order, so the best ticket at each length is
+    # its first n legs.
+    tickets = [
+        _price_ticket(pool[:n]) for n in PARLAY_LEG_COUNTS if len(pool) >= n
+    ]
+    featured = next(
+        (t for t in tickets if t.leg_count == max_legs),
+        tickets[-1] if tickets else _price_ticket(pool[:1]),
+    )
 
     return BestParlayResponse(
-        generated_with="Model's best-value parlay — de-biased edges the model favours to win, priced at the live line",
-        legs=featured,
-        leg_count=len(featured),
-        model_prob=round(mp, 4),
-        decimal_odds=round(dec, 2),
-        american_odds=_american_from_decimal(dec),
-        implied_prob=round(implied, 4),
-        edge_pp=round((mp - implied) * 100, 1),
-        ev_per_unit=round(ev, 3),
-        payout_per_unit=round(dec - 1.0, 2),
+        generated_with=(
+            "Legs the model favours to win and prices as value, one per game, "
+            "chosen by expected value rather than by the size of the "
+            "probability gap"
+        ),
+        legs=featured.legs,
+        leg_count=featured.leg_count,
+        model_prob=featured.model_prob,
+        decimal_odds=featured.decimal_odds,
+        american_odds=featured.american_odds,
+        implied_prob=featured.implied_prob,
+        edge_pp=featured.edge_pp,
+        ev_per_unit=featured.ev_per_unit,
+        payout_per_unit=featured.payout_per_unit,
         pool=pool[:8],
+        tickets=tickets,
+        independence_note=INDEPENDENCE_NOTE,
+        vig_note=VIG_NOTE,
     )
 
 
