@@ -559,6 +559,70 @@ def player_form(
     return out
 
 
+# Which weekly field each prop market is measured from. Kept here, beside the
+# row definition, so a market cannot be wired to a column that does not exist.
+MARKET_FIELDS = {
+    "pass_yards": "passing_yards",
+    "pass_attempts": "attempts",
+    "pass_tds": "passing_tds",
+    "rush_yards": "rushing_yards",
+    "carries": "carries",
+    "rush_tds": "rushing_tds",
+    "rec_yards": "receiving_yards",
+    "receptions": "receptions",
+    "rec_tds": "receiving_tds",
+}
+
+
+@dataclass
+class PlayerGame:
+    """One game in a player's log, as a reader would see it listed."""
+    season: int
+    week: int
+    opponent: str
+    value: float
+
+
+def player_log(
+    data: "NflverseData",
+    player_id: str,
+    market: str,
+    *,
+    last_n: int = 0,
+    season_type: str = "REG",
+) -> list[PlayerGame]:
+    """
+    One player's game-by-game numbers in one market, oldest first.
+
+    This is what turns a projection from an assertion into something a reader
+    can check, and it is also the only way to know how volatile a player
+    actually is. A possession receiver who catches five every week and a deep
+    threat who alternates between two and nine have the same average and
+    nothing else in common — a single league-wide spread per market treats them
+    identically, which is wrong in the direction that matters, because the
+    whole over/under probability comes out of that spread.
+    """
+    field = MARKET_FIELDS.get(market)
+    if field is None:
+        return []
+
+    rows = [
+        r for r in data.players
+        if r.player_id == player_id
+        and (not season_type or r.season_type == season_type)
+    ]
+    rows.sort(key=lambda r: (r.season, r.week))
+    if last_n > 0:
+        rows = rows[-last_n:]
+    return [
+        PlayerGame(
+            season=r.season, week=r.week, opponent=r.opponent,
+            value=float(getattr(r, field, 0.0) or 0.0),
+        )
+        for r in rows
+    ]
+
+
 def status() -> dict:
     """What this provider is actually doing right now — no credentials to leak."""
     now = current_season()

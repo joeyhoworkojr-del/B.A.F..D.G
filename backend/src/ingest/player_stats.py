@@ -356,6 +356,56 @@ def _usage_from_form(form) -> Optional[PlayerUsage]:
     )
 
 
+# How many games of a player's log to carry. Enough to measure a spread and
+# show a reader where the projection came from, without turning one game page
+# into a season archive.
+LOG_GAMES = 10
+
+
+async def game_logs_for(pool: PlayerPool) -> dict:
+    """
+    Per-market game logs for every player in a pool that has one on file.
+
+    Keyed by athlete id, then by market. This is what lets a projection carry
+    the player's own spread rather than a league-wide one, and what lets the
+    page show the games behind the number instead of asserting it.
+
+    NFL only, because the weekly data is nflverse's and nflverse is the NFL.
+    A failure returns nothing rather than raising: projections without logs are
+    still projections, they simply fall back to the market-wide spread and say
+    so.
+    """
+    if pool.league != "nfl":
+        return {}
+    try:
+        from src.ingest import nflverse
+
+        data = await nflverse.load_season()
+        if not data.ok:
+            return {}
+
+        out: dict[str, dict] = {}
+        for player in pool.players:
+            # Only players matched to a weekly row have a log; the id carries
+            # the provenance, so there is no guessing involved.
+            if not player.athlete_id.startswith("nflverse:"):
+                continue
+            player_id = player.athlete_id.split(":", 1)[1]
+            markets: dict[str, list] = {}
+            for market in nflverse.MARKET_FIELDS:
+                log = nflverse.player_log(
+                    data, player_id, market, last_n=LOG_GAMES,
+                )
+                if log:
+                    markets[market] = log
+            if markets:
+                out[player.athlete_id] = markets
+        return out
+    except Exception as exc:
+        log.warning("game logs skipped: %s", exc)
+        return {}
+
+
 async def enrich_with_nflverse(pool: PlayerPool) -> PlayerPool:
     """
     Widen an NFL pool from ESPN's three leaders per team to everyone who has

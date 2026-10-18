@@ -134,6 +134,32 @@ export interface ParlayLeg {
   decimal_odds: number
   edge_pp: number
   rating: string
+  /**
+   * Expected value on a one-unit stake on this leg alone, and what the price
+   * alone needs. Legs are chosen by EV: for independent legs the ticket's
+   * return is the product of each leg's price times its probability, so the
+   * highest-EV legs give the highest-EV ticket. A wide probability gap at a
+   * bad price is not value.
+   */
+  ev_per_unit?: number
+  break_even_prob?: number
+}
+
+/** One ticket at one leg count, priced end to end. */
+export interface ParlayTicket {
+  leg_count: number
+  legs: ParlayLeg[]
+  model_prob: number
+  decimal_odds: number
+  american_odds: number
+  implied_prob: number
+  edge_pp: number
+  ev_per_unit: number
+  payout_per_unit: number
+  /** The book's hold on this ticket. It grows with every leg added. */
+  vig_pct?: number
+  /** The fair price this ticket's own no-vig legs imply. */
+  fair_decimal_odds?: number
 }
 
 export interface BestParlayResponse {
@@ -148,6 +174,10 @@ export interface BestParlayResponse {
   ev_per_unit: number
   payout_per_unit: number
   pool: ParlayLeg[]
+  /** One ticket per leg count, so the cost of a leg is visible. */
+  tickets?: ParlayTicket[]
+  independence_note?: string
+  vig_note?: string
 }
 
 export interface BestBetsResponse {
@@ -982,6 +1012,26 @@ export interface PropProjectionOut {
   games_played: number
   /** True once the game is under way: this is what happened, not a forecast. */
   actual: boolean
+  /** The average over the recent window, where there was one to take. */
+  recent_avg?: number | null
+  /** How much weight recent form took off the season average, 0 to ~0.45. */
+  form_weight?: number
+  environment_mult?: number
+  opponent_abbr?: string
+  opponent_mult?: number
+  opponent_note?: string
+  /**
+   * The spread the over/under probability comes out of, and where it came
+   * from. "player" means this athlete's own game-to-game variation carried
+   * most of the weight; "market" means the log was too short and the
+   * league-wide prior for the market stood. Two players with the same average
+   * and different spreads are not the same bet.
+   */
+  sigma?: number | null
+  sigma_source?: 'player' | 'market' | 'none'
+  sigma_games?: number
+  /** Oldest first. The evidence behind everything above. */
+  game_log?: { season: number; week: number; opponent: string; value: number }[]
 }
 
 export interface GamePropsOut {
@@ -1002,6 +1052,7 @@ export interface GamePropsOut {
   lines_note: string
   projections: PropProjectionOut[]
   note: string
+  spread_note?: string
 }
 
 // ─── Accounts ─────────────────────────────────────────────────────────────────

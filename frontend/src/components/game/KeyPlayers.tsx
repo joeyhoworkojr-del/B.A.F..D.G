@@ -19,15 +19,54 @@ function pair(rows: PropProjectionOut[], markets: string[], away: string, home: 
   return [pick(away), pick(home)].filter(Boolean) as PropProjectionOut[]
 }
 
+/**
+ * What a projection is made of, in one line.
+ *
+ * A projection with nothing behind it is an assertion. This says where it came
+ * from: the season average, where recent form pulled it, how volatile the
+ * player actually is and whether that spread is his own or a league-wide
+ * stand-in. The spread is the part that matters most — the whole over/under
+ * probability comes out of it, and two players with the same average and
+ * different spreads are not the same bet.
+ */
+function Provenance({ row }: { row: PropProjectionOut }) {
+  const bits: string[] = [`season ${row.season_avg.toFixed(1)}`]
+
+  if (row.recent_avg != null && row.form_weight) {
+    bits.push(`last games ${row.recent_avg.toFixed(1)}`)
+  }
+  if (row.opponent_mult != null && row.opponent_mult !== 1 && row.opponent_abbr) {
+    const harder = row.opponent_mult < 1
+    bits.push(`vs ${row.opponent_abbr} ${harder ? '−' : '+'}${Math.abs((row.opponent_mult - 1) * 100).toFixed(0)}%`)
+  }
+  if (row.sigma != null) {
+    // Said plainly, including when it is a stand-in rather than his own.
+    bits.push(
+      row.sigma_source === 'player'
+        ? `± ${row.sigma.toFixed(1)} over ${row.sigma_games} games`
+        : `± ${row.sigma.toFixed(1)} (market average spread)`,
+    )
+  }
+
+  if (bits.length <= 1) return null
+  return (
+    <p className="mt-0.5 font-mono text-[11px] tabular-nums leading-relaxed text-zinc-500">
+      {bits.join(' · ')}
+    </p>
+  )
+}
+
 function PlayerRow({ row, actual }: { row: PropProjectionOut; actual: boolean }) {
   return (
-    <li className="flex items-center gap-3 py-2.5">
-      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-terminal-muted text-[11px] font-bold text-zinc-400">
+    <li className="flex items-start gap-3 py-2.5">
+      <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-terminal-muted text-[11px] font-bold text-zinc-400">
         {row.team_abbr.slice(0, 3)}
       </span>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-bold text-zinc-100">{row.player}</p>
         <p className="text-xs text-zinc-500">{row.position} · {row.label}</p>
+        {/* An actual is a fact and has no projection to explain. */}
+        {!actual && <Provenance row={row} />}
       </div>
       <div className="shrink-0 text-right">
         <p className="font-mono text-xl font-black tabular-nums text-zinc-100">
