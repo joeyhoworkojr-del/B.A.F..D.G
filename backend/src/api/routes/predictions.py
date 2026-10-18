@@ -1893,22 +1893,36 @@ def _priced_prop(projection, line) -> dict:
     points out and is now 2.2; an edge computed from the old number would have
     been systematically biased toward the over on every market.
     """
-    posted = line.consensus_line
-    if posted is None:
-        return {}
+    binary = getattr(line, "is_binary", False)
 
-    over_p = player_props.over_probability(
-        projection.projection, posted, projection.market,
-        sigma=projection.sigma,
-    )
+    if binary:
+        # A yes-or-no market has no line, so there is no projection-versus-line
+        # gap to report. The model's number is the chance of the thing
+        # happening at all, which came from a Poisson on the player's own
+        # scoring rate rather than from a shape around a mean.
+        if projection.yes_prob is None:
+            return {}
+        posted = None
+        over_p = projection.yes_prob
+    else:
+        posted = line.consensus_line
+        if posted is None:
+            return {}
+        over_p = player_props.over_probability(
+            projection.projection, posted, projection.market,
+            sigma=projection.sigma,
+        )
     if over_p is None:
         return {}
     under_p = round(1.0 - over_p, 4)
 
     best_over, best_under = line.best_over(), line.best_under()
+    labels = ("yes", "no") if binary else ("over", "under")
     sides = []
-    for side, prob, best in (("over", over_p, best_over), ("under", under_p, best_under)):
-        price = getattr(best, "over_price" if side == "over" else "under_price", None) if best else None
+    for side, prob, best in ((labels[0], over_p, best_over),
+                             (labels[1], under_p, best_under)):
+        slot = "over_price" if side in ("over", "yes") else "under_price"
+        price = getattr(best, slot, None) if best else None
         if price is None:
             continue
         try:
@@ -1927,10 +1941,8 @@ def _priced_prop(projection, line) -> dict:
             # than asserted.
             "all_prices": sorted(
                 [
-                    {"book": p.book, "line": p.line,
-                     "price": getattr(p, "over_price" if side == "over" else "under_price")}
-                    for p in line.prices
-                    if getattr(p, "over_price" if side == "over" else "under_price") is not None
+                    {"book": p.book, "line": p.line, "price": getattr(p, slot)}
+                    for p in line.prices if getattr(p, slot) is not None
                 ],
                 key=lambda row: -row["price"],
             ),
@@ -1938,8 +1950,11 @@ def _priced_prop(projection, line) -> dict:
 
     sides.sort(key=lambda row: -row["ev_per_unit"])
     return {
+        "is_binary": binary,
         "posted_line": posted,
-        "difference": round(projection.projection - posted, 1),
+        # Nothing to compare for a yes-or-no market, and reporting a zero gap
+        # would read as agreement rather than as not applicable.
+        "difference": None if posted is None else round(projection.projection - posted, 1),
         "books": len({p.book for p in line.prices}),
         "sides": sides,
         "best": sides[0] if sides else None,

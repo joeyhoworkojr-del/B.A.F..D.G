@@ -41,7 +41,13 @@ SPORT_KEYS = {"nfl": "americanfootball_nfl", "ncaaf": "americanfootball_ncaaf"}
 
 # Our market key → the provider's. Only markets we actually project are asked
 # for, because each one is billed separately.
+# Binary markets: a yes-or-no priced like a moneyline, with no line to go
+# over. The provider sends these with no `point` and "Yes"/"No" in `name`,
+# which is why the parser cannot simply require a point.
+BINARY_MARKETS = frozenset({"anytime_td"})
+
 MARKET_MAP = {
+    "anytime_td": "player_anytime_td",
     "pass_yards": "player_pass_yds",
     "pass_attempts": "player_pass_attempts",
     "pass_tds": "player_pass_tds",
@@ -74,6 +80,11 @@ class PropLine:
     player: str
     market: str
     prices: list[PriceAtBook] = field(default_factory=list)
+
+    @property
+    def is_binary(self) -> bool:
+        """A yes-or-no market, with no line to compare a projection against."""
+        return self.market in BINARY_MARKETS
 
     def _best(self, side: str) -> Optional[PriceAtBook]:
         """
@@ -217,8 +228,19 @@ def _parse_event(league: str, event: dict, wanted: set[str]) -> PropLines:
                 player = (outcome.get("description") or "").strip()
                 side = (outcome.get("name") or "").strip().lower()
                 point, price = outcome.get("point"), outcome.get("price")
-                if not player or point is None or price is None:
+                binary = ours in BINARY_MARKETS
+                if not player or price is None:
                     continue
+                if point is None:
+                    if not binary:
+                        continue
+                    # A yes-or-no market has no line. 0.5 stands in for it so
+                    # one shape can carry both kinds, and nothing reads it as a
+                    # posted number: `is_binary` says which this is.
+                    point = 0.5
+                if binary and side not in ("yes", "no"):
+                    # Some books label the yes side with the player's name.
+                    side = "yes"
                 key = (normalise_name(player), ours)
                 if wanted and key[0] not in wanted:
                     out.unmatched += 1
@@ -234,9 +256,11 @@ def _parse_event(league: str, event: dict, wanted: set[str]) -> PropLines:
                 if at is None:
                     at = PriceAtBook(book=title, line=float(point))
                     line.prices.append(at)
-                if side == "over":
+                # "over"/"yes" and "under"/"no" share a slot: both are the
+                # side that wins when the thing happens, or does not.
+                if side in ("over", "yes"):
                     at.over_price = float(price)
-                elif side == "under":
+                elif side in ("under", "no"):
                     at.under_price = float(price)
                 books.add(title)
     out.books = sorted(books)

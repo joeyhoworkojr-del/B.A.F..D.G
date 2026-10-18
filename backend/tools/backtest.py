@@ -52,6 +52,9 @@ MIN_PRIOR_GAMES = 4
 # nflverse spells a few franchises differently from this app.
 ALIAS = {"LA": "LAR", "OAK": "LV", "SD": "LAC", "STL": "LAR", "WSH": "WAS"}
 
+# Anytime touchdown is measured separately: it is a yes-or-no market, so
+# calibration is judged against whether the player scored at all, not against
+# a line.
 PROP_MARKETS = {
     "pass_yards": "passing_yards", "pass_attempts": "attempts",
     "pass_tds": "passing_tds", "rush_yards": "rushing_yards",
@@ -376,6 +379,51 @@ def run_props() -> None:
                   f"{int(n):>9}{g/n*100:>11.1f}p")
 
 
+def run_anytime_td() -> None:
+    """
+    Calibration of the anytime-touchdown probability against whether he scored.
+
+    No line, so no buckets of offsets: one probability per player-game, scored
+    against the binary outcome.
+    """
+    from src.predict import player_props as pp
+
+    hist = _load_player_history()
+    if not hist:
+        print("no player history available")
+        return
+
+    buckets = defaultdict(list)
+    for games in hist.values():
+        for i in range(MIN_PRIOR_GAMES, len(games)):
+            past, (_, _, actual) = games[:i], games[i]
+            samples = [g[2]["rush_tds"] + g[2]["rec_tds"] for g in past]
+            touches = sum(g[2]["carries"] + g[2]["receptions"] for g in past)
+            if touches < 2 * len(past):
+                continue                      # no real role to speak of
+            p = pp.anytime_td_probability(samples)
+            rate = pp.anytime_td_rate(samples)
+            if p is None or rate is None or rate < pp.ATD_MIN_RATE:
+                continue
+            scored = 1.0 if (actual["rush_tds"] + actual["rec_tds"]) > 0 else 0.0
+            buckets[min(int(p * 10), 9)].append((p, scored))
+
+    print(f"{'said':>9}{'happened':>11}{'n':>9}{'gap':>8}")
+    gaps = n_tot = 0.0
+    for b in range(10):
+        rows = buckets[b]
+        if len(rows) < 100:
+            continue
+        said = sum(p for p, _ in rows) / len(rows)
+        got = sum(o for _, o in rows) / len(rows)
+        print(f"{said*100:>8.1f}%{got*100:>10.1f}%{len(rows):>9}{(got-said)*100:>+8.1f}")
+        gaps += abs(got - said) * len(rows)
+        n_tot += len(rows)
+    if n_tot:
+        print(f"\nmean absolute calibration error: {gaps/n_tot*100:.1f} points"
+              f"  (n={int(n_tot)})")
+
+
 def main() -> None:
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     what = (sys.argv[1] if len(sys.argv) > 1 else "all").lower()
@@ -390,6 +438,12 @@ def main() -> None:
         print("PLAYER PROPS")
         print("=" * 68)
         run_props()
+        print()
+    if what in ("props", "atd", "all"):
+        print("=" * 68)
+        print("ANYTIME TOUCHDOWN")
+        print("=" * 68)
+        run_anytime_td()
 
 
 if __name__ == "__main__":

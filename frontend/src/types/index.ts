@@ -1059,13 +1059,16 @@ export interface PropProjectionOut {
   /** Which family the over/under probability is drawn from, chosen per market
    *  from measured calibration. */
   distribution?: 'normal' | 'gamma'
+  /** Binary markets only: the chance of it happening at all. `projection`
+   *  carries the expected count behind it. */
+  yes_prob?: number | null
   /** The posted line and what it is worth. Empty when no book has one. */
   posted?: PropMarketOut | Record<string, never>
 }
 
 /** One side of a posted prop, priced at the book paying most for it. */
 export interface PropSideOut {
-  side: 'over' | 'under'
+  side: 'over' | 'under' | 'yes' | 'no'
   model_prob: number
   break_even_prob: number
   ev_per_unit: number
@@ -1077,10 +1080,14 @@ export interface PropSideOut {
 }
 
 export interface PropMarketOut {
-  /** The median posted line across books — the number to compare against. */
-  posted_line: number
-  /** Projection minus posted line. */
-  difference: number
+  /** True for a yes-or-no market such as anytime touchdown, which has no line
+   *  to go over and is priced like a moneyline. */
+  is_binary?: boolean
+  /** The median posted line across books. Null on a binary market. */
+  posted_line: number | null
+  /** Projection minus posted line. Null on a binary market, where there is
+   *  nothing to compare — a zero would read as agreement. */
+  difference: number | null
   books: number
   sides: PropSideOut[]
   best: PropSideOut | null

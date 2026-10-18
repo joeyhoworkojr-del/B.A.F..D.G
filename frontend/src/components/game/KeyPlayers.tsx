@@ -75,11 +75,19 @@ function PostedLine({ market }: { market: PropMarketOut }) {
   return (
     <div className="mt-1 rounded-lg bg-terminal-muted/40 px-2 py-1.5">
       <p className="font-mono text-[11px] tabular-nums text-zinc-300">
-        line {market.posted_line.toFixed(1)}
-        <span className={edge >= 0 ? 'text-brand' : 'text-signal-red'}>
-          {' '}({edge >= 0 ? '+' : ''}{edge.toFixed(1)})
-        </span>
-        {' · '}
+        {/* A yes-or-no market has no line, and showing a zero gap would read
+            as agreement rather than as not applicable. */}
+        {market.posted_line != null && edge != null ? (
+          <>
+            line {market.posted_line.toFixed(1)}
+            <span className={edge >= 0 ? 'text-brand' : 'text-signal-red'}>
+              {' '}({edge >= 0 ? '+' : ''}{edge.toFixed(1)})
+            </span>
+            {' · '}
+          </>
+        ) : (
+          <span className="font-sans text-zinc-500">no line · </span>
+        )}
         <span className="font-sans font-bold uppercase">{best.side}</span>
         {' '}{american(best.price_american)}
         <span className="text-zinc-500"> at {best.book}</span>
@@ -116,11 +124,15 @@ function PlayerRow({ row, actual }: { row: PropProjectionOut; actual: boolean })
         {!actual && hasLine(row.posted) && <PostedLine market={row.posted} />}
       </div>
       <div className="shrink-0 text-right">
+        {/* Anytime touchdown is a chance, not a quantity. "0.5 touchdowns" is
+            not a thing anyone bets on; "39% to score" is. */}
         <p className="font-mono text-xl font-black tabular-nums text-zinc-100">
-          {row.projection.toFixed(1)}
+          {!actual && row.yes_prob != null
+            ? `${Math.round(row.yes_prob * 100)}%`
+            : row.projection.toFixed(1)}
         </p>
         <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-          {actual ? 'actual' : 'projected'}
+          {actual ? 'actual' : row.yes_prob != null ? 'to score' : 'projected'}
         </p>
       </div>
     </li>
