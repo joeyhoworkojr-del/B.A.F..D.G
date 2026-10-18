@@ -26,7 +26,7 @@ from src.ingest.espn import (
     fetch_playbyplay,
     fetch_scoreboard,
 )
-from src.ingest import cfbd, espn, nflverse
+from src.ingest import cfbd, espn, nflverse, prop_lines
 from src.predict import priors
 from src.track import ledger, store, win_history
 import asyncio
@@ -346,6 +346,8 @@ async def data_sources() -> dict:
             },
             {**nflverse.status(), "used_for": "NFL team EPA priors and player form"},
             {**cfbd.status(), "used_for": "NCAAF SP+/PPA priors and player game logs"},
+            {**prop_lines.status(),
+             "used_for": "player prop lines and per-book prices"},
             {
                 "provider": "Open-Meteo",
                 "requires_key": False,

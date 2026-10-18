@@ -99,3 +99,61 @@ describe('What a projection is made of', () => {
     expect(screen.queryByText(/±/)).not.toBeInTheDocument()
   })
 })
+
+describe('A projection against a posted line', () => {
+  const withLine = (over: Record<string, unknown> = {}) => ({
+    posted_line: 267.5, difference: 16.7, books: 3,
+    sides: [], best: {
+      side: 'over' as const, model_prob: 0.61, break_even_prob: 0.524,
+      ev_per_unit: 0.071, price_american: -110, book: 'FanDuel', line: 267.5,
+      all_prices: [
+        { book: 'FanDuel', line: 267.5, price: -110 },
+        { book: 'DraftKings', line: 267.5, price: -115 },
+      ],
+    },
+    ...over,
+  })
+
+  it('shows the line, the gap, the best price and which book pays it', async () => {
+    vi.spyOn(api, 'gameProps').mockResolvedValue(
+      feed([projection({ posted: withLine() })]) as never,
+    )
+    show()
+    await screen.findByText('303.1')
+    expect(screen.getByText(/line 267\.5/)).toBeInTheDocument()
+    expect(screen.getByText(/\+16\.7/)).toBeInTheDocument()
+    expect(screen.getByText(/at FanDuel/)).toBeInTheDocument()
+  })
+
+  it('keeps probability, break-even and EV as three numbers', async () => {
+    vi.spyOn(api, 'gameProps').mockResolvedValue(
+      feed([projection({ posted: withLine() })]) as never,
+    )
+    show()
+    await screen.findByText('303.1')
+    expect(screen.getByText(/model 61\.0%/)).toBeInTheDocument()
+    expect(screen.getByText(/break-even 52\.4%/)).toBeInTheDocument()
+    expect(screen.getByText(/\+7\.1% EV/)).toBeInTheDocument()
+  })
+
+  it('shows nothing about a line when no book has posted one', async () => {
+    // The absence has to read as "no line", never as "no edge" — those are
+    // different statements and only one of them is true.
+    vi.spyOn(api, 'gameProps').mockResolvedValue(
+      feed([projection({ posted: {} })]) as never,
+    )
+    show()
+    await screen.findByText('303.1')
+    expect(screen.queryByText(/line 267/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/EV/)).not.toBeInTheDocument()
+  })
+
+  it('never prices a line that already happened', async () => {
+    vi.spyOn(api, 'gameProps').mockResolvedValue(
+      feed([projection({ actual: true, posted: withLine() })], { status: 'in' }) as never,
+    )
+    show()
+    await screen.findByText('actual')
+    expect(screen.queryByText(/break-even/)).not.toBeInTheDocument()
+  })
+})

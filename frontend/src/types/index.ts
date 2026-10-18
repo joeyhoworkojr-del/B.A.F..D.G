@@ -1056,6 +1056,34 @@ export interface PropProjectionOut {
   sigma_games?: number
   /** Oldest first. The evidence behind everything above. */
   game_log?: { season: number; week: number; opponent: string; value: number }[]
+  /** Which family the over/under probability is drawn from, chosen per market
+   *  from measured calibration. */
+  distribution?: 'normal' | 'gamma'
+  /** The posted line and what it is worth. Empty when no book has one. */
+  posted?: PropMarketOut | Record<string, never>
+}
+
+/** One side of a posted prop, priced at the book paying most for it. */
+export interface PropSideOut {
+  side: 'over' | 'under'
+  model_prob: number
+  break_even_prob: number
+  ev_per_unit: number
+  price_american: number
+  book: string
+  line: number
+  /** Every book's price on this side, so "best" is checkable. */
+  all_prices: { book: string; line: number; price: number }[]
+}
+
+export interface PropMarketOut {
+  /** The median posted line across books — the number to compare against. */
+  posted_line: number
+  /** Projection minus posted line. */
+  difference: number
+  books: number
+  sides: PropSideOut[]
+  best: PropSideOut | null
 }
 
 export interface GamePropsOut {
@@ -1077,6 +1105,11 @@ export interface GamePropsOut {
   projections: PropProjectionOut[]
   note: string
   spread_note?: string
+  lines_source?: string
+  lines_books?: string[]
+  /** Posted lines for players this page is not projecting. Reported rather
+   *  than dropped: a quiet mismatch would look like a thin market. */
+  lines_unmatched?: number
 }
 
 // ─── Accounts ─────────────────────────────────────────────────────────────────

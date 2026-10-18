@@ -200,3 +200,77 @@ def test_a_projection_reports_both_multipliers_it_applied():
 
 def test_a_player_with_too_few_games_is_omitted_rather_than_estimated():
     assert pp.project_player(passer(games_played=1), "nfl", 27.0) == []
+
+
+# ─── A projection against a posted line, priced ──────────────────────────────
+
+def test_a_projection_with_a_line_is_priced_on_both_sides():
+    from src.api.routes.predictions import _priced_prop
+    from src.ingest.prop_lines import PriceAtBook, PropLine
+
+    out = pp.project_player(passer(), "nfl", None,
+                            logs={"pass_yards": log([250, 260, 270, 280, 290])})
+    yards = next(p for p in out if p.market == "pass_yards")
+
+    line = PropLine(player="J. Allen", market="pass_yards", prices=[
+        PriceAtBook(book="FanDuel", line=267.5, over_price=-105, under_price=-115),
+        PriceAtBook(book="DraftKings", line=267.5, over_price=-120, under_price=100),
+    ])
+    priced = _priced_prop(yards, line)
+
+    assert priced["posted_line"] == 267.5
+    assert priced["difference"] == round(yards.projection - 267.5, 1)
+    assert priced["books"] == 2
+    # Every number stays its own number, as on the game lines.
+    for side in priced["sides"]:
+        assert 0 <= side["model_prob"] <= 1
+        assert 0 <= side["break_even_prob"] <= 1
+        assert side["ev_per_unit"] == pytest.approx(
+            side["model_prob"] * (1 + abs(1 / (side["break_even_prob"]) - 1)) - 1,
+            abs=0.02)
+
+
+def test_the_best_price_is_named_with_its_book():
+    from src.api.routes.predictions import _priced_prop
+    from src.ingest.prop_lines import PriceAtBook, PropLine
+
+    out = pp.project_player(passer(), "nfl", None)
+    yards = next(p for p in out if p.market == "pass_yards")
+    line = PropLine(player="J. Allen", market="pass_yards", prices=[
+        PriceAtBook(book="FanDuel", line=267.5, over_price=-105, under_price=-115),
+        PriceAtBook(book="BetMGM", line=267.5, over_price=-130, under_price=110),
+    ])
+    priced = _priced_prop(yards, line)
+
+    over = next(s for s in priced["sides"] if s["side"] == "over")
+    assert over["book"] == "FanDuel" and over["price_american"] == -105
+    under = next(s for s in priced["sides"] if s["side"] == "under")
+    assert under["book"] == "BetMGM" and under["price_american"] == 110
+    # And every book's price rides along, so "best" is checkable.
+    assert len(over["all_prices"]) == 2
+
+
+def test_the_two_sides_are_ranked_by_value_not_by_probability():
+    from src.api.routes.predictions import _priced_prop
+    from src.ingest.prop_lines import PriceAtBook, PropLine
+
+    out = pp.project_player(passer(), "nfl", None)
+    yards = next(p for p in out if p.market == "pass_yards")
+    line = PropLine(player="J. Allen", market="pass_yards", prices=[
+        PriceAtBook(book="Book", line=yards.projection, over_price=-400, under_price=300),
+    ])
+    priced = _priced_prop(yards, line)
+    evs = [s["ev_per_unit"] for s in priced["sides"]]
+    assert evs == sorted(evs, reverse=True)
+    # A near coin flip at -400 is a bad bet however likely it is.
+    over = next(s for s in priced["sides"] if s["side"] == "over")
+    assert over["ev_per_unit"] < 0
+
+
+def test_a_line_with_no_posted_number_prices_nothing():
+    from src.api.routes.predictions import _priced_prop
+    from src.ingest.prop_lines import PropLine
+
+    out = pp.project_player(passer(), "nfl", None)
+    yards = next(p for p in out if p.market == "pass_yards")
+    assert _priced_prop(yards, PropLine(player="x", market="pass_yards")) == {}

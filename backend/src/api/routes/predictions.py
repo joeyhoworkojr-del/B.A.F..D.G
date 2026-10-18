@@ -70,7 +70,10 @@ from src.value.edge import american_to_decimal
 from src.simulate.monte_carlo import simulate_soccer
 from src.value.edge import BetEdge, edge_rating, evaluate_market
 from src.model_version import MODEL_VERSION
+from src.ingest import prop_lines
 from src.ingest.player_stats import enrich_with_nflverse, fetch_player_pool, game_logs_for
+from src.predict import distributions
+from src.predict import player_props
 from src.predict.player_props import project_game
 
 log = logging.getLogger(__name__)
@@ -1874,6 +1877,75 @@ async def game_detail(league: str, event_id: str) -> dict:
     }
 
 
+def _priced_prop(projection, line) -> dict:
+    """
+    A projection against a posted line, priced.
+
+    This is the whole point of having a line: a projection of 284 yards is
+    interesting, "284 against a posted 267.5, at -115, best price at FanDuel"
+    is a bet. Every number is kept apart — the model's probability, what the
+    price alone needs, and the expected value — for the same reason it is on
+    the game lines: one blended score invites being read as a chance of
+    winning.
+
+    The probability comes from the calibrated per-market distribution, which
+    matters more here than anywhere. Measured against four seasons it was 8.1
+    points out and is now 2.2; an edge computed from the old number would have
+    been systematically biased toward the over on every market.
+    """
+    posted = line.consensus_line
+    if posted is None:
+        return {}
+
+    over_p = player_props.over_probability(
+        projection.projection, posted, projection.market,
+        sigma=projection.sigma,
+    )
+    if over_p is None:
+        return {}
+    under_p = round(1.0 - over_p, 4)
+
+    best_over, best_under = line.best_over(), line.best_under()
+    sides = []
+    for side, prob, best in (("over", over_p, best_over), ("under", under_p, best_under)):
+        price = getattr(best, "over_price" if side == "over" else "under_price", None) if best else None
+        if price is None:
+            continue
+        try:
+            dec = american_to_decimal(price)
+        except ValueError:
+            continue
+        sides.append({
+            "side": side,
+            "model_prob": round(prob, 4),
+            "break_even_prob": round(1.0 / dec, 4),
+            "ev_per_unit": round(prob * dec - 1.0, 4),
+            "price_american": int(price),
+            "book": best.book,
+            "line": best.line,
+            # Every book's price on this side, so "best" is checkable rather
+            # than asserted.
+            "all_prices": sorted(
+                [
+                    {"book": p.book, "line": p.line,
+                     "price": getattr(p, "over_price" if side == "over" else "under_price")}
+                    for p in line.prices
+                    if getattr(p, "over_price" if side == "over" else "under_price") is not None
+                ],
+                key=lambda row: -row["price"],
+            ),
+        })
+
+    sides.sort(key=lambda row: -row["ev_per_unit"])
+    return {
+        "posted_line": posted,
+        "difference": round(projection.projection - posted, 1),
+        "books": len({p.book for p in line.prices}),
+        "sides": sides,
+        "best": sides[0] if sides else None,
+    }
+
+
 @router.get("/props/{league}/{event_id}", tags=["Props"])
 async def game_player_props(league: str, event_id: str) -> dict:
     """
@@ -1930,6 +2002,15 @@ async def game_player_props(league: str, event_id: str) -> dict:
         pool.players, league, home_abbr, away_abbr, home_pts, away_pts, logs,
     )
 
+    # The posted lines, for the players actually projected. Without a provider
+    # key this comes back not-ok with a note naming the variable to set, and
+    # the projections are published without prices rather than with invented
+    # ones.
+    lines = await prop_lines.fetch_prop_lines(
+        league, str(game.event_id), game.home, game.away,
+        players=[p.player for p in projections],
+    )
+
     return {
         "league": league,
         "event_id": str(game.event_id),
@@ -1942,12 +2023,21 @@ async def game_player_props(league: str, event_id: str) -> dict:
         "model_version": MODEL_VERSION,
         "projected_home_points": home_pts,
         "projected_away_points": away_pts,
-        # Projections stand on their own; lines are the part that needs a feed.
-        "lines_available": False,
-        "lines_note": (
-            "Projections only. Comparing them to a posted prop line needs an "
-            "odds source, which is not configured — so no prop edge is claimed."
+        # True only when lines actually arrived, not when a key merely exists.
+        "lines_available": bool(lines.lines),
+        "lines_source": lines.source if lines.lines else "",
+        "lines_books": lines.books,
+        "lines_note": lines.note or (
+            f"Lines from {len(lines.books)} book"
+            f"{'' if len(lines.books) == 1 else 's'}, best price shown per side."
+            if lines.lines else
+            "Projections only — no posted line to compare against, so no prop "
+            "edge is claimed."
         ),
+        # Posted lines the provider had for players this page is not
+        # projecting. Reported rather than dropped: a quiet mismatch between
+        # the two feeds would look like a thin market.
+        "lines_unmatched": lines.unmatched,
         "projections": [
             {
                 "athlete_id": p.athlete_id, "player": p.player,
@@ -1968,6 +2058,18 @@ async def game_player_props(league: str, event_id: str) -> dict:
                 "sigma_source": p.sigma_source,
                 "sigma_games": p.sigma_games,
                 "game_log": p.game_log,
+                "distribution": distributions.family_for(p.market),
+                # The posted line and what it is worth, where there is one.
+                # An actual is never priced: the game has already happened.
+                # Named `posted` and not `market`, which is already this
+                # projection's market key — in a dict literal the later key
+                # wins, so reusing the name silently replaced "pass_yards"
+                # with the price block and broke grouping by position.
+                "posted": (
+                    _priced_prop(p, lines.for_player(p.player, p.market))
+                    if not p.actual and lines.for_player(p.player, p.market)
+                    else {}
+                ),
             }
             for p in projections
         ],
