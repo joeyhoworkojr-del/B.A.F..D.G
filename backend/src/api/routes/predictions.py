@@ -70,7 +70,10 @@ from src.value.edge import american_to_decimal
 from src.simulate.monte_carlo import simulate_soccer
 from src.value.edge import BetEdge, edge_rating, evaluate_market
 from src.model_version import MODEL_VERSION
+from src.ingest import prop_lines
 from src.ingest.player_stats import enrich_with_nflverse, fetch_player_pool, game_logs_for
+from src.predict import distributions
+from src.predict import player_props
 from src.predict.player_props import project_game
 
 log = logging.getLogger(__name__)
@@ -1036,7 +1039,76 @@ def _fmt_line(abbr: str, line: float) -> str:
     return f"{abbr} {line:+.1f}"
 
 
-def _spread_read(g: LiveGame, pred, home: str, away: str) -> Optional[dict]:
+# ─── How much of the model's own line to publish ─────────────────────────────
+#
+# Measured, not chosen. A walk-forward backtest over 750 completed NFL games
+# (2022-2026, priors built only from weeks already played, no market line fed
+# in) put the raw model against the closing line:
+#
+#     spread RMSE     model 12.69   market 12.08
+#     total  RMSE     model 13.48   market 13.03
+#     Brier           model 0.2176  market 0.2062
+#
+# The model is worse on all three. Sweeping the blend w*model + (1-w)*market
+# for the spread, the best weight on the model is 0.1, and it beats the market
+# alone by 0.003 RMSE — which on 750 games is nothing. And where the raw model
+# disagreed with the line by a point or more, its side covered 49.6-51.8%
+# depending on the threshold, never reaching the 52.4% a -110 price needs.
+#
+# So the honest reading is that StatEdge has no demonstrated edge on NFL game
+# lines, and a fair line published from the raw model was publishing the worst
+# of the three estimators as though it were the best. The blend below is what
+# the measurement supports. It collapses most "edges" to under a point, which
+# is the correct outcome rather than a disappointing one: an empty Best Edges
+# page is right when there is nothing there.
+#
+# Reproduce with `python -m tools.backtest spread`.
+MODEL_WEIGHT_BY_LEAGUE = {
+    "nfl": 0.10,
+    # College football is not measured here at all — nflverse is NFL-only and
+    # CFBD_API_KEY is unset, so there is no history to backtest against. The
+    # previous weight stands rather than importing a number measured on a
+    # different, far more efficient market. It is reported as unvalidated so
+    # nothing downstream can present it as though it had been checked.
+    "ncaaf": 0.50,
+}
+MODEL_WEIGHT_DEFAULT = 0.25
+
+VALIDATED_LEAGUES = frozenset({"nfl"})
+
+
+def _model_weight(league: str) -> float:
+    return MODEL_WEIGHT_BY_LEAGUE.get(league, MODEL_WEIGHT_DEFAULT)
+
+
+def _validation_note(league: str) -> dict:
+    """What is actually known about this league's accuracy, for the page."""
+    if league == "nfl":
+        return {
+            "measured": True,
+            "games": 750,
+            "beats_market": False,
+            "note": (
+                "Backtested over 750 NFL games: the model alone is less "
+                "accurate than the closing line (spread RMSE 12.69 against "
+                "12.08), so the line below is mostly the market's, and an "
+                "edge is only claimed where the two disagree enough to clear "
+                "the noise."
+            ),
+        }
+    return {
+        "measured": False,
+        "games": 0,
+        "beats_market": None,
+        "note": (
+            "Not backtested. There is no historical college line and result "
+            "set available here, so this league's accuracy against the market "
+            "is unknown rather than good or bad."
+        ),
+    }
+
+
+def _spread_read(g: LiveGame, pred, home: str, away: str, league: str = "nfl") -> Optional[dict]:
     """
     StatEdge's fair spread beside the market's, and the gap between them.
 
@@ -1050,10 +1122,19 @@ def _spread_read(g: LiveGame, pred, home: str, away: str) -> Optional[dict]:
     offering more points on the home team than the model thinks it should, so
     the value is on the home team. Negative puts it on the away team.
     """
-    fair = -round(pred.predicted_spread, 1)
+    model_line = -pred.predicted_spread          # the model, in book convention
+    market = g.market_spread
+    weight = _model_weight(league)
+    # Where there is a line to blend with, the published fair line is the
+    # measured-best combination. With none, the model's own number is all
+    # there is and stands alone.
+    fair = round(
+        weight * model_line + (1.0 - weight) * market if market is not None
+        else model_line,
+        1,
+    )
     home_abbr = g.home_abbr or home
     away_abbr = g.away_abbr or away
-    market = g.market_spread
 
     out = {
         "fair": fair,
@@ -1067,6 +1148,10 @@ def _spread_read(g: LiveGame, pred, home: str, away: str) -> Optional[dict]:
         "side": None,
         "side_abbr": "",
         "points": None,
+        # The raw model, kept beside the published line so the blend is
+        # visible rather than hidden inside one number.
+        "model_line": round(model_line, 1),
+        "model_weight": weight,
     }
     if market is None:
         return out
@@ -1082,16 +1167,27 @@ def _spread_read(g: LiveGame, pred, home: str, away: str) -> Optional[dict]:
     return out
 
 
-def _total_read(g: LiveGame, pred) -> Optional[dict]:
+def _total_read(g: LiveGame, pred, league: str = "nfl") -> Optional[dict]:
     """
     The same comparison for the total, where the sign is the plain one: a fair
     total above the market's means the over, below means the under.
+
+    Blended on the same measured basis as the spread — the backtest put the
+    model's total at RMSE 13.48 against the market's 13.03, so publishing the
+    model's number raw would again be publishing the worse estimator.
     """
-    fair = round(pred.total_points_estimate, 1)
     market = g.market_over_under
+    weight = _model_weight(league)
+    fair = round(
+        weight * pred.total_points_estimate + (1.0 - weight) * market
+        if market is not None else pred.total_points_estimate,
+        1,
+    )
     out = {
         "fair": fair, "market": market,
         "edge_points": None, "side": None, "points": None,
+        "model_total": round(pred.total_points_estimate, 1),
+        "model_weight": weight,
     }
     if market is None:
         return out
@@ -1642,11 +1738,14 @@ async def _slate_entry(
         # what the market is offering, and the gap. This is the thing a reader
         # opens the page for, and it was only ever available by inference from
         # a probability before.
-        spread_read = _spread_read(g, pred, home, away)
+        spread_read = _spread_read(g, pred, home, away, league)
         entry["value"] = {
             "spread": spread_read,
-            "total": _total_read(g, pred),
+            "total": _total_read(g, pred, league),
             "confidence": _data_confidence(league, g, pred, home, away),
+            # What is actually known about this league's accuracy against the
+            # market, so no surface has to assume it is good.
+            "validation": _validation_note(league),
         }
         # The reasons behind that number. One bulk read of the frozen opening
         # lines covers the whole board, rather than a round trip per game.
@@ -1778,6 +1877,90 @@ async def game_detail(league: str, event_id: str) -> dict:
     }
 
 
+def _priced_prop(projection, line) -> dict:
+    """
+    A projection against a posted line, priced.
+
+    This is the whole point of having a line: a projection of 284 yards is
+    interesting, "284 against a posted 267.5, at -115, best price at FanDuel"
+    is a bet. Every number is kept apart — the model's probability, what the
+    price alone needs, and the expected value — for the same reason it is on
+    the game lines: one blended score invites being read as a chance of
+    winning.
+
+    The probability comes from the calibrated per-market distribution, which
+    matters more here than anywhere. Measured against four seasons it was 8.1
+    points out and is now 2.2; an edge computed from the old number would have
+    been systematically biased toward the over on every market.
+    """
+    binary = getattr(line, "is_binary", False)
+
+    if binary:
+        # A yes-or-no market has no line, so there is no projection-versus-line
+        # gap to report. The model's number is the chance of the thing
+        # happening at all, which came from a Poisson on the player's own
+        # scoring rate rather than from a shape around a mean.
+        if projection.yes_prob is None:
+            return {}
+        posted = None
+        over_p = projection.yes_prob
+    else:
+        posted = line.consensus_line
+        if posted is None:
+            return {}
+        over_p = player_props.over_probability(
+            projection.projection, posted, projection.market,
+            sigma=projection.sigma,
+        )
+    if over_p is None:
+        return {}
+    under_p = round(1.0 - over_p, 4)
+
+    best_over, best_under = line.best_over(), line.best_under()
+    labels = ("yes", "no") if binary else ("over", "under")
+    sides = []
+    for side, prob, best in ((labels[0], over_p, best_over),
+                             (labels[1], under_p, best_under)):
+        slot = "over_price" if side in ("over", "yes") else "under_price"
+        price = getattr(best, slot, None) if best else None
+        if price is None:
+            continue
+        try:
+            dec = american_to_decimal(price)
+        except ValueError:
+            continue
+        sides.append({
+            "side": side,
+            "model_prob": round(prob, 4),
+            "break_even_prob": round(1.0 / dec, 4),
+            "ev_per_unit": round(prob * dec - 1.0, 4),
+            "price_american": int(price),
+            "book": best.book,
+            "line": best.line,
+            # Every book's price on this side, so "best" is checkable rather
+            # than asserted.
+            "all_prices": sorted(
+                [
+                    {"book": p.book, "line": p.line, "price": getattr(p, slot)}
+                    for p in line.prices if getattr(p, slot) is not None
+                ],
+                key=lambda row: -row["price"],
+            ),
+        })
+
+    sides.sort(key=lambda row: -row["ev_per_unit"])
+    return {
+        "is_binary": binary,
+        "posted_line": posted,
+        # Nothing to compare for a yes-or-no market, and reporting a zero gap
+        # would read as agreement rather than as not applicable.
+        "difference": None if posted is None else round(projection.projection - posted, 1),
+        "books": len({p.book for p in line.prices}),
+        "sides": sides,
+        "best": sides[0] if sides else None,
+    }
+
+
 @router.get("/props/{league}/{event_id}", tags=["Props"])
 async def game_player_props(league: str, event_id: str) -> dict:
     """
@@ -1834,6 +2017,15 @@ async def game_player_props(league: str, event_id: str) -> dict:
         pool.players, league, home_abbr, away_abbr, home_pts, away_pts, logs,
     )
 
+    # The posted lines, for the players actually projected. Without a provider
+    # key this comes back not-ok with a note naming the variable to set, and
+    # the projections are published without prices rather than with invented
+    # ones.
+    lines = await prop_lines.fetch_prop_lines(
+        league, str(game.event_id), game.home, game.away,
+        players=[p.player for p in projections],
+    )
+
     return {
         "league": league,
         "event_id": str(game.event_id),
@@ -1846,12 +2038,21 @@ async def game_player_props(league: str, event_id: str) -> dict:
         "model_version": MODEL_VERSION,
         "projected_home_points": home_pts,
         "projected_away_points": away_pts,
-        # Projections stand on their own; lines are the part that needs a feed.
-        "lines_available": False,
-        "lines_note": (
-            "Projections only. Comparing them to a posted prop line needs an "
-            "odds source, which is not configured — so no prop edge is claimed."
+        # True only when lines actually arrived, not when a key merely exists.
+        "lines_available": bool(lines.lines),
+        "lines_source": lines.source if lines.lines else "",
+        "lines_books": lines.books,
+        "lines_note": lines.note or (
+            f"Lines from {len(lines.books)} book"
+            f"{'' if len(lines.books) == 1 else 's'}, best price shown per side."
+            if lines.lines else
+            "Projections only — no posted line to compare against, so no prop "
+            "edge is claimed."
         ),
+        # Posted lines the provider had for players this page is not
+        # projecting. Reported rather than dropped: a quiet mismatch between
+        # the two feeds would look like a thin market.
+        "lines_unmatched": lines.unmatched,
         "projections": [
             {
                 "athlete_id": p.athlete_id, "player": p.player,
@@ -1872,6 +2073,18 @@ async def game_player_props(league: str, event_id: str) -> dict:
                 "sigma_source": p.sigma_source,
                 "sigma_games": p.sigma_games,
                 "game_log": p.game_log,
+                "distribution": distributions.family_for(p.market),
+                # The posted line and what it is worth, where there is one.
+                # An actual is never priced: the game has already happened.
+                # Named `posted` and not `market`, which is already this
+                # projection's market key — in a dict literal the later key
+                # wins, so reusing the name silently replaced "pass_yards"
+                # with the price block and broke grouping by position.
+                "posted": (
+                    _priced_prop(p, lines.for_player(p.player, p.market))
+                    if not p.actual and lines.for_player(p.player, p.market)
+                    else {}
+                ),
             }
             for p in projections
         ],

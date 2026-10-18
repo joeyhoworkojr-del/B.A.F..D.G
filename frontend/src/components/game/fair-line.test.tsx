@@ -14,6 +14,10 @@ const value = (over: Partial<ValueOut> = {}): ValueOut => ({
     level: 'high', inputs_present: 4, inputs_total: 4, inputs: [],
     means: "How much of the model's input was available for this game. Not the chance a bet wins.",
   },
+  validation: {
+    measured: true, games: 750, beats_market: false,
+    note: 'Backtested over 750 NFL games: the model alone is less accurate than the closing line.',
+  },
   ...over,
 })
 
@@ -42,8 +46,10 @@ describe('Fair line against the market', () => {
 
   it('shows the total comparison separately from the spread', () => {
     render(<FairLine value={value()} />)
-    expect(screen.getByText(/48\.3/)).toBeInTheDocument()
-    expect(screen.getByText(/over/)).toBeInTheDocument()
+    // Matched on the total row itself: the validation note below also
+    // contains the word "over", in "over 750 NFL games".
+    expect(screen.getByText(/StatEdge 48\.3/)).toBeInTheDocument()
+    expect(screen.getByText(/\+1\.8 over/)).toBeInTheDocument()
   })
 })
 
@@ -109,5 +115,44 @@ describe('Why StatEdge has this number', () => {
   it('says what the list is, so it is not read as a story about the game', () => {
     render(<WhyThisEdge why={why()} />)
     expect(screen.getByText(/an input the model read/i)).toBeInTheDocument()
+  })
+})
+
+
+describe('What the page says about its own accuracy', () => {
+  it('says plainly that the league has no demonstrated edge', () => {
+    // The backtest found the model alone is worse than the closing line.
+    // Showing an "edge" while hiding that would be the dishonest version.
+    render(<FairLine value={value()} />)
+    expect(screen.getByText(/no demonstrated edge/i)).toBeInTheDocument()
+    expect(screen.getByText(/less accurate than the closing line/i)).toBeInTheDocument()
+  })
+
+  it('shows the raw model number and how much of it is published', () => {
+    render(<FairLine value={value({
+      spread: {
+        fair: -3.6, fair_label: 'BUF -3.6', market: -3.5, market_label: 'BUF -3.5',
+        edge_points: 0.1, side: 'home', side_abbr: 'BUF', points: 0.1,
+        model_line: -4.8, model_weight: 0.1,
+      },
+    })} />)
+    expect(screen.getByText(/Model alone -4\.8, weighted 10%/)).toBeInTheDocument()
+  })
+
+  it('marks a league that was never measured as unvalidated', () => {
+    render(<FairLine value={value({
+      validation: {
+        measured: false, games: 0, beats_market: null,
+        note: 'Not backtested. Accuracy against the market is unknown rather than good or bad.',
+      },
+    })} />)
+    expect(screen.getByText(/unvalidated league/i)).toBeInTheDocument()
+    expect(screen.queryByText(/no demonstrated edge/i)).not.toBeInTheDocument()
+  })
+
+  it('stays quiet when the payload carries no verdict at all', () => {
+    render(<FairLine value={value({ validation: undefined })} />)
+    expect(screen.queryByText(/no demonstrated edge/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/unvalidated/i)).not.toBeInTheDocument()
   })
 })

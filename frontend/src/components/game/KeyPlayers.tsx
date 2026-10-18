@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../../api/client'
-import type { GamePropsOut, PropProjectionOut } from '../../types'
+import type { GamePropsOut, PropMarketOut, PropProjectionOut } from '../../types'
 
 /** The groups a football page reads in, and the markets that belong to each. */
 const GROUPS: { label: string; markets: string[] }[] = [
@@ -56,6 +56,60 @@ function Provenance({ row }: { row: PropProjectionOut }) {
   )
 }
 
+const american = (v: number) => (v > 0 ? `+${Math.round(v)}` : `${Math.round(v)}`)
+
+/**
+ * The posted line beside the projection, and what the gap is worth.
+ *
+ * This is the part that makes a projection a bet rather than a statistic. The
+ * four numbers stay four numbers for the same reason they do on the game
+ * lines: the model's probability, what the price alone needs, the expected
+ * value, and which book is paying it. A single score out of a hundred would
+ * read as a chance of winning, which none of them is.
+ */
+function PostedLine({ market }: { market: PropMarketOut }) {
+  const best = market.best
+  if (!best) return null
+  const edge = market.difference
+
+  return (
+    <div className="mt-1 rounded-lg bg-terminal-muted/40 px-2 py-1.5">
+      <p className="font-mono text-[11px] tabular-nums text-zinc-300">
+        {/* A yes-or-no market has no line, and showing a zero gap would read
+            as agreement rather than as not applicable. */}
+        {market.posted_line != null && edge != null ? (
+          <>
+            line {market.posted_line.toFixed(1)}
+            <span className={edge >= 0 ? 'text-brand' : 'text-signal-red'}>
+              {' '}({edge >= 0 ? '+' : ''}{edge.toFixed(1)})
+            </span>
+            {' · '}
+          </>
+        ) : (
+          <span className="font-sans text-zinc-500">no line · </span>
+        )}
+        <span className="font-sans font-bold uppercase">{best.side}</span>
+        {' '}{american(best.price_american)}
+        <span className="text-zinc-500"> at {best.book}</span>
+        {market.books > 1 && (
+          <span className="text-zinc-500"> of {market.books}</span>
+        )}
+      </p>
+      <p className="mt-0.5 font-mono text-[11px] tabular-nums text-zinc-500">
+        model {(best.model_prob * 100).toFixed(1)}% · break-even{' '}
+        {(best.break_even_prob * 100).toFixed(1)}% ·{' '}
+        <span className={best.ev_per_unit >= 0 ? 'text-signal-green' : 'text-signal-red'}>
+          {best.ev_per_unit >= 0 ? '+' : ''}{(best.ev_per_unit * 100).toFixed(1)}% EV
+        </span>
+      </p>
+    </div>
+  )
+}
+
+function hasLine(m: PropProjectionOut['posted']): m is PropMarketOut {
+  return !!m && 'best' in m && !!m.best
+}
+
 function PlayerRow({ row, actual }: { row: PropProjectionOut; actual: boolean }) {
   return (
     <li className="flex items-start gap-3 py-2.5">
@@ -67,13 +121,18 @@ function PlayerRow({ row, actual }: { row: PropProjectionOut; actual: boolean })
         <p className="text-xs text-zinc-500">{row.position} · {row.label}</p>
         {/* An actual is a fact and has no projection to explain. */}
         {!actual && <Provenance row={row} />}
+        {!actual && hasLine(row.posted) && <PostedLine market={row.posted} />}
       </div>
       <div className="shrink-0 text-right">
+        {/* Anytime touchdown is a chance, not a quantity. "0.5 touchdowns" is
+            not a thing anyone bets on; "39% to score" is. */}
         <p className="font-mono text-xl font-black tabular-nums text-zinc-100">
-          {row.projection.toFixed(1)}
+          {!actual && row.yes_prob != null
+            ? `${Math.round(row.yes_prob * 100)}%`
+            : row.projection.toFixed(1)}
         </p>
         <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-          {actual ? 'actual' : 'projected'}
+          {actual ? 'actual' : row.yes_prob != null ? 'to score' : 'projected'}
         </p>
       </div>
     </li>

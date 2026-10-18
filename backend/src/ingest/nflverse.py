@@ -561,6 +561,11 @@ def player_form(
 
 # Which weekly field each prop market is measured from. Kept here, beside the
 # row definition, so a market cannot be wired to a column that does not exist.
+# Anytime touchdown is not a column — it is rushing plus receiving touchdowns,
+# which is what the market actually settles on. A passing touchdown is not
+# scored *by* the quarterback, so it is deliberately not in the sum.
+ANYTIME_TD_FIELDS = ("rushing_tds", "receiving_tds")
+
 MARKET_FIELDS = {
     "pass_yards": "passing_yards",
     "pass_attempts": "attempts",
@@ -603,7 +608,8 @@ def player_log(
     whole over/under probability comes out of that spread.
     """
     field = MARKET_FIELDS.get(market)
-    if field is None:
+    derived = market == "anytime_td"
+    if field is None and not derived:
         return []
 
     rows = [
@@ -614,11 +620,14 @@ def player_log(
     rows.sort(key=lambda r: (r.season, r.week))
     if last_n > 0:
         rows = rows[-last_n:]
+    def value_of(r) -> float:
+        if derived:
+            return sum(float(getattr(r, f, 0.0) or 0.0) for f in ANYTIME_TD_FIELDS)
+        return float(getattr(r, field, 0.0) or 0.0)
+
     return [
-        PlayerGame(
-            season=r.season, week=r.week, opponent=r.opponent,
-            value=float(getattr(r, field, 0.0) or 0.0),
-        )
+        PlayerGame(season=r.season, week=r.week, opponent=r.opponent,
+                   value=value_of(r))
         for r in rows
     ]
 

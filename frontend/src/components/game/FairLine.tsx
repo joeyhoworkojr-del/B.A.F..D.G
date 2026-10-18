@@ -15,7 +15,7 @@ const signed = (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}`
  * quoted in is shown as agreement rather than dressed up as an edge.
  */
 export function FairLine({ value, compact = false }: { value: ValueOut; compact?: boolean }) {
-  const { spread, total, confidence } = value
+  const { spread, total, confidence, validation } = value
   const hasSpread = spread.market != null && spread.points != null
   const hasTotal = total.market != null && total.points != null
 
@@ -60,6 +60,29 @@ export function FairLine({ value, compact = false }: { value: ValueOut; compact?
         {' '}({confidence.inputs_present}/{confidence.inputs_total} inputs) — how much of
         the model's input this game had, not the chance a bet wins.
       </p>
+
+      {/* What the backtest found, said on the page that shows the number.
+          For the NFL it found that the model alone is less accurate than the
+          closing line, which is why the line above is mostly the market's.
+          Leaving that out while showing an "edge" would be the dishonest
+          version of this component. */}
+      {validation && (
+        <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+          {validation.measured && validation.beats_market === false && (
+            <span className="font-semibold text-signal-amber">No demonstrated edge on this league's game lines. </span>
+          )}
+          {!validation.measured && (
+            <span className="font-semibold text-signal-amber">Unvalidated league. </span>
+          )}
+          {validation.note}
+          {spread.model_line != null && spread.model_weight != null && (
+            <span className="font-mono tabular-nums">
+              {' '}Model alone {spread.model_line.toFixed(1)}, weighted{' '}
+              {Math.round(spread.model_weight * 100)}%.
+            </span>
+          )}
+        </p>
+      )}
     </div>
   )
 }

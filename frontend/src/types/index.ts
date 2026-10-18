@@ -425,6 +425,23 @@ export interface PolymarketOut {
  * giving more points on the home side than the model thinks it should.
  * `side`/`points` are the same thing said as "whose, and how many".
  */
+/**
+ * What is actually known about a league's accuracy against the market.
+ *
+ * Carried in the payload so no page has to assume the model is good. For the
+ * NFL this is measured — and the measurement says the model alone is less
+ * accurate than the closing line, which is why the published fair line is
+ * mostly the market's. For college football there is no history available to
+ * measure against, so the answer is "unknown", which is a different claim from
+ * either good or bad.
+ */
+export interface ValidationOut {
+  measured: boolean
+  games: number
+  beats_market: boolean | null
+  note: string
+}
+
 export interface SpreadValueOut {
   fair: number
   /** Already written as a bettor reads it, e.g. "BUF -4.8". */
@@ -435,6 +452,10 @@ export interface SpreadValueOut {
   side: 'home' | 'away' | null
   side_abbr: string
   points: number | null
+  /** The model's own number, before it was blended toward the market. */
+  model_line?: number
+  /** How much of the published line is the model's. Measured, not chosen. */
+  model_weight?: number
 }
 
 export interface TotalValueOut {
@@ -443,6 +464,8 @@ export interface TotalValueOut {
   edge_points: number | null
   side: 'over' | 'under' | null
   points: number | null
+  model_total?: number
+  model_weight?: number
 }
 
 /**
@@ -464,6 +487,7 @@ export interface ValueOut {
   spread: SpreadValueOut
   total: TotalValueOut
   confidence: ConfidenceOut
+  validation?: ValidationOut
 }
 
 /** One input the model read, with the points it moved where it moved any. */
@@ -1032,6 +1056,41 @@ export interface PropProjectionOut {
   sigma_games?: number
   /** Oldest first. The evidence behind everything above. */
   game_log?: { season: number; week: number; opponent: string; value: number }[]
+  /** Which family the over/under probability is drawn from, chosen per market
+   *  from measured calibration. */
+  distribution?: 'normal' | 'gamma'
+  /** Binary markets only: the chance of it happening at all. `projection`
+   *  carries the expected count behind it. */
+  yes_prob?: number | null
+  /** The posted line and what it is worth. Empty when no book has one. */
+  posted?: PropMarketOut | Record<string, never>
+}
+
+/** One side of a posted prop, priced at the book paying most for it. */
+export interface PropSideOut {
+  side: 'over' | 'under' | 'yes' | 'no'
+  model_prob: number
+  break_even_prob: number
+  ev_per_unit: number
+  price_american: number
+  book: string
+  line: number
+  /** Every book's price on this side, so "best" is checkable. */
+  all_prices: { book: string; line: number; price: number }[]
+}
+
+export interface PropMarketOut {
+  /** True for a yes-or-no market such as anytime touchdown, which has no line
+   *  to go over and is priced like a moneyline. */
+  is_binary?: boolean
+  /** The median posted line across books. Null on a binary market. */
+  posted_line: number | null
+  /** Projection minus posted line. Null on a binary market, where there is
+   *  nothing to compare — a zero would read as agreement. */
+  difference: number | null
+  books: number
+  sides: PropSideOut[]
+  best: PropSideOut | null
 }
 
 export interface GamePropsOut {
@@ -1053,6 +1112,11 @@ export interface GamePropsOut {
   projections: PropProjectionOut[]
   note: string
   spread_note?: string
+  lines_source?: string
+  lines_books?: string[]
+  /** Posted lines for players this page is not projecting. Reported rather
+   *  than dropped: a quiet mismatch would look like a thin market. */
+  lines_unmatched?: number
 }
 
 // ─── Accounts ─────────────────────────────────────────────────────────────────
