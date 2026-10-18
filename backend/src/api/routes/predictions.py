@@ -1036,7 +1036,76 @@ def _fmt_line(abbr: str, line: float) -> str:
     return f"{abbr} {line:+.1f}"
 
 
-def _spread_read(g: LiveGame, pred, home: str, away: str) -> Optional[dict]:
+# ─── How much of the model's own line to publish ─────────────────────────────
+#
+# Measured, not chosen. A walk-forward backtest over 750 completed NFL games
+# (2022-2026, priors built only from weeks already played, no market line fed
+# in) put the raw model against the closing line:
+#
+#     spread RMSE     model 12.69   market 12.08
+#     total  RMSE     model 13.48   market 13.03
+#     Brier           model 0.2176  market 0.2062
+#
+# The model is worse on all three. Sweeping the blend w*model + (1-w)*market
+# for the spread, the best weight on the model is 0.1, and it beats the market
+# alone by 0.003 RMSE — which on 750 games is nothing. And where the raw model
+# disagreed with the line by a point or more, its side covered 49.6-51.8%
+# depending on the threshold, never reaching the 52.4% a -110 price needs.
+#
+# So the honest reading is that StatEdge has no demonstrated edge on NFL game
+# lines, and a fair line published from the raw model was publishing the worst
+# of the three estimators as though it were the best. The blend below is what
+# the measurement supports. It collapses most "edges" to under a point, which
+# is the correct outcome rather than a disappointing one: an empty Best Edges
+# page is right when there is nothing there.
+#
+# Reproduce with `python -m tools.backtest spread`.
+MODEL_WEIGHT_BY_LEAGUE = {
+    "nfl": 0.10,
+    # College football is not measured here at all — nflverse is NFL-only and
+    # CFBD_API_KEY is unset, so there is no history to backtest against. The
+    # previous weight stands rather than importing a number measured on a
+    # different, far more efficient market. It is reported as unvalidated so
+    # nothing downstream can present it as though it had been checked.
+    "ncaaf": 0.50,
+}
+MODEL_WEIGHT_DEFAULT = 0.25
+
+VALIDATED_LEAGUES = frozenset({"nfl"})
+
+
+def _model_weight(league: str) -> float:
+    return MODEL_WEIGHT_BY_LEAGUE.get(league, MODEL_WEIGHT_DEFAULT)
+
+
+def _validation_note(league: str) -> dict:
+    """What is actually known about this league's accuracy, for the page."""
+    if league == "nfl":
+        return {
+            "measured": True,
+            "games": 750,
+            "beats_market": False,
+            "note": (
+                "Backtested over 750 NFL games: the model alone is less "
+                "accurate than the closing line (spread RMSE 12.69 against "
+                "12.08), so the line below is mostly the market's, and an "
+                "edge is only claimed where the two disagree enough to clear "
+                "the noise."
+            ),
+        }
+    return {
+        "measured": False,
+        "games": 0,
+        "beats_market": None,
+        "note": (
+            "Not backtested. There is no historical college line and result "
+            "set available here, so this league's accuracy against the market "
+            "is unknown rather than good or bad."
+        ),
+    }
+
+
+def _spread_read(g: LiveGame, pred, home: str, away: str, league: str = "nfl") -> Optional[dict]:
     """
     StatEdge's fair spread beside the market's, and the gap between them.
 
@@ -1050,10 +1119,19 @@ def _spread_read(g: LiveGame, pred, home: str, away: str) -> Optional[dict]:
     offering more points on the home team than the model thinks it should, so
     the value is on the home team. Negative puts it on the away team.
     """
-    fair = -round(pred.predicted_spread, 1)
+    model_line = -pred.predicted_spread          # the model, in book convention
+    market = g.market_spread
+    weight = _model_weight(league)
+    # Where there is a line to blend with, the published fair line is the
+    # measured-best combination. With none, the model's own number is all
+    # there is and stands alone.
+    fair = round(
+        weight * model_line + (1.0 - weight) * market if market is not None
+        else model_line,
+        1,
+    )
     home_abbr = g.home_abbr or home
     away_abbr = g.away_abbr or away
-    market = g.market_spread
 
     out = {
         "fair": fair,
@@ -1067,6 +1145,10 @@ def _spread_read(g: LiveGame, pred, home: str, away: str) -> Optional[dict]:
         "side": None,
         "side_abbr": "",
         "points": None,
+        # The raw model, kept beside the published line so the blend is
+        # visible rather than hidden inside one number.
+        "model_line": round(model_line, 1),
+        "model_weight": weight,
     }
     if market is None:
         return out
@@ -1082,16 +1164,27 @@ def _spread_read(g: LiveGame, pred, home: str, away: str) -> Optional[dict]:
     return out
 
 
-def _total_read(g: LiveGame, pred) -> Optional[dict]:
+def _total_read(g: LiveGame, pred, league: str = "nfl") -> Optional[dict]:
     """
     The same comparison for the total, where the sign is the plain one: a fair
     total above the market's means the over, below means the under.
+
+    Blended on the same measured basis as the spread — the backtest put the
+    model's total at RMSE 13.48 against the market's 13.03, so publishing the
+    model's number raw would again be publishing the worse estimator.
     """
-    fair = round(pred.total_points_estimate, 1)
     market = g.market_over_under
+    weight = _model_weight(league)
+    fair = round(
+        weight * pred.total_points_estimate + (1.0 - weight) * market
+        if market is not None else pred.total_points_estimate,
+        1,
+    )
     out = {
         "fair": fair, "market": market,
         "edge_points": None, "side": None, "points": None,
+        "model_total": round(pred.total_points_estimate, 1),
+        "model_weight": weight,
     }
     if market is None:
         return out
@@ -1642,11 +1735,14 @@ async def _slate_entry(
         # what the market is offering, and the gap. This is the thing a reader
         # opens the page for, and it was only ever available by inference from
         # a probability before.
-        spread_read = _spread_read(g, pred, home, away)
+        spread_read = _spread_read(g, pred, home, away, league)
         entry["value"] = {
             "spread": spread_read,
-            "total": _total_read(g, pred),
+            "total": _total_read(g, pred, league),
             "confidence": _data_confidence(league, g, pred, home, away),
+            # What is actually known about this league's accuracy against the
+            # market, so no surface has to assume it is good.
+            "validation": _validation_note(league),
         }
         # The reasons behind that number. One bulk read of the frozen opening
         # lines covers the whole board, rather than a round trip per game.

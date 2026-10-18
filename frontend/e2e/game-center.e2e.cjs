@@ -84,6 +84,10 @@ const detail = {
       ],
       means: "How much of the model's input was available for this game. Not the chance a bet wins.",
     },
+    validation: {
+      measured: false, games: 0, beats_market: null,
+      note: 'Not backtested. Accuracy against the market is unknown rather than good or bad.',
+    },
   },
   why: {
     fair_label: 'FSU -4.8', side: 'home', side_abbr: 'FSU', points: 1.8,

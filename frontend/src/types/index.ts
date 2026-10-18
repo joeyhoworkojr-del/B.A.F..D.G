@@ -425,6 +425,23 @@ export interface PolymarketOut {
  * giving more points on the home side than the model thinks it should.
  * `side`/`points` are the same thing said as "whose, and how many".
  */
+/**
+ * What is actually known about a league's accuracy against the market.
+ *
+ * Carried in the payload so no page has to assume the model is good. For the
+ * NFL this is measured — and the measurement says the model alone is less
+ * accurate than the closing line, which is why the published fair line is
+ * mostly the market's. For college football there is no history available to
+ * measure against, so the answer is "unknown", which is a different claim from
+ * either good or bad.
+ */
+export interface ValidationOut {
+  measured: boolean
+  games: number
+  beats_market: boolean | null
+  note: string
+}
+
 export interface SpreadValueOut {
   fair: number
   /** Already written as a bettor reads it, e.g. "BUF -4.8". */
@@ -435,6 +452,10 @@ export interface SpreadValueOut {
   side: 'home' | 'away' | null
   side_abbr: string
   points: number | null
+  /** The model's own number, before it was blended toward the market. */
+  model_line?: number
+  /** How much of the published line is the model's. Measured, not chosen. */
+  model_weight?: number
 }
 
 export interface TotalValueOut {
@@ -443,6 +464,8 @@ export interface TotalValueOut {
   edge_points: number | null
   side: 'over' | 'under' | null
   points: number | null
+  model_total?: number
+  model_weight?: number
 }
 
 /**
@@ -464,6 +487,7 @@ export interface ValueOut {
   spread: SpreadValueOut
   total: TotalValueOut
   confidence: ConfidenceOut
+  validation?: ValidationOut
 }
 
 /** One input the model read, with the points it moved where it moved any. */
