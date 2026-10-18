@@ -60,7 +60,25 @@ _REL_SIGMA = {
 #     raw Poisson       3.4p
 #     his own hit rate  4.4p
 #
-# Reproduce with `python -m tools.backtest props`.
+# Reproduce with `python -m tools.backtest atd`.
+#
+# A more principled construction was built and measured against this, and lost.
+# The argument for it is good: a touchdown is not something a player does on his
+# own, it is something his offence does and he takes a share of, so expected
+# team touchdowns times his share should respond properly to game script — well
+# above his season rate in a game priced 31-13, well below it in a 17-20 grind.
+# Implemented with team scoring from the market's own total and spread, and the
+# points-to-touchdowns coefficient fitted rather than guessed (0.109, about one
+# touchdown per 9.2 points, over 1,792 team-games):
+#
+#     shrunk Poisson on his own rate      1.4p     ← kept
+#     expected team TDs x player share    2.5p
+#
+# Measured on the same 11,000 player-games. It is worse, and the reason is that
+# it compounds three noisy estimates — his share of his team's touchdowns, his
+# team's touchdowns while he played, and the market's points converted to
+# touchdowns — where the simpler model uses one. Recorded here so the idea is
+# not rebuilt on the strength of sounding better than what it replaces.
 ANYTIME_TD = "anytime_td"
 ATD_BASE_RATE = 0.35        # touchdowns per game for a player with a real role
 ATD_SHRINK_GAMES = 6.0
