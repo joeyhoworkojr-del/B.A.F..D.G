@@ -79,7 +79,7 @@ export function PropsStrip({ league, eventId }: { league: string; eventId: strin
         {rows.map(p => (
           <li
             key={`${p.athlete_id}-${p.market}`}
-            className="min-w-[150px] shrink-0 rounded-xl border border-terminal-border bg-terminal-surface px-3 py-2.5"
+            className="min-w-[150px] shrink-0 rounded-card border border-terminal-border bg-terminal-surface px-3 py-2.5"
           >
             <p className="truncate text-sm font-bold text-zinc-100">{p.player}</p>
             <p className="text-xs text-zinc-500">{p.team_abbr} · {p.position} · {p.label}</p>

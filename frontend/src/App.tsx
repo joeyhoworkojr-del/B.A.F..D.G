@@ -36,7 +36,7 @@ function PageFallback() {
   return (
     <div className="mx-auto w-full max-w-app px-4 py-6 space-y-4">
       <div className="skeleton h-8 w-56 rounded" />
-      <div className="skeleton h-64 w-full rounded-2xl" />
+      <div className="skeleton h-64 w-full rounded-card" />
     </div>
   )
 }

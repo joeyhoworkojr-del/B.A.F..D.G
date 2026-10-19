@@ -30,7 +30,7 @@ export function ValidationNote({ entries }: { entries: BoardEntry[] }) {
   return (
     <aside
       aria-labelledby="board-validation"
-      className="rounded-panel border border-signal-amber/30 bg-signal-amber-dim px-3.5 py-3"
+      className="rounded-card border border-signal-amber/30 bg-signal-amber-dim px-3.5 py-3"
     >
       <h2
         id="board-validation"

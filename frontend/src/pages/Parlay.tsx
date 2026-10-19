@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../api/client'
 import type { BestParlayResponse, ParlayLeg } from '../types'
+import { PageHeader } from '../components/layout/PageHeader'
 
 const LEAGUE_LABEL: Record<string, string> = { nfl: 'NFL', ncaaf: 'NCAAF' }
 const fmtAm = (a: number) => (a > 0 ? `+${a}` : `${a}`)
@@ -60,11 +61,14 @@ export function Parlay() {
   return (
     <div className="mx-auto max-w-xl px-3 py-4 sm:px-4">
       <div className="mb-4">
-        <h1 className="font-display text-2xl font-black text-zinc-100">Best parlay</h1>
-        <p className="mt-1 text-sm text-zinc-400">
-          The model’s strongest-value ticket from today’s NFL + NCAA board — legs it both
-          favours to win and prices as value, combined honestly.
-        </p>
+        <PageHeader
+          eyebrow="Tickets"
+          title="Best parlay"
+          blurb={<>
+            The model’s strongest-value ticket from today’s NFL + NCAA board — legs it both
+            favours to win and prices as value, combined honestly.
+          </>}
+        />
       </div>
 
       {/* Leg count selector */}
@@ -85,11 +89,11 @@ export function Parlay() {
         ))}
       </div>
 
-      {error && <div className="rounded-xl border border-signal-red/40 bg-terminal-surface p-4 text-sm text-signal-red">{error}</div>}
-      {loading && !data && <div className="skeleton h-72 rounded-2xl" />}
+      {error && <div className="rounded-card border border-signal-red/40 bg-terminal-surface p-4 text-sm text-signal-red">{error}</div>}
+      {loading && !data && <div className="skeleton h-72 rounded-card" />}
 
       {data && !hasParlay && !loading && (
-        <div className="rounded-2xl border border-dashed border-terminal-border bg-terminal-surface p-8 text-center">
+        <div className="rounded-card border border-dashed border-terminal-border bg-terminal-surface p-8 text-center">
           <p className="font-display text-lg font-bold text-zinc-100">No parlay on the board</p>
           <p className="mx-auto mt-1 max-w-sm text-sm text-zinc-500">
             The model only builds a parlay from plays it both favours to win and prices as value.
@@ -99,7 +103,7 @@ export function Parlay() {
       )}
 
       {data && hasParlay && (
-        <div className="overflow-hidden rounded-2xl border border-terminal-border bg-terminal-surface">
+        <div className="overflow-hidden rounded-card border border-terminal-border bg-terminal-surface">
           {/* Betslip header */}
           <div className="border-b border-terminal-border bg-terminal-muted/40 px-4 py-3">
             <div className="flex items-end justify-between">
@@ -148,7 +152,7 @@ export function Parlay() {
       {data && data.pool.length > (data.legs.length) && (
         <div className="mt-5">
           <p className="mb-2 text-xs font-bold uppercase tracking-widest text-zinc-500">Build your own — other value legs</p>
-          <div className="rounded-xl border border-terminal-border bg-terminal-surface px-4">
+          <div className="rounded-card border border-terminal-border bg-terminal-surface px-4">
             {data.pool.slice(data.legs.length).map((leg, i) => <LegRow key={leg.fixture_id} leg={leg} i={i} />)}
           </div>
         </div>
@@ -163,7 +167,7 @@ export function Parlay() {
           <p className="mb-2 text-xs font-bold uppercase tracking-widest text-zinc-500">
             What each leg costs
           </p>
-          <div className="overflow-hidden rounded-xl border border-terminal-border bg-terminal-surface">
+          <div className="overflow-hidden rounded-card border border-terminal-border bg-terminal-surface">
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-terminal-border text-zinc-500">

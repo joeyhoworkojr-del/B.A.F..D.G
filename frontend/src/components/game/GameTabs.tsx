@@ -63,7 +63,7 @@ export function GameTabs({
           >
             {tab.label}
             {tab.badge && (
-              <span className={`ml-1.5 font-mono text-xs ${on ? 'text-brand/70' : 'text-zinc-600'}`}>
+              <span className={`ml-1.5 font-mono text-xs ${on ? 'text-brand/70' : 'text-zinc-500'}`}>
                 {tab.badge}
               </span>
             )}

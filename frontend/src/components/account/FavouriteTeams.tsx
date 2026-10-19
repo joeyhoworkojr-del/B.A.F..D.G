@@ -92,7 +92,7 @@ export function FavouriteTeams() {
           value={filter}
           onChange={e => setFilter(e.target.value)}
           placeholder="Filter…"
-          className="ml-auto w-32 rounded-lg border border-terminal-border bg-terminal-bg px-3 py-1.5 text-sm text-zinc-100 placeholder:text-zinc-600"
+          className="ml-auto w-32 rounded-lg border border-terminal-border bg-terminal-bg px-3 py-1.5 text-sm text-zinc-100 placeholder:text-zinc-500"
         />
       </div>
 

@@ -40,7 +40,7 @@ export function NewsCard({ item }: { item: NewsItemOut }) {
   const tone = CATEGORY_TONE[item.category] ?? CATEGORY_TONE.news
 
   return (
-    <article className="min-w-0 rounded-xl border border-terminal-border bg-terminal-surface p-4 card-lift">
+    <article className="min-w-0 rounded-card border border-terminal-border bg-terminal-surface p-4 card-lift">
       <div className="flex flex-wrap items-center gap-2">
         <span className={`rounded-full border px-2 py-0.5 text-xs font-bold ${tone}`}>
           {CATEGORY_LABEL[item.category] ?? 'News'}

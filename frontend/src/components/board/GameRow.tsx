@@ -51,7 +51,7 @@ export function GameRow({ entry }: { entry: BoardEntry }) {
       <Link
         to={`/game/${league}/${g.event_id}`}
         state={{ game: g }}
-        className="tap block rounded-panel border border-terminal-border bg-terminal-surface p-3.5 hover:border-brand/40"
+        className="tap block rounded-card border border-terminal-border bg-terminal-surface p-3.5 hover:border-brand/40"
       >
         <div className="flex items-center gap-2 text-xs text-zinc-500">
           <span className="font-bold text-zinc-400">{LEAGUE_LABEL[league] ?? league.toUpperCase()}</span>

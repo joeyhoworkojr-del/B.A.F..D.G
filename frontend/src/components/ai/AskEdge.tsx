@@ -146,7 +146,7 @@ export function AskEdge({
         {turns.map((turn, i) => (
           <div key={i} className={turn.role === 'user' ? 'text-right' : ''}>
             <div
-              className={`inline-block max-w-[92%] rounded-2xl px-3.5 py-2.5 text-left text-sm leading-relaxed ${
+              className={`inline-block max-w-[92%] rounded-card px-3.5 py-2.5 text-left text-sm leading-relaxed ${
                 turn.role === 'user'
                   ? 'bg-brand-soft text-zinc-100'
                   : 'border border-terminal-border bg-terminal-muted text-zinc-300'
@@ -191,7 +191,7 @@ export function AskEdge({
           onChange={e => setQuestion(e.target.value)}
           maxLength={1000}
           placeholder={live ? 'Why did the probability move?' : 'Ask about this game…'}
-          className="min-w-0 flex-1 rounded-lg border border-terminal-border bg-terminal-bg px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600"
+          className="min-w-0 flex-1 rounded-lg border border-terminal-border bg-terminal-bg px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
         />
         <button
           type="submit"

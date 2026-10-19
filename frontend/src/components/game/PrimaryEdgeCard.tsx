@@ -37,7 +37,7 @@ export function PrimaryEdgeCard({
 }: PrimaryEdgeCardProps) {
   if (!edge) {
     return (
-      <section className="rounded-xl border border-terminal-border bg-terminal-surface p-4">
+      <section className="rounded-card border border-terminal-border bg-terminal-surface p-4">
         <h2 className="text-sm font-bold text-zinc-100">Best available edge</h2>
         <p className="mt-2 text-sm text-zinc-400">
           The model currently agrees with the market on every posted line for this game,
@@ -52,7 +52,7 @@ export function PrimaryEdgeCard({
   return (
     <section
       aria-labelledby="primary-edge-heading"
-      className="rounded-xl border border-signal-green/40 bg-terminal-surface p-4"
+      className="rounded-card border border-signal-green/40 bg-terminal-surface p-4"
     >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 id="primary-edge-heading" className="text-sm font-bold text-zinc-100">

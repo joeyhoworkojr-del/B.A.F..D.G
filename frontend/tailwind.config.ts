@@ -15,14 +15,21 @@ export default {
           muted: '#f5f6f8',     // secondary surface / table stripes
           border: '#e4e7ec',    // hairline borders
         },
+        // Every colour here is a text or fill colour on a *light* surface, and
+        // each one clears 4.5:1 against white and against its own `-dim` tint.
+        // They were picked by eye before, and a contrast audit of the whole app
+        // found seven distinct pairs below AA — emerald-600 text on white is
+        // 3.77:1, white on emerald-600 is the same, and red-600 on red-100 is
+        // 3.95:1. The deeper shades below are what those have to be. The
+        // audit now runs in the e2e suite, so this cannot drift back.
         signal: {
-          amber: '#b45309',        // watch / medium confidence (AA on white)
+          amber: '#b45309',        // watch / medium confidence
           // Light enough that #b45309 text on it clears 4.5:1 (amber-100 does not).
           'amber-dim': '#fffbeb',
-          green: '#059669',        // brand + genuine positive value
+          green: '#047857',        // brand + genuine positive value (5.5:1 on white)
           'green-dim': '#ecfdf5',
-          red: '#dc2626',          // negative / stale / error
-          'red-dim': '#fef2f2',
+          red: '#be123c',          // negative / stale / error (5.9:1 on white)
+          'red-dim': '#fff1f2',
           blue: '#2563eb',         // informational (crowd / market)
           purple: '#7c3aed',
         },
@@ -34,17 +41,25 @@ export default {
           200: '#1f2937',
           300: '#374151',
           400: '#4b5563',   // secondary text (AA on white)
-          500: '#6b7280',   // tertiary text
-          600: '#9ca3af',   // faint / disabled
+          500: '#667085',   // tertiary text — 4.5:1 on `terminal.muted` too
+          // Faint / disabled. It does not clear 4.5:1 on white and is not for
+          // text: anything a reader has to read uses 500 or darker.
+          600: '#9ca3af',
           700: '#d1d5db',
           800: '#e5e7eb',
           900: '#f3f4f6',
         },
         // Semantic aliases for new components.
+        //
+        // `DEFAULT` is the emerald that carries text on a light surface and
+        // white text on a fill; `strong` is the step darker for a hover state;
+        // `light` is for the two inverted panels, where the relationship is
+        // the other way round and emerald-600 is the one that is too dark.
         brand: {
-          DEFAULT: '#059669',
-          strong: '#047857',
+          DEFAULT: '#047857',   // 5.5:1 on white, 5.5:1 under white text
+          strong: '#065f46',    // hover — 7.8:1
           soft: '#ecfdf5',
+          light: '#10b981',     // on `ink` only — 7.3:1 on #0a1512
         },
         // ── Inverted surfaces ───────────────────────────────────────────────
         // The hero and the raised nav button sit on near-black rather than on
@@ -59,9 +74,12 @@ export default {
         },
       },
       borderRadius: {
-        card: '14px',
-        // The redesign's cards are softer than the old 14px.
-        panel: '18px',
+        // One card radius for the whole app. Before the redesign there were
+        // three — `rounded-xl`, `rounded-card` and `rounded-2xl`, at 12, 14
+        // and 16px — mixed across pages built at different times, which is
+        // the kind of inconsistency that reads as carelessness rather than
+        // as a choice. The redesign's softer 18px is now the only one.
+        card: '18px',
         hero: '22px',
       },
       boxShadow: {

@@ -5,12 +5,23 @@ interface Props {
   height?: number
   stroke?: string
   id?: string
+  /**
+   * Which surface it is drawn on. The zero line and the empty-state label are
+   * the two things that have to change: a #cbd5e1 rule and `text-zinc-500`
+   * copy are both all but invisible on the near-black panel, and a chart whose
+   * "no data yet" message cannot be read is worse than an empty box.
+   */
+  surface?: 'light' | 'ink'
 }
 
-export function Sparkline({ data, width = 320, height = 96, stroke = '#2563eb', id = 'spark' }: Props) {
+export function Sparkline({ data, width = 320, height = 96, stroke = '#2563eb', id = 'spark', surface = 'light' }: Props) {
+  const onInk = surface === 'ink'
   if (data.length < 2) {
     return (
-      <div className="flex items-center justify-center text-xs font-body text-zinc-500" style={{ height }}>
+      <div
+        className={`flex items-center justify-center text-xs font-body ${onInk ? 'text-ink-muted' : 'text-zinc-500'}`}
+        style={{ height }}
+      >
         Chart appears after a few graded picks
       </div>
     )
@@ -33,7 +44,7 @@ export function Sparkline({ data, width = 320, height = 96, stroke = '#2563eb', 
         </linearGradient>
       </defs>
       {min < 0 && max > 0 && (
-        <line x1="4" x2={width - 4} y1={zeroY} y2={zeroY} stroke="#cbd5e1" strokeDasharray="3 3" strokeWidth="1" />
+        <line x1="4" x2={width - 4} y1={zeroY} y2={zeroY} stroke={onInk ? '#3a5249' : '#cbd5e1'} strokeDasharray="3 3" strokeWidth="1" />
       )}
       <polygon
         points={`4,${height - 8} ${points} ${width - 4},${height - 8}`}

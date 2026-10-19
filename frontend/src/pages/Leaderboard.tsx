@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import { Avatar } from '../components/Avatar'
 import { api } from '../api/client'
 import type { LeaderboardOut, Standing } from '../types'
+import { PageHeader } from '../components/layout/PageHeader'
+import { chipCls } from '../components/ui/chip'
 
 const LEAGUES: { id?: string; label: string }[] = [
   { id: undefined, label: 'Overall' },
@@ -10,10 +12,6 @@ const LEAGUES: { id?: string; label: string }[] = [
   { id: 'nfl', label: 'NFL' },
 ]
 
-const pill = (on: boolean) =>
-  `tap inline-flex items-center rounded-full px-4 text-sm font-bold transition ${
-    on ? 'bg-brand text-white shadow-card' : 'bg-terminal-muted text-zinc-400 hover:text-zinc-100'
-  }`
 
 const units = (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}u`
 const pct = (v?: number | null) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`)
@@ -34,16 +32,19 @@ export function Leaderboard() {
 
   return (
     <div className="mx-auto w-full max-w-app px-4 py-6">
-      <h1 className="font-display text-2xl font-black text-zinc-100">Leaderboard</h1>
-      <p className="mt-1 max-w-2xl text-sm leading-relaxed text-zinc-400">
-        Ranked on results, not followers. Every pick counted here was published before
-        its game started and graded automatically afterwards.
-      </p>
+      <PageHeader
+        eyebrow="Community"
+        title="Leaderboard"
+        blurb={<>
+          Ranked on results, not followers. Every pick counted here was published before
+          its game started and graded automatically afterwards.
+        </>}
+      />
 
       <div className="mt-4 flex flex-wrap gap-2">
         {LEAGUES.map(l => (
           <button key={l.label} type="button" onClick={() => setLeague(l.id)}
-            aria-pressed={league === l.id} className={pill(league === l.id)}>
+            aria-pressed={league === l.id} className={chipCls(league === l.id)}>
             {l.label}
           </button>
         ))}

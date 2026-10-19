@@ -3,6 +3,8 @@ import { useNews } from '../hooks/useNews'
 import { NewsCard } from '../components/news/NewsCard'
 import { DataFreshnessBadge } from '../components/game/DataFreshnessBadge'
 import type { FootballLeague, NewsCategory } from '../types'
+import { chipCls } from '../components/ui/chip'
+import { PageHeader } from '../components/layout/PageHeader'
 
 const LEAGUES: { id: 'all' | FootballLeague; label: string }[] = [
   { id: 'all', label: 'All football' },
@@ -17,12 +19,6 @@ const CATEGORIES: { id: 'all' | NewsCategory; label: string }[] = [
   { id: 'recap', label: 'Recaps' },
 ]
 
-const pill = (active: boolean) =>
-  `tap inline-flex items-center rounded-full px-4 text-sm font-bold transition ${
-    active
-      ? 'bg-brand text-white shadow-card'
-      : 'bg-terminal-muted text-zinc-400 hover:text-zinc-100'
-  }`
 
 export function News() {
   const [league, setLeague] = useState<'all' | FootballLeague>('all')
@@ -36,26 +32,27 @@ export function News() {
 
   return (
     <div className="mx-auto w-full max-w-app px-4 py-6">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-black text-zinc-100">News</h1>
-          <p className="mt-1 text-sm text-zinc-400">
-            Football headlines from ESPN. Summaries are the publisher’s own — follow a link
-            to read the full story at the source.
-          </p>
-        </div>
-        <DataFreshnessBadge
-          fetchedAt={feed?.fetched_at}
-          source={feed?.source ?? 'ESPN'}
-          ok={feed?.ok !== false}
-          staleAfterSeconds={600}
-        />
-      </header>
+      <PageHeader
+        eyebrow="Wire"
+        title="News"
+        blurb={<>
+          Football headlines from ESPN. Summaries are the publisher’s own — follow a link
+          to read the full story at the source.
+        </>}
+        aside={
+          <DataFreshnessBadge
+            fetchedAt={feed?.fetched_at}
+            source={feed?.source ?? 'ESPN'}
+            ok={feed?.ok !== false}
+            staleAfterSeconds={600}
+          />
+        }
+      />
 
       <div className="mt-4 flex flex-wrap gap-2">
         {LEAGUES.map(l => (
           <button key={l.id} type="button" onClick={() => setLeague(l.id)}
-            aria-pressed={league === l.id} className={pill(league === l.id)}>
+            aria-pressed={league === l.id} className={chipCls(league === l.id)}>
             {l.label}
           </button>
         ))}
@@ -63,7 +60,7 @@ export function News() {
       <div className="mt-2 flex flex-wrap gap-2">
         {CATEGORIES.map(c => (
           <button key={c.id} type="button" onClick={() => setCategory(c.id)}
-            aria-pressed={category === c.id} className={pill(category === c.id)}>
+            aria-pressed={category === c.id} className={chipCls(category === c.id)}>
             {c.label}
           </button>
         ))}
@@ -83,7 +80,7 @@ export function News() {
 
       {loading && !feed && (
         <div className="mt-5 grid gap-3 md:grid-cols-2">
-          {[0, 1, 2, 3].map(i => <div key={i} className="skeleton h-40 rounded-xl" />)}
+          {[0, 1, 2, 3].map(i => <div key={i} className="skeleton h-40 rounded-card" />)}
         </div>
       )}
 

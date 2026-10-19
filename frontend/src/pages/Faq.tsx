@@ -2,13 +2,9 @@ import { useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { FaqList } from '../components/faq/FaqList'
 import { FAQ, FAQ_CATEGORIES, type FaqCategory } from '../content/faq'
+import { chipCls } from '../components/ui/chip'
+import { PageHeader } from '../components/layout/PageHeader'
 
-const pill = (active: boolean) =>
-  `tap inline-flex items-center rounded-full px-4 text-sm font-bold transition ${
-    active
-      ? 'bg-brand text-white shadow-card'
-      : 'bg-terminal-muted text-zinc-400 hover:text-zinc-100'
-  }`
 
 export function Faq() {
   const location = useLocation()
@@ -30,11 +26,14 @@ export function Faq() {
 
   return (
     <div className="mx-auto w-full max-w-app px-4 py-6">
-      <h1 className="font-display text-2xl font-black text-zinc-100">Frequently asked questions</h1>
-      <p className="mt-1 max-w-2xl text-sm leading-relaxed text-zinc-400">
-        What the model does, what the numbers mean, and what StatEdge cannot do yet.
-        Where a feature is missing, the answer says so.
-      </p>
+      <PageHeader
+        eyebrow="Help"
+        title="Frequently asked questions"
+        blurb={<>
+          What the model does, what the numbers mean, and what StatEdge cannot do yet.
+          Where a feature is missing, the answer says so.
+        </>}
+      />
 
       <div className="mt-5 max-w-md">
         <label htmlFor="faq-search" className="sr-only">Search the FAQ</label>
@@ -50,12 +49,12 @@ export function Faq() {
 
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" onClick={() => setCategory('all')}
-          aria-pressed={category === 'all'} className={pill(category === 'all')}>
+          aria-pressed={category === 'all'} className={chipCls(category === 'all')}>
           All
         </button>
         {FAQ_CATEGORIES.map(c => (
           <button key={c} type="button" onClick={() => setCategory(c)}
-            aria-pressed={category === c} className={pill(category === c)}>
+            aria-pressed={category === c} className={chipCls(category === c)}>
             {c}
           </button>
         ))}

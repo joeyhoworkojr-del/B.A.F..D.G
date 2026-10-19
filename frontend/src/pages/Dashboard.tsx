@@ -13,6 +13,7 @@ import { ValidationNote } from '../components/board/ValidationNote'
 import { FaqList } from '../components/faq/FaqList'
 import { oddsSourceSentence } from '../components/OddsSource'
 import { FAQ, FAQ_PREVIEW_IDS } from '../content/faq'
+import { chipCls } from '../components/ui/chip'
 import { api } from '../api/client'
 import { useSession } from '../session/SessionProvider'
 import type { BoardDay, BoardEntry, BoardResponse, EdgeOut, AccuracyResponse } from '../types'
@@ -55,7 +56,7 @@ function LiveCard({ entry }: { entry: BoardEntry }) {
   const edge = marketP == null ? null : modelP - marketP
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-signal-green/40 bg-terminal-surface">
+    <div className="relative overflow-hidden rounded-card border border-signal-green/40 bg-terminal-surface">
       <div className="absolute inset-x-0 top-0 h-0.5 bg-signal-green/70" />
       <div className="flex items-center justify-between px-4 pt-3">
         <span className="inline-flex items-center gap-2 rounded-full bg-signal-green/15 px-2.5 py-1 text-xs font-bold text-signal-green">
@@ -149,7 +150,7 @@ function FinalCard({ entry }: { entry: BoardEntry }) {
     <Link
       to={`/game/${league}/${g.event_id}`}
       state={{ game: g }}
-      className="block rounded-2xl border border-terminal-border bg-terminal-surface p-4 hover:border-zinc-500"
+      className="block rounded-card border border-terminal-border bg-terminal-surface p-4 hover:border-zinc-500"
     >
       <div className="mb-3 flex items-center justify-between gap-2 text-xs text-zinc-500">
         <span className="font-semibold uppercase tracking-wide">Final</span>
@@ -284,7 +285,7 @@ export function Dashboard() {
 
   return (
     <div className="pb-4">
-      <div className="mx-auto w-full max-w-[1200px] space-y-4 px-4 pt-4">
+      <div className="mx-auto w-full max-w-app space-y-4 px-4 pt-4">
         <LiveStrip games={liveGames} />
 
         <TodaysEdge acc={acc} liveCount={liveGames.length} />
@@ -316,11 +317,7 @@ export function Dashboard() {
                 role="tab"
                 aria-selected={d.date === day?.date}
                 onClick={() => setDayDate(d.date)}
-                className={`tap shrink-0 rounded-full px-4 text-sm font-bold transition ${
-                  d.date === day?.date
-                    ? 'bg-brand text-white shadow-card'
-                    : 'bg-terminal-muted text-zinc-400 hover:text-zinc-100'
-                }`}
+                className={`${chipCls(d.date === day?.date)} shrink-0`}
               >
                 {d.label}
                 <span className={`ml-1.5 font-mono text-xs ${d.date === day?.date ? 'text-white/70' : 'text-zinc-500'}`}>
@@ -331,8 +328,8 @@ export function Dashboard() {
           </div>
         )}
 
-        {error && <div className="rounded-2xl border border-signal-red/40 bg-terminal-surface p-4 text-sm text-signal-red">Couldn’t load games: {error}</div>}
-        {loading && !data && <div className="space-y-4"><div className="skeleton h-40 rounded-2xl" /><div className="skeleton h-44 rounded-2xl" /></div>}
+        {error && <div className="rounded-card border border-signal-red/40 bg-terminal-surface p-4 text-sm text-signal-red">Couldn’t load games: {error}</div>}
+        {loading && !data && <div className="space-y-4"><div className="skeleton h-40 rounded-card" /><div className="skeleton h-44 rounded-card" /></div>}
 
         {/* Said before the first number on the board, not after the last.
             Every row below shows a StatEdge line beside the market's, and
@@ -370,7 +367,7 @@ export function Dashboard() {
             <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-500">
               {day?.label ?? 'On the board'}
               {day && Object.entries(day.by_league).some(([, n]) => n > 0) && (
-                <span className="ml-2 font-normal normal-case tracking-normal text-zinc-600">
+                <span className="ml-2 font-normal normal-case tracking-normal text-zinc-500">
                   {Object.entries(day.by_league)
                     .filter(([, n]) => n > 0)
                     .map(([lg, n]) => `${n} ${LEAGUE_LABEL[lg] ?? lg.toUpperCase()}`)
@@ -387,7 +384,7 @@ export function Dashboard() {
               <button
                 type="button"
                 onClick={() => setVisible(v => v + VISIBLE_STEP)}
-                className="tap w-full rounded-2xl border border-terminal-border bg-terminal-surface py-3 text-sm font-bold text-zinc-300 hover:text-zinc-100"
+                className="tap w-full rounded-card border border-terminal-border bg-terminal-surface py-3 text-sm font-bold text-zinc-300 hover:text-zinc-100"
               >
                 Show {Math.min(VISIBLE_STEP, rest.length - visible)} more of {rest.length}
               </button>
@@ -400,7 +397,7 @@ export function Dashboard() {
             the schedule feed is down we do not know what is scheduled, and
             saying it anyway states something false as fact. */}
         {!loading && dayGames.length === 0 && !error && (
-          <div className="rounded-2xl border border-dashed border-terminal-border bg-terminal-surface p-10 text-center">
+          <div className="rounded-card border border-dashed border-terminal-border bg-terminal-surface p-10 text-center">
             <p className="font-display text-lg font-bold text-zinc-100">
               {feedDown ? 'Schedule feed is unreachable' : 'Nothing on the board'}
             </p>
@@ -415,7 +412,7 @@ export function Dashboard() {
               <button
                 type="button"
                 onClick={() => { setLoading(true); load() }}
-                className="tap mt-4 rounded-xl border border-terminal-border px-4 py-2 text-sm font-bold text-zinc-200 hover:text-zinc-100"
+                className="tap mt-4 rounded-lg border border-terminal-border px-4 py-2 text-sm font-bold text-zinc-200 hover:text-zinc-100"
               >
                 Try again
               </button>

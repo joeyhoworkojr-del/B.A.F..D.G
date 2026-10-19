@@ -38,7 +38,7 @@ export function Panel({
     <section
       id={id}
       aria-busy={state === 'loading' || refreshing || undefined}
-      className="min-w-0 rounded-xl border border-terminal-border bg-terminal-surface"
+      className="min-w-0 rounded-card border border-terminal-border bg-terminal-surface"
     >
       <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b border-terminal-border/70 px-4 py-3">
         <div className="min-w-0">

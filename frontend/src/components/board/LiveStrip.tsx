@@ -31,7 +31,7 @@ export function LiveStrip({ games }: { games: BoardEntry[] }) {
             <Link
               to={`/game/${league}/${g.event_id}`}
               state={{ game: g }}
-              className="tap block w-[168px] rounded-panel border border-terminal-border bg-terminal-surface p-3 hover:border-brand/50"
+              className="tap block w-[168px] rounded-card border border-terminal-border bg-terminal-surface p-3 hover:border-brand/50"
             >
               <div className="flex items-baseline justify-between gap-2">
                 <span className="truncate text-xs font-bold text-brand">

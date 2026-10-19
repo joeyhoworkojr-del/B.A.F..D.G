@@ -218,6 +218,47 @@ const bestBets = {
   })),
 }
 
+const edgeRow = (o = {}) => ({
+  league: 'nfl', event_id: '401671', kickoff: inHours(3),
+  home: 'Kansas City Chiefs', away: 'Baltimore Ravens',
+  home_abbr: 'KC', away_abbr: 'BAL',
+  market: 'spread', market_label: 'Spread', line: -3, selection: 'KC -3.0',
+  side: 'home', price_american: -110, assumed_price: true,
+  model_prob: 0.561, break_even_prob: 0.524, ev_per_unit: 0.071, edge_pp: 3.7,
+  grade: 'B', fair_label: 'KC -4.8', market_label_spread: 'KC -3.0',
+  edge_points: 1.8, confidence: 'medium', source: 'ESPN BET',
+  why: ['Market is a point and a half short of the model.'],
+  ...o,
+})
+
+/** The Best Edges terminal. Long team names on purpose: the widest row is the
+ *  one that breaks a narrow layout, so that is the one the checks measure. */
+const edges = {
+  edges: [
+    edgeRow(),
+    edgeRow({
+      event_id: '401672', market: 'total', market_label: 'Total', line: 47.5,
+      selection: 'Over 47.5', side: 'over', model_prob: 0.543,
+      ev_per_unit: 0.037, edge_pp: 1.9, grade: 'C', confidence: 'low',
+      edge_points: 1.1, why: ['Pace of both offences runs over this number.'],
+    }),
+    edgeRow({
+      event_id: '401673', league: 'ncaaf', market: 'moneyline',
+      market_label: 'Moneyline', line: null, selection: 'FSU ML',
+      home: 'Florida State', away: 'Clemson', home_abbr: 'FSU', away_abbr: 'CLEM',
+      price_american: 130, assumed_price: false, model_prob: 0.52,
+      break_even_prob: 0.435, ev_per_unit: 0.196, edge_pp: 8.5, grade: 'A',
+      confidence: 'high', edge_points: null,
+      why: ['FSU rated 7th of 134 by play-by-play ratings.'],
+    }),
+  ],
+  total_matching: 3, scanned: 42,
+  filters: { league: 'all', market: 'all', min_ev: 0, confidence: 'low', hours: 0, limit: 50 },
+  leagues: ['nfl', 'ncaaf'], markets: ['spread', 'total', 'moneyline'],
+  source_ok: true, market_source: 'ESPN BET', fetched_at: iso(),
+  note: '', ranking: 'expected value per unit staked',
+}
+
 const parlayLeg = (o = {}) => ({
   fixture_id: '401752', league: 'ncaaf', kickoff: inHours(3),
   home: 'Florida State', away: 'Clemson', market: 'Spread', selection: 'FSU +3',
@@ -325,4 +366,4 @@ const myPicks = {
   picks: [],
 }
 
-module.exports = { iso, inHours, mkGame, mkModel, mkEdge, today, board, gameProps, accuracy, bestBets, bestParlay, plays, news, entitlements, props, session, community, leaderboard, myPicks }
+module.exports = { iso, inHours, mkGame, mkModel, mkEdge, today, board, gameProps, accuracy, bestBets, edges, bestParlay, plays, news, entitlements, props, session, community, leaderboard, myPicks }

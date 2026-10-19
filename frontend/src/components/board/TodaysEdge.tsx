@@ -18,9 +18,9 @@ function Tile({ label, value, caption, tone = 'plain', Icon }: {
   Icon: () => JSX.Element
 }) {
   const valueTone =
-    tone === 'good' ? 'text-brand' : tone === 'bad' ? 'text-signal-red' : 'text-white'
+    tone === 'good' ? 'text-brand-light' : tone === 'bad' ? 'text-red-400' : 'text-white'
   return (
-    <div className="min-w-0 rounded-panel bg-ink-soft px-3 py-3 ring-1 ring-ink-line">
+    <div className="min-w-0 rounded-card bg-ink-soft px-3 py-3 ring-1 ring-ink-line">
       <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-ink-muted">
         <Icon />
         <span className="truncate">{label}</span>
@@ -94,19 +94,19 @@ export function TodaysEdge({ acc, liveCount }: {
       </div>
 
       <div className="relative">
-        <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand">
+        <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-light">
           Game Center
         </p>
         <h1 id="todays-edge" className="mt-1 font-display text-[34px] font-black leading-[1.05] tracking-tight">
-          Today&rsquo;s <span className="text-brand">Edge</span>
+          Today&rsquo;s <span className="text-brand-light">Edge</span>
         </h1>
         <p className="mt-1.5 max-w-sm text-sm leading-relaxed text-ink-muted">
           NFL and college football, with the model&rsquo;s number beside the market&rsquo;s.
         </p>
 
         {liveCount > 0 && (
-          <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-brand/15 px-3 py-1.5 text-xs font-bold text-brand">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand" />
+          <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-brand-light/15 px-3 py-1.5 text-xs font-bold text-brand-light">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand-light" />
             {liveCount} LIVE {liveCount === 1 ? 'GAME' : 'GAMES'}
           </p>
         )}
@@ -153,7 +153,7 @@ export function TodaysEdge({ acc, liveCount }: {
             pre-game {graded === 1 ? 'pick' : 'picks'} — not a betting return.
             {roi == null && ' ROI needs a published price on the side we took; with none on file it stays blank rather than estimated.'}
             {' '}
-            <Link to="/results" className="font-bold text-brand hover:underline">
+            <Link to="/results" className="font-bold text-brand-light hover:underline">
               Full record &rsaquo;
             </Link>
           </p>

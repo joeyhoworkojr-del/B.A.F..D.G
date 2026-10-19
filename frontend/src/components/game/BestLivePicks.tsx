@@ -58,7 +58,7 @@ export function BestLivePicks({ entries, limit = 3 }: { entries: BoardEntry[]; l
                 <Link
                   to={`/game/${entry.league}/${g.event_id}`}
                   state={{ game: g }}
-                  className="flex h-full flex-col rounded-xl border border-signal-green/40 bg-signal-green-dim px-3.5 py-3 hover:border-signal-green"
+                  className="flex h-full flex-col rounded-card border border-signal-green/40 bg-signal-green-dim px-3.5 py-3 hover:border-signal-green"
                 >
                   <span className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider text-signal-green">
                     <span>{g.away_abbr} {g.away_score ?? 0}–{g.home_score ?? 0} {g.home_abbr}</span>
@@ -83,7 +83,7 @@ export function BestLivePicks({ entries, limit = 3 }: { entries: BoardEntry[]; l
       )}
 
       {picks.length === 0 && (
-        <p className="rounded-xl border border-dashed border-terminal-border px-3.5 py-3 text-sm text-zinc-500">
+        <p className="rounded-card border border-dashed border-terminal-border px-3.5 py-3 text-sm text-zinc-500">
           No live pick right now — the model and the live prices agree on the games
           in progress.
         </p>

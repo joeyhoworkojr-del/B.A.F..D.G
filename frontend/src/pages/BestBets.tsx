@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { DataFreshnessBadge } from '../components/game/DataFreshnessBadge'
 import { oddsSourceSentence } from '../components/OddsSource'
+import { PageHeader } from '../components/layout/PageHeader'
 import type { EdgeRow, EdgesResponse } from '../types'
 
 const pct = (v?: number | null) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`)
@@ -176,13 +177,14 @@ export function BestBets() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-5 px-4 py-6">
-      <header>
-        <h1 className="font-display text-2xl font-bold text-zinc-100">Best edges</h1>
-        <p className="mt-1 text-sm leading-relaxed text-zinc-400">
+      <PageHeader
+        eyebrow="Value"
+        title="Best edges"
+        blurb={<>
           Where StatEdge disagrees with the market, ranked by expected value on a
           one-unit stake — not by how likely a pick is to win.
-        </p>
-      </header>
+        </>}
+      />
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
         <Filter label="League" value={league} onChange={setLeague}
@@ -202,7 +204,7 @@ export function BestBets() {
       )}
 
       {error && (
-        <div role="alert" className="rounded-2xl border border-signal-red/40 bg-signal-red-dim p-4 text-sm text-signal-red">
+        <div role="alert" className="rounded-card border border-signal-red/40 bg-signal-red-dim p-4 text-sm text-signal-red">
           {error}
         </div>
       )}
@@ -216,7 +218,7 @@ export function BestBets() {
           </p>
 
           {data.edges.length > 0 && (
-            <ol className="overflow-hidden rounded-2xl border border-terminal-border bg-terminal-surface">
+            <ol className="overflow-hidden rounded-card border border-terminal-border bg-terminal-surface">
               {data.edges.map(row => (
                 <EdgeRowItem key={`${row.league}-${row.event_id}-${row.market}-${row.side}`} row={row} />
               ))}

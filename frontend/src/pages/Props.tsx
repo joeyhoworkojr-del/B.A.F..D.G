@@ -4,16 +4,14 @@ import { api } from '../api/client'
 import { PropsTable } from '../components/props/PropsTable'
 import { DataFreshnessBadge } from '../components/game/DataFreshnessBadge'
 import type { FootballLeague, GamePropsOut, TodayResponse } from '../types'
+import { PageHeader } from '../components/layout/PageHeader'
+import { chipCls } from '../components/ui/chip'
 
 const LEAGUES: { id: FootballLeague; label: string }[] = [
   { id: 'ncaaf', label: 'NCAAF' },
   { id: 'nfl', label: 'NFL' },
 ]
 
-const pill = (active: boolean) =>
-  `tap inline-flex items-center rounded-full px-4 text-sm font-bold transition ${
-    active ? 'bg-brand text-white shadow-card' : 'bg-terminal-muted text-zinc-400 hover:text-zinc-100'
-  }`
 
 /**
  * Player props.
@@ -70,26 +68,25 @@ export function Props() {
 
   return (
     <div className="mx-auto w-full max-w-app px-4 py-6">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-black text-zinc-100">Player props</h1>
-          <p className="mt-1 max-w-2xl text-sm text-zinc-400">
-            Passing, rushing and receiving projections, built from each player’s published
-            usage and scaled to the game the model expects.
-          </p>
-        </div>
-        {data && (
+      <PageHeader
+        eyebrow="Players"
+        title="Player props"
+        blurb={<>
+          Passing, rushing and receiving projections, built from each player’s published
+          usage and scaled to the game the model expects.
+        </>}
+        aside={data && (
           <DataFreshnessBadge
             fetchedAt={data.fetched_at} source={data.source}
             ok={data.source_ok} staleAfterSeconds={900}
           />
         )}
-      </header>
+      />
 
       <div className="mt-4 flex flex-wrap gap-2">
         {LEAGUES.map(l => (
           <button key={l.id} type="button" onClick={() => setParam('league', l.id)}
-            aria-pressed={league === l.id} className={pill(league === l.id)}>
+            aria-pressed={league === l.id} className={chipCls(league === l.id)}>
             {l.label}
           </button>
         ))}

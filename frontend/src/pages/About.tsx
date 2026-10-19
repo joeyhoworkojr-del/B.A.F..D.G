@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { PageHeader } from '../components/layout/PageHeader'
 
 const H2 = ({ id, children }: { id: string; children: React.ReactNode }) => (
   <h2 id={id} className="scroll-mt-24 font-display text-base font-bold uppercase tracking-widest text-brand">
@@ -13,13 +14,14 @@ const H2 = ({ id, children }: { id: string; children: React.ReactNode }) => (
 export function About() {
   return (
     <div className="mx-auto max-w-2xl space-y-8 px-4 py-8 font-body text-sm leading-relaxed text-zinc-300">
-      <div>
-        <h1 className="font-display text-2xl font-black text-zinc-100">About StatEdge</h1>
-        <p className="mt-1 text-zinc-500">
+      <PageHeader
+        eyebrow="Methodology"
+        title="About StatEdge"
+        blurb={<>
           Model projections for NFL and college football, published next to the market
           they disagree with.
-        </p>
-      </div>
+        </>}
+      />
 
       <section className="space-y-3">
         <H2 id="what-it-is">What it is</H2>
