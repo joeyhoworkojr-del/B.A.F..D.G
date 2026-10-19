@@ -2,7 +2,6 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Suspense, lazy } from 'react'
 import { TopBar } from './components/layout/TopBar'
 import { BottomNav } from './components/layout/BottomNav'
-import { MobileMoreLinks } from './components/layout/MobileMoreLinks'
 import { Footer } from './components/layout/Footer'
 import { SessionProvider } from './session/SessionProvider'
 import { Dashboard } from './pages/Dashboard'
@@ -48,7 +47,6 @@ export default function App() {
       <SessionProvider>
       <div className="flex min-h-screen flex-col text-zinc-100">
         <TopBar />
-        <MobileMoreLinks />
         <main className="flex-1 pb-24 lg:pb-10">
           <Suspense fallback={<PageFallback />}>
             <Routes>

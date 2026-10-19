@@ -1,32 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import { useSession } from '../../session/SessionProvider'
-
-const Football = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M3 21c4-.5 14-2.5 18-18C8 3.5 3.5 8 3 21Z" /><path d="M8.5 15.5 15.5 8.5M10 12l2 2M12 10l2 2" />
-  </svg>
-)
-const Ticked = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M9 11l2.5 2.5L16 8" /><circle cx="12" cy="12" r="9" />
-  </svg>
-)
-const Person = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
-  </svg>
-)
-const Bars = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <line x1="6" y1="20" x2="6" y2="12" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="18" y1="20" x2="18" y2="9" />
-  </svg>
-)
-
-const Spark = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3Z" /><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7.7-1.8Z" />
-  </svg>
-)
+import { Bars, Football, Person, Spark, Ticked } from './icons'
 
 const baseItems = [
   { to: '/', label: 'Games', Icon: Football, end: true },
@@ -64,23 +38,53 @@ export function BottomNav() {
       data-nav="bottom"
       className="fixed inset-x-0 bottom-0 z-40 border-t border-terminal-border bg-terminal-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
     >
-      <ul className="mx-auto flex max-w-3xl items-stretch">
-        {items.map(({ to, label, Icon, end }) => (
-          <li key={to} className="flex-1">
-            <NavLink
-              to={to}
-              end={end}
-              className={({ isActive }) =>
-                `tap flex flex-col items-center justify-center gap-0.5 py-2 text-xs font-semibold ${
-                  isActive ? 'text-brand' : 'text-zinc-400'
-                }`
-              }
-            >
-              <Icon />
-              {label}
-            </NavLink>
-          </li>
-        ))}
+      <ul className="mx-auto flex max-w-3xl items-end">
+        {items.map(({ to, label, Icon, end }, i) => {
+          // The middle slot is raised. One-handed reach is best in the centre
+          // and Ask Edge is the thing people come back to, so it gets the
+          // thumb position and the only filled treatment in the bar.
+          const raised = i === Math.floor(items.length / 2)
+          return (
+            <li key={to} className="flex-1">
+              <NavLink
+                to={to}
+                end={end}
+                className={({ isActive }) =>
+                  raised
+                    ? 'tap flex flex-col items-center justify-end gap-1 pb-1.5'
+                    : `tap flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-semibold ${
+                        isActive ? 'text-brand' : 'text-zinc-400'
+                      }`
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    <span
+                      className={
+                        raised
+                          ? `-mt-6 grid h-14 w-14 place-items-center rounded-full text-white shadow-lift ring-4 ring-terminal-surface ${
+                              isActive ? 'bg-brand-strong' : 'bg-brand'
+                            }`
+                          : ''
+                      }
+                    >
+                      <Icon size={raised ? 24 : 22} />
+                    </span>
+                    <span
+                      className={
+                        raised
+                          ? `text-[11px] font-bold ${isActive ? 'text-brand' : 'text-zinc-400'}`
+                          : ''
+                      }
+                    >
+                      {label}
+                    </span>
+                  </>
+                )}
+              </NavLink>
+            </li>
+          )
+        })}
       </ul>
     </nav>
   )

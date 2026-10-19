@@ -46,13 +46,29 @@ export default {
           strong: '#047857',
           soft: '#ecfdf5',
         },
+        // ── Inverted surfaces ───────────────────────────────────────────────
+        // The hero and the raised nav button sit on near-black rather than on
+        // the page white, which is what gives the board a focal point instead
+        // of a wall of equal cards. Named by role, not by colour, so a later
+        // change of palette does not leave "navy" meaning charcoal.
+        ink: {
+          DEFAULT: '#0a1512',   // hero / inverted card
+          soft: '#12201c',      // tiles inside it
+          line: '#1e2f2a',      // hairlines inside it
+          muted: '#8aa39b',     // secondary text on ink
+        },
       },
       borderRadius: {
         card: '14px',
+        // The redesign's cards are softer than the old 14px.
+        panel: '18px',
+        hero: '22px',
       },
       boxShadow: {
         card: '0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06)',
         pop: '0 8px 24px -6px rgba(16, 24, 40, 0.12)',
+        // The raised centre button in the bottom bar.
+        lift: '0 6px 16px -4px rgba(5, 150, 105, 0.45)',
       },
       fontFamily: {
         display: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],

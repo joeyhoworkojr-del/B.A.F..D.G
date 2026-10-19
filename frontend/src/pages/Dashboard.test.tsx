@@ -110,6 +110,17 @@ describe('The merged board', () => {
     expect(screen.getAllByText(/LIVE/).length).toBeGreaterThan(0)
   })
 
+  it('frames the board with what the backtest found, before the first row', async () => {
+    // Every row shows a StatEdge line beside the market's. The measurement
+    // behind those lines is on the board itself, not only on the game page a
+    // tap away, and it is above the rows rather than under them.
+    renderDashboard()
+    const note = await screen.findByText(/no demonstrated edge on this league/i)
+    const firstRow = screen.getAllByText(/StatEdge/)[0]
+    expect(note.compareDocumentPosition(firstRow) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .toBeTruthy()
+  })
+
   it('says plainly when there is nothing scheduled at all', async () => {
     vi.spyOn(api, 'board').mockResolvedValue({
       ...mergedBoard([]),
@@ -222,19 +233,41 @@ describe('The headline record', () => {
     expect(await screen.findByText('88–15')).toBeInTheDocument()
   })
 
-  it('does not call a straight-up hit rate "accuracy"', async () => {
-    // "Accuracy 85%" reads as "StatEdge is right 85% of the time". What it
-    // counts is how often the favoured side won, which is a different claim.
+  it('says what the record counts rather than calling it accuracy', async () => {
+    // "Accuracy 85%" reads as "StatEdge is right 85% of the time", and a
+    // record sitting beside an ROI reads as a betting record. It is neither:
+    // it counts how often the side the model favoured won.
     withPerformance({ total_picks: 103, wins: 88, losses: 15, win_rate: 88 / 103, roi_pct: null })
-    expect(await screen.findByText('85%')).toBeInTheDocument()
-    expect(screen.getByText(/winner called/i)).toBeInTheDocument()
+    expect(await screen.findByText(/the side the model favoured won/i)).toBeInTheDocument()
     expect(screen.queryByText(/^accuracy$/i)).not.toBeInTheDocument()
+  })
+
+  it('links to the full record so the headline figure can be checked', async () => {
+    withPerformance({ total_picks: 103, wins: 88, losses: 15, win_rate: 88 / 103, roi_pct: null })
+    const link = await screen.findByRole('link', { name: /full record/i })
+    expect(link).toHaveAttribute('href', '/results')
   })
 
   it('says why ROI is blank instead of leaving a bare dash', async () => {
     withPerformance({ total_picks: 103, wins: 88, losses: 15, win_rate: 88 / 103, roi_pct: null })
     expect(await screen.findByText(/needs a published price/i)).toBeInTheDocument()
     expect(screen.getByText(/not a betting return/i)).toBeInTheDocument()
+  })
+
+  it('reports closing line value against the number of games it is averaged over', async () => {
+    // An average of +0.4 points over nine games and over nine hundred are
+    // very different claims, so the denominator ships with the figure.
+    withPerformance({
+      total_picks: 103, wins: 88, losses: 15, win_rate: 88 / 103, roi_pct: null,
+      avg_clv_points: 0.42, clv_tracked: 61,
+    })
+    expect(await screen.findByText('+0.42')).toBeInTheDocument()
+    expect(screen.getByText(/61 tracked/i)).toBeInTheDocument()
+  })
+
+  it('does not show a closing line value it has not measured', async () => {
+    withPerformance({ total_picks: 103, wins: 88, losses: 15, win_rate: 88 / 103, roi_pct: null })
+    expect(await screen.findByText(/not tracked yet/i)).toBeInTheDocument()
   })
 
   it('drops the ROI caveat once there is a real return to show', async () => {

@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { NavLink, Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { NotificationCentre } from './NotificationCentre'
 import { useSession } from '../../session/SessionProvider'
+import { can } from '../../session/powers'
 import { AvatarMenu } from './AvatarMenu'
+import { Layers, Paper, Person, Search, Spark, Ticked, Trend } from './icons'
 
 /**
  * Primary destinations, in the order they appear on desktop.
@@ -34,6 +36,65 @@ const linkCls = ({ isActive }: { isActive: boolean }) =>
     isActive ? 'bg-brand-soft text-brand' : 'text-zinc-400 hover:bg-terminal-muted hover:text-zinc-100'
   }`
 
+/**
+ * The section chips: one secondary nav below `lg`, and only one.
+ *
+ * This row carries what the five-slot bottom bar cannot, and nothing it
+ * already has. For a while the app shipped both this and a second pill row
+ * underneath it, which put Games in two places, stacked 113px of navigation
+ * on a 844px phone and pushed the thing each page is about off the first
+ * screen. Games, Results, Ask Edge and Edges are in the bottom bar, so they
+ * are deliberately absent here.
+ *
+ * Every chip is a destination that exists. The temptation with a design like
+ * this is to add an "Insights" tab because the row looks better with five —
+ * a chip that leads nowhere, or to a page assembled to justify the chip, is
+ * how a product starts lying about what it has.
+ */
+function SectionChips() {
+  const { user, entitlements } = useSession()
+  const chips = [
+    { to: '/leaderboard', label: 'Leaderboard', Icon: Layers, end: false },
+    { to: '/parlay', label: 'Parlays', Icon: Ticked, end: false },
+    { to: '/news', label: 'News', Icon: Paper, end: false },
+    { to: '/ask', label: 'Ask Edge', Icon: Spark, end: false },
+    { to: '/results', label: 'Results', Icon: Trend, end: false },
+    // Settings — and with it Log out — has to be reachable on a phone
+    // without hunting: the avatar menu beside the logo is desktop-only.
+    ...(user ? [{ to: '/account', label: 'Settings', Icon: Person, end: false }] : []),
+    { to: '/faq', label: 'FAQ', Icon: Paper, end: false },
+    // Without this an admin on a phone has no route to the portal at all.
+    ...(can(entitlements, 'view_staff')
+      ? [{ to: '/staff', label: 'Staff', Icon: Layers, end: false }]
+      : []),
+  ]
+
+  return (
+    <nav aria-label="More sections" data-nav="more" className="overflow-x-auto no-scrollbar">
+      <ul className="flex items-center gap-2 px-4 pb-3">
+        {chips.map(({ to, label, Icon, end }) => (
+          <li key={to} className="shrink-0">
+            <NavLink
+              to={to}
+              end={end}
+              className={({ isActive }) =>
+                `tap inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-bold transition ${
+                  isActive
+                    ? 'bg-brand text-white shadow-card'
+                    : 'bg-terminal-muted text-zinc-400 hover:text-zinc-100'
+                }`
+              }
+            >
+              <Icon size={17} />
+              {label}
+            </NavLink>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  )
+}
+
 function SearchBox({ className = '' }: { className?: string }) {
   const navigate = useNavigate()
   const [params] = useSearchParams()
@@ -51,20 +112,16 @@ function SearchBox({ className = '' }: { className?: string }) {
     >
       <label htmlFor="site-search" className="sr-only">Search teams and games</label>
       <div className="relative">
-        <svg
-          className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500"
-          width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-          strokeWidth="2" strokeLinecap="round" aria-hidden="true"
-        >
-          <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
-        </svg>
+        <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500">
+          <Search size={18} />
+        </span>
         <input
           id="site-search"
           type="search"
           value={q}
           onChange={e => setQ(e.target.value)}
-          placeholder="Search teams"
-          className="h-9 w-full rounded-lg border border-terminal-border bg-terminal-muted pl-8 pr-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-brand focus:bg-terminal-surface"
+          placeholder="Search teams, games, or markets…"
+          className="h-11 w-full rounded-full border border-terminal-border bg-terminal-muted pl-10 pr-4 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-brand focus:bg-terminal-surface"
         />
       </div>
     </form>
@@ -142,11 +199,15 @@ function AccountArea() {
         >
           Log in
         </Link>
+        {/* "Create account" is 143px of button. On a 320px screen that is
+            where the header ran out of room, so the narrow label is the one
+            the bottom bar already uses for the same destination. */}
         <Link
           to="/register"
           className="tap inline-flex items-center whitespace-nowrap rounded-lg bg-brand px-3 text-sm font-semibold text-white hover:bg-brand-strong"
         >
-          Create account
+          <span className="sm:hidden">Join</span>
+          <span className="hidden sm:inline">Create account</span>
         </Link>
       </div>
     )
@@ -172,10 +233,20 @@ function AccountArea() {
 export function TopBar() {
   return (
     <header className="sticky top-0 z-40 border-b border-terminal-border bg-terminal-bg/95 backdrop-blur">
-      <div className="mx-auto flex w-full max-w-app items-center gap-3 px-4 py-2.5">
-        <Link to="/" className="shrink-0 whitespace-nowrap font-display text-2xl font-black leading-none tracking-tight">
-          <span className="text-zinc-100">Stat</span>
-          <span className="text-brand"> Edge</span>
+      <div className="mx-auto flex w-full max-w-app items-center gap-3 px-4 pb-2 pt-3">
+        <Link to="/" className="shrink-0 whitespace-nowrap">
+          <span className="block font-display text-[26px] font-black leading-none tracking-tight">
+            <span className="text-zinc-100">Stat</span>
+            <span className="text-brand"> Edge</span>
+          </span>
+          {/* The promise, in the smallest type on the page. It is a claim the
+              product now has the backtest to stand behind. Hidden on a phone:
+              set in 10px with 0.18em of tracking it is wider than the logo
+              above it, and at 390px it pushed the account button off the
+              right edge of the page. */}
+          <span className="mt-1 hidden text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500 sm:block">
+            Data driven. Better decisions.
+          </span>
         </Link>
 
         {/* Desktop navigation. Below `lg` the bottom bar takes over: six links
@@ -198,9 +269,17 @@ export function TopBar() {
         </div>
       </div>
 
-      {/* Mobile search sits on its own row so the header stays compact. */}
-      <div className="border-t border-terminal-border/60 px-4 py-2 xl:hidden">
+      {/* Search gets its own full-width row below `xl`, where there is no room
+          for it beside the logo. */}
+      <div className="px-4 pb-3 xl:hidden">
         <SearchBox />
+      </div>
+
+      {/* Below `lg` the bottom bar carries the five primary destinations and
+          this row carries the rest; above it the header nav plus its More menu
+          takes over and the chips would be a second copy of the same links. */}
+      <div className="lg:hidden">
+        <SectionChips />
       </div>
     </header>
   )

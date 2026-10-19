@@ -6,7 +6,10 @@ import { NewsStrip } from '../components/news/NewsStrip'
 import { UpsetWatch } from '../components/game/UpsetWatch'
 import { BestLivePicks } from '../components/game/BestLivePicks'
 import { WinnerCall } from '../components/game/WinnerCall'
-import { FairLine } from '../components/game/FairLine'
+import { TodaysEdge } from '../components/board/TodaysEdge'
+import { LiveStrip } from '../components/board/LiveStrip'
+import { GameRow } from '../components/board/GameRow'
+import { ValidationNote } from '../components/board/ValidationNote'
 import { FaqList } from '../components/faq/FaqList'
 import { oddsSourceSentence } from '../components/OddsSource'
 import { FAQ, FAQ_PREVIEW_IDS } from '../content/faq'
@@ -21,30 +24,12 @@ const LEAGUE_LABEL: Record<string, string> = { ncaaf: 'NCAAF', nfl: 'NFL' }
 const VISIBLE_STEP = 24
 
 const pct = (v?: number | null) => (v == null ? '—' : `${Math.round(v * 100)}%`)
-const fmtSpread = (s?: number | null) => (s == null ? '—' : s > 0 ? `+${s}` : `${s}`)
 const dec = (a: number) => (a > 0 ? 1 + a / 100 : 1 + 100 / Math.abs(a))
 function noVigHome(h?: number | null, a?: number | null): number | null {
   if (h == null || a == null) return null
   const ih = 1 / dec(h), ia = 1 / dec(a)
   return ih / (ih + ia)
 }
-function fmtTime(iso: string): string {
-  const d = new Date(iso)
-  if (isNaN(d.getTime())) return ''
-  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
-}
-
-type Verdict = 'pick' | 'fade' | 'none'
-function pair(p: number | null | undefined, topIsHigh: boolean): [Verdict, Verdict] {
-  if (p == null) return ['none', 'none']
-  const topPicked = topIsHigh ? p >= 0.5 : p < 0.5
-  return [topPicked ? 'pick' : 'fade', topPicked ? 'fade' : 'pick']
-}
-const pillCls = (v: Verdict) =>
-  v === 'pick' ? 'border-signal-green/50 bg-signal-green/15 text-signal-green'
-  : v === 'fade' ? 'border-signal-red/40 bg-signal-red/10 text-signal-red'
-  : 'border-terminal-border bg-terminal-muted/60 text-zinc-300'
-
 function TeamLogo({ url, abbr }: { url?: string; abbr: string }) {
   return url
     ? <img src={url} alt="" className="h-7 w-7 object-contain" loading="lazy" />
@@ -56,86 +41,6 @@ function LeagueTag({ league }: { league: string }) {
     <span className="rounded border border-terminal-border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
       {LEAGUE_LABEL[league] ?? league.toUpperCase()}
     </span>
-  )
-}
-
-// ─── Header scores strip ──────────────────────────────────────────────────────
-function ScoresStrip({ games }: { games: BoardEntry[] }) {
-  if (games.length === 0) return null
-  return (
-    <div className="flex items-stretch gap-0 overflow-x-auto border-b border-terminal-border/60 text-sm no-scrollbar">
-      {games.slice(0, 14).map(({ game: g, league }) => {
-        const live = g.state === 'in'
-        const done = g.state === 'post'
-        return (
-          <Link key={`${league}-${g.event_id}`} to={`/game/${league}/${g.event_id}`} state={{ game: g }}
-            className="flex shrink-0 flex-col justify-center border-l border-terminal-border/60 px-3 py-2 first:border-l-0 hover:bg-terminal-muted/40">
-            <span className="flex items-center gap-1.5 whitespace-nowrap font-semibold text-zinc-100">
-              {live && <span className="h-1.5 w-1.5 rounded-full bg-signal-green" />}
-              {g.away_abbr} {live || done ? g.away_score ?? 0 : ''}
-              <span className="text-zinc-500">{live || done ? '–' : '@'}</span>
-              {live || done ? `${g.home_score ?? 0} ` : ''}{g.home_abbr}
-            </span>
-            <span className={`whitespace-nowrap text-xs ${live ? 'text-signal-green' : 'text-zinc-500'}`}>
-              {live ? `${g.period ? `Q${g.period} ` : ''}${g.clock || g.detail}` : g.detail}
-            </span>
-          </Link>
-        )
-      })}
-    </div>
-  )
-}
-
-// ─── Stat bar ─────────────────────────────────────────────────────────────────
-/**
- * The record, stated as the thing it actually measures.
- *
- * This said "Accuracy 85%", which reads as "StatEdge is right 85% of the
- * time". What it counts is how often the side the model favoured went on to
- * win — dominated by correctly picking heavy college favourites, and not a
- * measure of whether following it made money. The number beside it that would
- * answer that, ROI, is blank whenever the book published no price for the side
- * we took, and a blank next to a flattering percentage is the misleading half
- * of the pair. Both now say what they are.
- */
-function StatBar({ acc }: { acc: AccuracyResponse | null }) {
-  const perf = acc?.performance
-  const total = perf?.total_picks ?? 0
-  const wr = perf?.win_rate ?? null
-  // Stated by the API rather than rebuilt from a rounded rate.
-  const wins = perf?.wins ?? 0
-  const losses = perf?.losses ?? Math.max(0, total - wins)
-  const record = total > 0 ? `${wins}–${losses}` : '0–0'
-  const roi = perf?.roi_pct
-  const roiStr = roi == null ? '—' : `${roi >= 0 ? '+' : ''}${roi.toFixed(1)}%`
-  const hit = wr == null ? '—' : `${Math.round(wr * 100)}%`
-  const cells: [string, string, string][] = [
-    ['Record', record, 'text-zinc-100'],
-    ['ROI', roiStr, (roi ?? 0) >= 0 ? 'text-signal-green' : 'text-signal-red'],
-    ['Winner called', hit, 'text-zinc-100'],
-  ]
-  return (
-    <div>
-      <div className="grid grid-cols-3 overflow-hidden rounded-2xl border border-terminal-border bg-terminal-surface">
-        {cells.map(([l, v, c], i) => (
-          <div key={l} className={`px-4 py-3 text-center ${i > 0 ? 'border-l border-terminal-border' : ''}`}>
-            <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">{l}</p>
-            <p className={`mt-0.5 font-mono text-2xl font-black tabular-nums ${c}`}>{v}</p>
-          </div>
-        ))}
-      </div>
-      {total > 0 && (
-        <p className="mt-1.5 px-1 text-center text-xs leading-relaxed text-zinc-500">
-          How often the side the model favoured won, over {total} graded
-          pre-game {total === 1 ? 'pick' : 'picks'}. It is not a betting return.
-          {roi == null && ' ROI needs a published price on the side we took; with none on file it stays blank rather than being estimated.'}
-          {' '}
-          <Link to="/results" className="font-semibold text-brand hover:underline">
-            Full record ›
-          </Link>
-        </p>
-      )}
-    </div>
   )
 }
 
@@ -229,113 +134,6 @@ function bestEdge(edges: EdgeOut[]): EdgeOut | null {
   return ab.length ? ab.reduce((x, y) => (y.edge_pp > x.edge_pp ? y : x)) : null
 }
 
-function marketKey(market: string): string {
-  const m = market.toLowerCase()
-  return m.includes('total') ? 'total' : m.includes('spread') ? 'spread' : 'moneyline'
-}
-
-function EdgeCard({ entry }: { entry: BoardEntry }) {
-  const { game: g, model: m, league } = entry
-  // Not every game has an edge worth naming, and a followed team's game is
-  // shown whether it does or not. The non-null assertions here used to crash
-  // the whole board on the first game without one.
-  const e = bestEdge(entry.edges)
-  const spread = g.market_spread
-  const ou = g.market_over_under
-  // An unmapped game has no model at all, which is a real state on the board.
-  const [sprTop, sprBot] = pair(m?.home_cover_prob ?? null, false) // top=away
-  const [ouTop, ouBot] = pair(m?.over_prob ?? null, true)          // top=Over
-
-  const Pill = ({ v, verdict }: { v: string; verdict: Verdict }) => (
-    <div className={`grid h-9 w-[68px] place-items-center rounded-lg border text-[13px] font-bold tabular-nums ${pillCls(verdict)}`}>{v}</div>
-  )
-  return (
-    <div className="rounded-2xl border border-terminal-border bg-terminal-surface p-4">
-      <div className="mb-3 flex items-center justify-between gap-2 text-xs text-zinc-500">
-        <span>{g.state === 'post' ? g.detail : fmtTime(g.kickoff)}</span>
-        <LeagueTag league={league} />
-      </div>
-      <div className="flex items-center gap-3">
-        <div className="min-w-0 flex-1 space-y-3">
-          <div className="flex items-center gap-2.5"><TeamLogo url={g.away_logo} abbr={g.away_abbr} /><span className="truncate text-[15px] font-bold text-zinc-100">{g.away}</span></div>
-          <div className="flex items-center gap-2.5"><TeamLogo url={g.home_logo} abbr={g.home_abbr} /><span className="truncate text-[15px] font-bold text-zinc-100">{g.home}</span></div>
-        </div>
-        <div className="flex shrink-0 gap-4">
-          <div className="space-y-2">
-            <p className="text-center text-xs font-semibold uppercase tracking-wide text-zinc-500">Spread</p>
-            <Pill v={spread != null ? fmtSpread(-spread) : '—'} verdict={sprTop} />
-            <Pill v={spread != null ? fmtSpread(spread) : '—'} verdict={sprBot} />
-          </div>
-          <div className="space-y-2">
-            <p className="text-center text-xs font-semibold uppercase tracking-wide text-zinc-500">Total</p>
-            <Pill v={ou != null ? `O ${ou}` : '—'} verdict={ouTop} />
-            <Pill v={ou != null ? `U ${ou}` : '—'} verdict={ouBot} />
-          </div>
-        </div>
-      </div>
-
-      {/* The line StatEdge would set, the line on offer, and the gap. The
-          pills above give probabilities; this gives the number those
-          probabilities come from, which is what a reader is actually
-          comparing against their sportsbook. */}
-      {entry.value && (
-        <div className="mt-3 border-t border-terminal-border/70 pt-3">
-          <FairLine value={entry.value} compact />
-        </div>
-      )}
-
-      {/* Who actually wins the game. The pills above answer the spread and the
-          total; this answers the question most people arrive with, and it
-          routinely names a different team from the spread pick. */}
-      {m?.winner && (
-        <div className="mt-3 border-t border-terminal-border/70 pt-3">
-          <WinnerCall winner={m.winner} />
-        </div>
-      )}
-
-      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-terminal-border/70 pt-3">
-        {e ? (
-          <>
-            <Stat label="Model" value={pct(e.model_prob)} />
-            <Stat label="Market" value={pct(e.market_prob)} />
-            <Stat label="Edge" value={`+${e.edge_pp.toFixed(0)}%`} green />
-            <Link to={`/game/${league}/${g.event_id}?market=${marketKey(e.market)}`} state={{ game: g }}
-              className="rounded-lg border border-signal-amber/50 bg-signal-amber/15 px-3 py-1.5 text-[13px] font-bold text-signal-amber">
-              {e.rating} · {e.selection} ›
-            </Link>
-            <Link to={`/game/${league}/${g.event_id}?market=${marketKey(e.market)}#why`} state={{ game: g }} className="ml-auto whitespace-nowrap text-xs font-semibold text-zinc-400 hover:text-zinc-200">
-              Why this edge? ›
-            </Link>
-          </>
-        ) : (
-          <>
-            {/* Beyond the board's projection cap the model has not been run on
-                this game at all, which is a different thing from having run and
-                found nothing. Saying "no edge" for either would be a claim the
-                model never made. */}
-            <span className="text-xs text-zinc-500">
-              {entry.projected
-                ? 'The model and the market agree on this one — no edge is claimed.'
-                : 'Not projected yet — opening the game runs the model on it.'}
-            </span>
-            <Link to={`/game/${league}/${g.event_id}`} state={{ game: g }} className="ml-auto whitespace-nowrap text-xs font-semibold text-zinc-400 hover:text-zinc-200">
-              View game ›
-            </Link>
-          </>
-        )}
-      </div>
-    </div>
-  )
-}
-function Stat({ label, value, green }: { label: string; value: string; green?: boolean }) {
-  return (
-    <div>
-      <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">{label}</p>
-      <p className={`font-mono text-sm font-bold tabular-nums ${green ? 'text-signal-green' : 'text-zinc-100'}`}>{value}</p>
-    </div>
-  )
-}
-
 /**
  * A game that has already been played.
  *
@@ -378,9 +176,12 @@ function FinalCard({ entry }: { entry: BoardEntry }) {
 }
 
 function GameCard({ entry }: { entry: BoardEntry }) {
+  // A game in progress and a finished one are different objects with
+  // different information on them — a score and a clock, or a result. Only
+  // the not-yet-played case is the market-against-model row.
   if (entry.game.state === 'in') return <LiveCard entry={entry} />
   if (entry.game.state === 'post') return <FinalCard entry={entry} />
-  return <EdgeCard entry={entry} />
+  return <GameRow entry={entry} />
 }
 
 /** Live first, then the biggest claimed edge, then kickoff order. */
@@ -483,24 +284,10 @@ export function Dashboard() {
 
   return (
     <div className="pb-4">
-      <ScoresStrip games={liveGames.length > 0 ? liveGames : dayGames} />
-
       <div className="mx-auto w-full max-w-[1200px] space-y-4 px-4 pt-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="font-display text-3xl font-black tracking-tight text-zinc-100">Game Center</h1>
-            <p className="mt-0.5 text-sm text-zinc-400">
-              NFL and college football on one board, with the model’s number beside the market’s.
-            </p>
-          </div>
-          {liveGames.length > 0 && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-signal-green/15 px-3 py-1.5 text-xs font-bold text-signal-green">
-              <span className="h-1.5 w-1.5 rounded-full bg-signal-green animate-pulse" /> {liveGames.length} LIVE
-            </span>
-          )}
-        </div>
+        <LiveStrip games={liveGames} />
 
-        <StatBar acc={acc} />
+        <TodaysEdge acc={acc} liveCount={liveGames.length} />
 
         {query.trim() && (
           <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -546,6 +333,12 @@ export function Dashboard() {
 
         {error && <div className="rounded-2xl border border-signal-red/40 bg-terminal-surface p-4 text-sm text-signal-red">Couldn’t load games: {error}</div>}
         {loading && !data && <div className="space-y-4"><div className="skeleton h-40 rounded-2xl" /><div className="skeleton h-44 rounded-2xl" /></div>}
+
+        {/* Said before the first number on the board, not after the last.
+            Every row below shows a StatEdge line beside the market's, and
+            what the backtest found about those lines belongs in front of
+            them rather than in a footnote under two hundred cards. */}
+        <ValidationNote entries={dayGames} />
 
         {/* Games in progress first — they are the reason someone has the page
             open — then the disagreements on what has yet to be played. */}
