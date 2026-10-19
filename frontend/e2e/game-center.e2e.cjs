@@ -123,6 +123,66 @@ const detail = {
   polymarket: null, snapshot: null,
 }
 
+/**
+ * The homepage board.
+ *
+ * Built from the same `game`, `model`, `value` and `why` objects as the game
+ * stub above, so the two cannot drift apart, with an NFL game added because
+ * the NFL is the league whose backtest result the board has to carry — a
+ * college-only stub would render the board with the wrong disclosure on it
+ * and the check below would pass on a page that never shows the real one.
+ */
+const nflGame = {
+  ...game, league: 'nfl', event_id: '401671',
+  home: 'Kansas City Chiefs', away: 'Baltimore Ravens',
+  home_abbr: 'KC', away_abbr: 'BAL', detail: 'Sun 4:25 PM',
+}
+const liveNflGame = {
+  ...nflGame, event_id: '401672', state: 'in',
+  home_score: 21, away_score: 17, period: 3, clock: '4:12',
+  home: 'Buffalo Bills', away: 'New York Jets', home_abbr: 'BUF', away_abbr: 'NYJ',
+}
+
+const entry = (g, league, validation) => ({
+  league, projected: true, mapped: true, game: g,
+  model: detail.model, edges: [], polymarket: null,
+  value: { ...detail.value, validation },
+  why: detail.why,
+})
+
+const nflValidation = {
+  measured: true, games: 750, beats_market: false,
+  note: 'Backtested over 750 NFL games: the model alone is less accurate than the closing line.',
+}
+
+const board = {
+  days: [{
+    date: '2026-10-18', label: 'Today', live: 1,
+    by_league: { nfl: 2, ncaaf: 1 },
+    games: [
+      entry(liveNflGame, 'nfl', nflValidation),
+      entry(nflGame, 'nfl', nflValidation),
+      entry(game, 'ncaaf', detail.value.validation),
+    ],
+  }],
+  live_count: 1, total_games: 3, predicted: 3, leagues: ['nfl', 'ncaaf'],
+  source_ok: true, fetched_at: iso(), market_source: 'ESPN BET', note: '',
+}
+
+// The hero's three tiles are measured figures or nothing, so the stub carries
+// a real graded record, a priced ROI and a tracked closing-line average.
+const accuracy = {
+  overall: { total: 103, correct: 88, accuracy: 88 / 103 },
+  by_league: {}, pending: 4, note: '', scope: 'pregame',
+  performance: {
+    total_picks: 103, wins: 88, losses: 15, win_rate: 88 / 103,
+    priced_picks: 103, roi_pct: 4.2, profit_units: 4.33,
+    avg_clv_points: 0.42, clv_tracked: 61, clv_beat_close: 38,
+    avg_edge_pp: 3.1, series: [], ats: null, totals: null,
+  },
+  recent: [],
+}
+
 const checks = []
 function check(name, ok, extra = '') {
   checks.push({ name, ok, extra })
@@ -226,6 +286,86 @@ async function main() {
       }
 
       check(`[${name}] no runtime errors`, errors.length === 0, errors.join('; '))
+      await page.close()
+    }
+
+    // ── The homepage board ───────────────────────────────────────────────
+    // The board was redesigned as a dark hero over a scrolling live strip and
+    // a two-column grid of rows. Every one of those is an overflow risk at
+    // 390px and none of it was measured anywhere before this block.
+    // 320px is in the list because that is where it broke: the header's
+    // account button and the game row's number column were each sized for a
+    // phone wider than the narrowest one people still use, or than anyone
+    // gets by zooming in.
+    for (const [w, h, name] of [[320, 568, 'narrow'], [390, 844, 'mobile'], [768, 1024, 'tablet'], [1440, 900, 'desktop']]) {
+      const page = await browser.newPage({ viewport: { width: w, height: h } })
+      const errors = []
+      page.on('pageerror', e => errors.push(e.message))
+      // Registered first so the specific routes below take precedence: an
+      // unstubbed call must fail as JSON rather than be served index.html.
+      await page.route('**/api/v1/**', r => r.fulfill({ status: 404, json: { detail: 'not stubbed' } }))
+      await page.route('**/api/v1/board**', r => r.fulfill({ json: board }))
+      await page.route('**/api/v1/accuracy**', r => r.fulfill({ json: accuracy }))
+      await page.route('**/api/v1/news**', r =>
+        r.fulfill({ json: { fetched_at: iso(), source_ok: true, items: [] } }))
+
+      await page.goto(`${BASE}/`, { waitUntil: 'networkidle' })
+      await page.waitForSelector('#todays-edge', { timeout: 10000 })
+
+      // 1. The headline figures are the measured ones, with their denominators.
+      check(`[board/${name}] hero shows the graded record and its denominator`,
+        (await page.getByText('88–15').first().isVisible()) &&
+        (await page.getByText('103 graded picks').first().isVisible()))
+      check(`[board/${name}] hero shows a priced ROI and a tracked CLV`,
+        (await page.getByText('+4.2%').first().isVisible()) &&
+        (await page.getByText('+0.42').first().isVisible()) &&
+        (await page.getByText(/61 tracked/).first().isVisible()))
+      // The record is a winner record sitting beside an ROI, so the page has
+      // to say which it is — and link to where it can be checked.
+      check(`[board/${name}] the record says what it counts, and links to it`,
+        (await page.getByText(/the side the model favoured won/i).first().isVisible()) &&
+        (await page.getByRole('link', { name: /full record/i }).first().isVisible()))
+
+      // 2. The backtest result is on the board, above the first row — not
+      //    only on the game page one tap away.
+      const noteBox = await page.getByText(/no demonstrated edge on this league/i).first().boundingBox()
+      const rowBox = await page.getByText('StatEdge', { exact: true }).first().boundingBox()
+      check(`[board/${name}] the NFL backtest result is above the first row`,
+        !!noteBox && !!rowBox && noteBox.y < rowBox.y,
+        noteBox && rowBox ? `note=${Math.round(noteBox.y)} row=${Math.round(rowBox.y)}` : 'missing')
+
+      // 3. A game in progress is on the board, and says so.
+      check(`[board/${name}] a live game is on the board with its clock`,
+        await page.getByText('Q3 4:12').first().isVisible())
+
+      // 4. Nav, as on the game page: exactly one, and the right one.
+      const bottomVisible = await page.locator('[data-nav="bottom"]').isVisible()
+      const topVisible = await page.locator('[data-nav="top"]').isVisible()
+      check(`[board/${name}] exactly one primary nav is visible`, bottomVisible !== topVisible)
+      check(`[board/${name}] correct nav for this width`,
+        name === 'desktop' ? topVisible : bottomVisible)
+
+      // 5. The raised centre button in the bottom bar sticks out of its row.
+      //    It must not stick out of the viewport.
+      if (bottomVisible) {
+        const btn = await page.locator('[data-nav="bottom"] a').nth(2).boundingBox()
+        check(`[board/${name}] the raised nav button stays inside the viewport`,
+          !!btn && btn.x >= 0 && btn.x + btn.width <= w && btn.y >= 0,
+          btn ? `x=${Math.round(btn.x)} w=${Math.round(btn.width)}` : 'missing')
+      }
+
+      // 6. No horizontal overflow — the hero, the chip row and the live strip
+      //    all scroll inside themselves or not at all.
+      const overflow = await page.evaluate(() =>
+        document.documentElement.scrollWidth - document.documentElement.clientWidth)
+      check(`[board/${name}] no horizontal overflow`, overflow <= 1, `overflow=${overflow}px`)
+
+      // 7. The hero is the first thing on the page, at every width.
+      const hero = await page.locator('#todays-edge').boundingBox()
+      check(`[board/${name}] the hero is above the fold`, !!hero && hero.y < h,
+        hero ? `y=${Math.round(hero.y)}` : 'missing')
+
+      check(`[board/${name}] no runtime errors`, errors.length === 0, errors.join('; '))
       await page.close()
     }
 

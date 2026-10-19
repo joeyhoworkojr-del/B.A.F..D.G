@@ -1,7 +1,31 @@
 import type {
   BoardEntry, BoardResponse, FootballLeague,
-  GameDetailOut, LiveGameOut, MarketOut, TodayResponse,
+  GameDetailOut, LiveGameOut, MarketOut, TodayResponse, ValidationOut,
 } from '../types'
+
+/**
+ * What the backtest actually found, per league, copied from the API.
+ *
+ * The two leagues are in genuinely different states — the NFL's game lines
+ * are measured and did not beat the close, college football is not measured
+ * at all — and a fixture that flattened them to one note would let a board
+ * ship showing one claim for both.
+ */
+export const nflValidation: ValidationOut = {
+  measured: true, games: 750, beats_market: false,
+  note:
+    'Backtested over 750 NFL games: the model alone is less accurate than ' +
+    "the closing line (spread RMSE 12.69 against 12.08), so the line below " +
+    "is mostly the market's.",
+}
+
+export const ncaafValidation: ValidationOut = {
+  measured: false, games: 0, beats_market: null,
+  note:
+    'Not backtested. There is no historical college line and result set ' +
+    "available here, so this league's accuracy against the market is " +
+    'unknown rather than good or bad.',
+}
 
 export const pregameGame: LiveGameOut = {
   league: 'ncaaf', event_id: '401752',
@@ -117,6 +141,7 @@ export function gameDetail(overrides: Partial<GameDetailOut> = {}): GameDetailOu
         ],
         means: "How much of the model's input was available for this game. Not the chance a bet wins.",
       },
+      validation: ncaafValidation,
     },
     why: {
       fair_label: 'FSU -4.8', side: 'home', side_abbr: 'FSU', points: 1.8,
@@ -186,6 +211,8 @@ export function boardEntry(
     polymarket: null,
     value: detail.value && {
       ...detail.value,
+      // Per league, because the backtest is per league.
+      validation: league === 'nfl' ? nflValidation : ncaafValidation,
       spread: {
         ...detail.value.spread,
         // The abbreviation has to belong to a team in this game, or a card
