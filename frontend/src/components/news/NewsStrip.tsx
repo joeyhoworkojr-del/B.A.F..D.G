@@ -55,7 +55,7 @@ export function NewsStrip() {
               href={item.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex h-full flex-col rounded-xl border border-terminal-border bg-terminal-surface px-3.5 py-3 hover:border-zinc-500"
+              className="flex h-full flex-col rounded-card border border-terminal-border bg-terminal-surface px-3.5 py-3 hover:border-zinc-500"
             >
               <span className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
                 {item.league && item.league !== 'all' && <span>{item.league.toUpperCase()}</span>}

@@ -4,6 +4,7 @@ import { api } from '../api/client'
 import { PickRow, RecordSummary } from '../components/record/RecordSummary'
 import { useSession } from '../session/SessionProvider'
 import type { MyPicksOut } from '../types'
+import { PageHeader } from '../components/layout/PageHeader'
 
 export function MyEdge() {
   const { user, ready } = useSession()
@@ -26,10 +27,11 @@ export function MyEdge() {
 
   return (
     <div className="mx-auto w-full max-w-app px-4 py-6">
-      <h1 className="font-display text-2xl font-black text-zinc-100">My Edge</h1>
-      <p className="mt-1 text-sm text-zinc-400">
-        Your verified record. Every pick was published before its game started.
-      </p>
+      <PageHeader
+        eyebrow="Your record"
+        title="My Edge"
+        blurb="Your verified record. Every pick was published before its game started."
+      />
 
       {error && <p role="alert" className="mt-5 text-sm text-signal-red">{error}</p>}
       {!data && !error && <div className="skeleton mt-5 h-24 rounded-card" />}

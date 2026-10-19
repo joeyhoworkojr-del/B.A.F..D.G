@@ -52,7 +52,7 @@ export function UpsetWatch({ entries, limit = 3 }: { entries: BoardEntry[]; limi
               <Link
                 to={`/game/${entry.league}/${g.event_id}`}
                 state={{ game: g }}
-                className="flex h-full flex-col rounded-xl border border-signal-amber/40 bg-signal-amber-dim px-3.5 py-3 hover:border-signal-amber"
+                className="flex h-full flex-col rounded-card border border-signal-amber/40 bg-signal-amber-dim px-3.5 py-3 hover:border-signal-amber"
               >
                 <span className="text-[10px] font-bold uppercase tracking-wider text-signal-amber">
                   Model takes the underdog

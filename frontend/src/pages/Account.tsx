@@ -5,6 +5,7 @@ import { AvatarUpload } from '../components/account/AvatarUpload'
 import { FavouriteTeams } from '../components/account/FavouriteTeams'
 import { useSession } from '../session/SessionProvider'
 import { can } from '../session/powers'
+import { PageHeader } from '../components/layout/PageHeader'
 
 const FEATURE_LABEL: Record<string, string> = {
   line_movement_history: 'Line-movement history',
@@ -185,18 +186,17 @@ export function Account() {
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-6">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-black text-zinc-100">Account settings</h1>
-          <p className="mt-1 text-sm text-zinc-400">
-            Private to you. Your{' '}
-            <Link to={`/@${user.username}`} className="font-semibold text-brand hover:underline">
-              public profile
-            </Link>{' '}
-            is what everyone else sees.
-          </p>
-        </div>
-        {can(entitlements, 'view_staff') && (
+      <PageHeader
+        eyebrow="Your account"
+        title="Account settings"
+        blurb={<>
+          Private to you. Your{' '}
+          <Link to={`/@${user.username}`} className="font-semibold text-brand hover:underline">
+            public profile
+          </Link>{' '}
+          is what everyone else sees.
+        </>}
+        aside={can(entitlements, 'view_staff') && (
           <Link
             to="/staff"
             className="tap inline-flex items-center rounded-lg border border-terminal-border px-3 text-sm font-semibold text-zinc-400 hover:text-zinc-100"
@@ -204,7 +204,7 @@ export function Account() {
             Staff area
           </Link>
         )}
-      </header>
+      />
 
       <div className="mt-6 space-y-4">
         <Section title="Profile" description="Your photo, name and bio, as they appear across StatEdge.">

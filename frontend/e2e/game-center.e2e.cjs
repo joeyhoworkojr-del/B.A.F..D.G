@@ -11,6 +11,8 @@ const { chromium } = require('playwright-core')
 const { spawn } = require('node:child_process')
 const fs = require('node:fs')
 const path = require('node:path')
+const { stub } = require('./stub.cjs')
+const { CONTRAST_AUDIT, describe: describeContrast } = require('./a11y.cjs')
 
 const PORT = Number(process.env.E2E_PORT || 4325)
 const BASE = `http://localhost:${PORT}`
@@ -182,6 +184,16 @@ const accuracy = {
   },
   recent: [],
 }
+
+/**
+ * Every route the redesign touched. The game page and the board have their
+ * own blocks above; these are swept for the things that break app-wide.
+ */
+const PAGES = [
+  '/', '/best-bets', '/results', '/props', '/parlay', '/leaderboard',
+  '/news', '/faq', '/about', '/game/ncaaf/401752', '/account', '/my-edge',
+  '/login', '/register', '/ask', '/upcoming', '/live',
+]
 
 const checks = []
 function check(name, ok, extra = '') {
@@ -367,6 +379,37 @@ async function main() {
 
       check(`[board/${name}] no runtime errors`, errors.length === 0, errors.join('; '))
       await page.close()
+    }
+
+    // ── Every page, at the narrowest and the widest ───────────────────────
+    // The redesign changed the shell, the card radius, the page header and
+    // the whole colour palette, which touches every page in the app. These
+    // are the three things that break when that happens and that reading the
+    // diff will not tell you: the layout overflows, something throws, or a
+    // token ends up on a surface it cannot be read against.
+    for (const [w, h, name] of [[320, 568, 'narrow'], [1440, 900, 'wide']]) {
+      for (const route of PAGES) {
+        const page = await browser.newPage({ viewport: { width: w, height: h } })
+        const errors = []
+        page.on('pageerror', e => errors.push(e.message))
+        await stub(page)
+        await page.goto(`${BASE}${route}`, { waitUntil: 'networkidle' })
+        await page.waitForTimeout(500)
+
+        check(`[${name}] ${route} has one page heading`,
+          await page.locator('h1').count() === 1)
+
+        const overflow = await page.evaluate(() =>
+          document.documentElement.scrollWidth - document.documentElement.clientWidth)
+        check(`[${name}] ${route} no horizontal overflow`, overflow <= 1, `overflow=${overflow}px`)
+
+        const bad = await page.evaluate(CONTRAST_AUDIT)
+        check(`[${name}] ${route} text meets WCAG AA`, bad.length === 0,
+          bad.length ? `${bad.length} nodes — ${describeContrast(bad)}` : '')
+
+        check(`[${name}] ${route} no runtime errors`, errors.length === 0, errors.join('; '))
+        await page.close()
+      }
     }
 
     // Failure path: a dead feed must show an error, not a blank page.

@@ -133,7 +133,7 @@ export function GameDetail() {
       <div className="mx-auto w-full max-w-[1200px] px-4 py-6">
         <Link to="/" className="text-sm font-semibold text-zinc-300 hover:text-zinc-100">← Scores</Link>
         {loading
-          ? <div className="mt-4 space-y-3"><div className="skeleton h-28 rounded-xl" /><div className="skeleton h-40 rounded-xl" /></div>
+          ? <div className="mt-4 space-y-3"><div className="skeleton h-28 rounded-card" /><div className="skeleton h-40 rounded-card" /></div>
           : <p role="alert" className="mt-4 text-sm text-signal-red">{error || 'Game not found on the current board.'}</p>}
       </div>
     )

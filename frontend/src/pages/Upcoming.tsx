@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { DataFreshnessBadge } from '../components/game/DataFreshnessBadge'
 import type { FootballLeague, TodayGameOut, UpcomingResponse } from '../types'
+import { PageHeader } from '../components/layout/PageHeader'
 
 const LEAGUES: FootballLeague[] = ['ncaaf', 'nfl']
 const DAY_CHOICES = [3, 7, 14] as const
@@ -166,16 +167,15 @@ export function Upcoming() {
 
   return (
     <div className="mx-auto w-full max-w-app px-4 py-6">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-black text-zinc-100">Upcoming</h1>
-          <p className="mt-1 text-sm text-zinc-400">
-            Every scheduled NFL and college game in the next {days} days, each with the
-            model's pre-game call.
-          </p>
-        </div>
-        <DataFreshnessBadge fetchedAt={oldest} ok={sourceOk} source="ESPN" />
-      </header>
+      <PageHeader
+        eyebrow="Schedule"
+        title="Upcoming"
+        blurb={<>
+          Every scheduled NFL and college game in the next {days} days, each with the
+          model's pre-game call.
+        </>}
+        aside={<DataFreshnessBadge fetchedAt={oldest} ok={sourceOk} source="ESPN" />}
+      />
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <span className="text-xs font-bold uppercase tracking-wide text-zinc-500">League</span>

@@ -19,12 +19,12 @@ export function LockedPremiumPanel({ title, description, requires, children }: L
   const { has, loading } = useEntitlement(requires)
 
   if (loading) {
-    return <div className="skeleton h-24 rounded-xl" aria-busy="true" />
+    return <div className="skeleton h-24 rounded-card" aria-busy="true" />
   }
   if (has) return <>{children}</>
 
   return (
-    <section className="rounded-xl border border-dashed border-terminal-border bg-terminal-surface p-4">
+    <section className="rounded-card border border-dashed border-terminal-border bg-terminal-surface p-4">
       <div className="flex items-start gap-3">
         <span aria-hidden="true" className="mt-0.5 text-zinc-500">🔒</span>
         <div>

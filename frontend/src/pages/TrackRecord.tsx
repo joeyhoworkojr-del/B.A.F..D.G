@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { api } from '../api/client'
 import { Sparkline } from '../components/Sparkline'
 import type { AccuracyResponse, BetRecord, PerformanceOut, SignalScore } from '../types'
+import { PageHeader } from '../components/layout/PageHeader'
 
 const LEAGUE_LABEL: Record<string, string> = { nfl: 'NFL', cfl: 'CFL', mlb: 'MLB', wc: 'Soccer' }
 
@@ -10,7 +11,7 @@ const num = (v?: number | null, d = 2) => (v == null ? '—' : v.toFixed(d))
 
 function SignalCard({ label, score, best, accent }: { label: string; score?: SignalScore | null; best: boolean; accent: string }) {
   return (
-    <div className={`rounded-xl border bg-terminal-surface p-4 ${best ? 'border-signal-amber shadow-sm' : 'border-terminal-border'}`}>
+    <div className={`rounded-card border bg-terminal-surface p-4 ${best ? 'border-signal-amber shadow-sm' : 'border-terminal-border'}`}>
       <div className="flex items-center justify-between">
         <span className="text-xs font-body font-semibold uppercase tracking-widest" style={{ color: accent }}>{label}</span>
         {best && <span className="rounded-full bg-signal-amber-dim px-2 py-0.5 text-xs font-body font-semibold text-signal-amber">Most accurate</span>}
@@ -54,7 +55,7 @@ export function TrackRecord() {
     return (
       <div className="mx-auto max-w-5xl px-4 py-8 space-y-4">
         <div className="skeleton h-8 w-64 rounded" />
-        <div className="grid gap-4 sm:grid-cols-3">{[0, 1, 2].map(i => <div key={i} className="skeleton h-40 rounded-xl" />)}</div>
+        <div className="grid gap-4 sm:grid-cols-3">{[0, 1, 2].map(i => <div key={i} className="skeleton h-40 rounded-card" />)}</div>
       </div>
     )
   }
@@ -64,8 +65,8 @@ export function TrackRecord() {
   if (data.unavailable) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-12">
-        <h1 className="font-display text-3xl font-bold text-zinc-100">Results</h1>
-        <div className="mt-4 rounded-xl border border-signal-amber/40 bg-signal-amber-dim p-4">
+        <PageHeader eyebrow="Track record" title="Results" />
+        <div className="mt-4 rounded-card border border-signal-amber/40 bg-signal-amber-dim p-4">
           <p className="text-sm font-bold text-signal-amber">
             The track record can’t be read right now.
           </p>
@@ -88,18 +89,19 @@ export function TrackRecord() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 space-y-8">
-      <div>
-        <h1 className="font-display text-3xl font-bold text-zinc-100">Results</h1>
-        <p className="mt-1 max-w-2xl text-sm font-body text-zinc-400">
+      <PageHeader
+        eyebrow="Track record"
+        title="Results"
+        blurb={<>
           Every prediction is snapshotted before kickoff, frozen, and graded automatically against the final score.
           Nothing is edited after the fact. {pending > 0 && <span className="text-zinc-300">{pending} pick{pending === 1 ? '' : 's'} pending grading.</span>}
-        </p>
-      </div>
+        </>}
+      />
 
       {/* Two different things get called "the model's accuracy". They are kept
           apart here on purpose: only the pre-game record is graded. */}
       <div className="grid gap-3 md:grid-cols-2">
-        <section className="rounded-xl border border-terminal-border bg-terminal-surface p-4">
+        <section className="rounded-card border border-terminal-border bg-terminal-surface p-4">
           <h2 className="text-sm font-bold text-zinc-100">Pre-game predictions — graded</h2>
           <p className="mt-1.5 text-sm leading-relaxed text-zinc-400">
             {performance.total_picks > 0
@@ -123,7 +125,7 @@ export function TrackRecord() {
           )}
         </section>
 
-        <section className="rounded-xl border border-dashed border-terminal-border bg-terminal-muted p-4">
+        <section className="rounded-card border border-dashed border-terminal-border bg-terminal-muted p-4">
           <h2 className="text-sm font-bold text-zinc-100">Live in-game updates — not graded</h2>
           <p className="mt-1.5 text-sm leading-relaxed text-zinc-400">
             {data.live_note ??
@@ -139,32 +141,37 @@ export function TrackRecord() {
       {/* P/L chart — the "stock" view. Only shown once picks have actually
           graded; before that a zeroed chart would read as a real result. */}
       {performance.total_picks > 0 ? (
-        <div className="rounded-xl border border-terminal-border bg-terminal-surface p-5 card-lift">
+        /* The dark panel, as on the board. Results is the page the hero on
+           the homepage points at, so it gets the same treatment rather than
+           a lighter version of it — and every figure keeps the caveat that
+           belongs to it, directly underneath, where moving a number into a
+           tile of its own would have separated the two. */
+        <div className="rounded-hero bg-ink p-5 text-white">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
-              <p className="text-xs font-body font-semibold uppercase tracking-widest text-zinc-500">Model P/L — 1 unit per pick at fair book odds</p>
-              <p className={`mt-1 font-mono text-3xl font-bold ${profit >= 0 ? 'text-signal-green' : 'text-signal-red'}`}>
+              <p className="text-[11px] font-body font-bold uppercase tracking-[0.2em] text-brand-light">Model P/L — 1 unit per pick at fair book odds</p>
+              <p className={`mt-1 font-mono text-[40px] font-black leading-none ${profit >= 0 ? 'text-brand-light' : 'text-red-400'}`}>
                 {profit >= 0 ? '+' : ''}{num(profit)}u
               </p>
             </div>
-            <div className="flex gap-6 text-right">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {[
                 ['Graded picks', String(performance.total_picks)],
                 ['Historical hit rate', pct(performance.win_rate)],
                 ['Avg edge', performance.avg_edge_pp == null ? '—' : `${performance.avg_edge_pp.toFixed(1)}pp`],
                 ['ROI', performance.roi_pct == null ? '—' : `${performance.roi_pct >= 0 ? '+' : ''}${performance.roi_pct.toFixed(1)}%`],
               ].map(([l, v]) => (
-                <div key={l}>
-                  <p className="text-xs font-body uppercase tracking-wider text-zinc-500">{l}</p>
-                  <p className="font-mono text-sm font-semibold text-zinc-100">{v}</p>
+                <div key={l} className="min-w-0 rounded-card bg-ink-soft px-3 py-2 ring-1 ring-ink-line">
+                  <p className="text-[10px] font-body font-bold uppercase tracking-wider text-ink-muted">{l}</p>
+                  <p className="mt-0.5 font-mono text-base font-black tabular-nums text-white">{v}</p>
                 </div>
               ))}
             </div>
           </div>
           <div className="mt-4">
-            <Sparkline data={performance.series} id="track-pl" height={120} />
+            <Sparkline data={performance.series} id="track-pl" height={120} stroke="#10b981" surface="ink" />
           </div>
-          <p className="mt-3 border-t border-terminal-border pt-3 text-xs leading-relaxed text-zinc-500">
+          <p className="mt-3 border-t border-ink-line pt-3 text-xs leading-relaxed text-ink-muted">
             Historical hit rate is the share of past graded picks that came in. It is a
             backward-looking average, not a probability for any upcoming game — the model’s
             projection for a specific game is shown on that game’s page.
@@ -172,7 +179,7 @@ export function TrackRecord() {
           <MarketRecords performance={performance} />
         </div>
       ) : (
-        <div className="rounded-xl border border-dashed border-terminal-border bg-terminal-surface p-8 text-center">
+        <div className="rounded-card border border-dashed border-terminal-border bg-terminal-surface p-8 text-center">
           <p className="font-display text-lg font-semibold text-zinc-100">Profit/loss starts here</p>
           <p className="mx-auto mt-1 max-w-md text-sm font-body text-zinc-500">
             The P/L curve appears once graded games exist. Every prediction is snapshotted before kickoff
@@ -197,7 +204,7 @@ export function TrackRecord() {
         {overall.model?.brier != null && overall.book?.brier != null && (
           <div className={`rounded-lg border px-4 py-3 text-sm font-body ${
             overall.model.brier <= overall.book.brier
-              ? 'border-signal-green/40 bg-green-50 text-signal-green'
+              ? 'border-signal-green/40 bg-signal-green-dim text-signal-green'
               : 'border-terminal-border bg-terminal-muted text-zinc-500'
           }`}>
             {overall.model.brier <= overall.book.brier
@@ -211,7 +218,7 @@ export function TrackRecord() {
       {Object.keys(by_league).length > 0 && (
         <section className="space-y-3">
           <h2 className="font-display text-lg font-semibold text-zinc-100">By league</h2>
-          <div className="overflow-x-auto rounded-xl border border-terminal-border bg-terminal-surface">
+          <div className="overflow-x-auto rounded-card border border-terminal-border bg-terminal-surface">
             <table className="w-full text-left font-mono text-xs">
               <thead>
                 <tr className="border-b border-terminal-border text-xs font-body uppercase tracking-wider text-zinc-500">
@@ -242,14 +249,14 @@ export function TrackRecord() {
       <section className="space-y-3">
         <h2 className="font-display text-lg font-semibold text-zinc-100">Recent graded games</h2>
         {recent.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-terminal-border bg-terminal-surface p-8 text-center">
+          <div className="rounded-card border border-dashed border-terminal-border bg-terminal-surface p-8 text-center">
             <p className="text-sm font-body text-zinc-400">No games graded yet.</p>
             <p className="mt-1 text-xs font-body text-zinc-500">
               Predictions are snapshotted automatically whenever the Markets page loads a slate; results grade themselves when games finish.
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-terminal-border bg-terminal-surface">
+          <div className="overflow-x-auto rounded-card border border-terminal-border bg-terminal-surface">
             <table className="w-full text-left font-mono text-xs">
               <thead>
                 <tr className="border-b border-terminal-border text-xs font-body uppercase tracking-wider text-zinc-500">
@@ -273,7 +280,7 @@ export function TrackRecord() {
                       <td className="px-4 py-2.5 text-right text-signal-blue">{pct(g.model_home_prob)}</td>
                       <td className="px-4 py-2.5 text-right text-zinc-400">{pct(g.book_home_prob)}</td>
                       <td className="px-4 py-2.5 text-center">
-                        <span className={`rounded-full px-2 py-0.5 text-xs font-body font-semibold ${correct ? 'bg-green-100 text-signal-green' : 'bg-red-100 text-signal-red'}`}>
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-body font-semibold ${correct ? 'bg-signal-green-dim text-signal-green' : 'bg-signal-red-dim text-signal-red'}`}>
                           {correct ? 'HIT' : 'MISS'}
                         </span>
                       </td>
@@ -307,6 +314,14 @@ export function TrackRecord() {
  * +0.4 average over nine games is a far weaker claim than the same number over
  * nine hundred, and the figure alone cannot tell you which you are looking at.
  */
+/**
+ * The spread, total and closing-line-value records.
+ *
+ * Rendered inside the dark P/L panel, so its colours are the `ink` tokens
+ * rather than the page's. This matters more than it looks: `text-zinc-100` is
+ * near-black in this app's inverted scale, and on #0a1512 a record rendered
+ * in it is invisible rather than merely low-contrast.
+ */
 function MarketRecords({ performance }: { performance: PerformanceOut }) {
   const ats = performance.ats
   const totals = performance.totals
@@ -317,18 +332,18 @@ function MarketRecords({ performance }: { performance: PerformanceOut }) {
     if (!r || r.graded === 0) {
       return (
         <div key={label}>
-          <p className="text-xs font-body uppercase tracking-wider text-zinc-500">{label}</p>
-          <p className="font-mono text-sm text-zinc-500">—</p>
+          <p className="text-[10px] font-body font-bold uppercase tracking-wider text-ink-muted">{label}</p>
+          <p className="font-mono text-sm text-ink-muted">—</p>
         </div>
       )
     }
     return (
       <div key={label}>
-        <p className="text-xs font-body uppercase tracking-wider text-zinc-500">{label}</p>
-        <p className="font-mono text-sm font-semibold text-zinc-100">
+        <p className="text-[10px] font-body font-bold uppercase tracking-wider text-ink-muted">{label}</p>
+        <p className="font-mono text-sm font-bold text-white">
           {r.wins}–{r.losses}{r.pushes ? `–${r.pushes}` : ''}
           {r.win_rate != null && (
-            <span className="ml-1.5 text-zinc-400">{(r.win_rate * 100).toFixed(1)}%</span>
+            <span className="ml-1.5 text-ink-muted">{(r.win_rate * 100).toFixed(1)}%</span>
           )}
         </p>
       </div>
@@ -338,7 +353,7 @@ function MarketRecords({ performance }: { performance: PerformanceOut }) {
   const nothingYet = (!ats || ats.graded === 0) && (!totals || totals.graded === 0) && tracked === 0
   if (nothingYet) {
     return (
-      <p className="mt-3 border-t border-terminal-border pt-3 text-xs leading-relaxed text-zinc-500">
+      <p className="mt-3 border-t border-ink-line pt-3 text-xs leading-relaxed text-ink-muted">
         Against-the-spread and total records, and closing line value, appear once
         games graded against a recorded opening line have settled. Nothing is
         back-filled, so the counts start from the first game recorded this way.
@@ -347,22 +362,22 @@ function MarketRecords({ performance }: { performance: PerformanceOut }) {
   }
 
   return (
-    <div className="mt-3 border-t border-terminal-border pt-3">
+    <div className="mt-3 border-t border-ink-line pt-3">
       <div className="flex flex-wrap gap-x-8 gap-y-3">
         {line('Against the spread', ats)}
         {line('Totals', totals)}
         <div>
-          <p className="text-xs font-body uppercase tracking-wider text-zinc-500">
+          <p className="text-[10px] font-body font-bold uppercase tracking-wider text-ink-muted">
             Avg closing line value
           </p>
           <p className={`font-mono text-sm font-semibold ${
-            clv == null ? 'text-zinc-500' : clv >= 0 ? 'text-signal-green' : 'text-signal-red'
+            clv == null ? 'text-ink-muted' : clv >= 0 ? 'text-brand-light' : 'text-red-400'
           }`}>
             {clv == null ? '—' : `${clv >= 0 ? '+' : ''}${clv.toFixed(2)} pts`}
           </p>
         </div>
       </div>
-      <p className="mt-2 text-xs leading-relaxed text-zinc-500">
+      <p className="mt-2 text-xs leading-relaxed text-ink-muted">
         Spread and total records are graded against the line the pick was made
         at, not the line it drifted to. A push is left out of the hit rate
         rather than counted as a loss.

@@ -100,7 +100,7 @@ function Line({
             type="button"
             onClick={() => setOpen(v => !v)}
             aria-label="Message actions"
-            className="tap rounded px-1 text-xs text-zinc-600 opacity-0 transition group-hover:opacity-100 focus:opacity-100"
+            className="tap rounded px-1 text-xs text-zinc-500 opacity-0 transition group-hover:opacity-100 focus:opacity-100"
           >
             ···
           </button>
@@ -297,7 +297,7 @@ export function GameChat({
             onChange={e => setText(e.target.value)}
             maxLength={MAX_LENGTH}
             placeholder="Say something…"
-            className="min-w-0 flex-1 rounded-lg border border-terminal-border bg-terminal-bg px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600"
+            className="min-w-0 flex-1 rounded-lg border border-terminal-border bg-terminal-bg px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
           />
           <button
             type="submit"

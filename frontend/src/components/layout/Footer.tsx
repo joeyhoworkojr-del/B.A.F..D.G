@@ -75,7 +75,7 @@ export function Footer() {
                 following this link gets a 404 rather than a portal. */}
             <Link
               to="/staff"
-              className="text-zinc-600 transition hover:text-zinc-400 hover:underline"
+              className="text-zinc-500 transition hover:text-zinc-300 hover:underline"
             >
               Staff
             </Link>

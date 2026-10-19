@@ -90,7 +90,7 @@ export function WhoWins({
           return (
             <div
               key={s.side}
-              className={`rounded-xl border p-3 ${
+              className={`rounded-card border p-3 ${
                 favoured
                   ? 'border-brand/50 bg-brand-soft'
                   : 'border-terminal-border bg-terminal-surface'
